@@ -123,7 +123,7 @@ If you were previously using `lekiwi_ros2/STSActuatorInterface`, update your URD
 
 ## License
 
-Apache-2.0
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Author
 
