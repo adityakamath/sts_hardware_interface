@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<library path="sts_hardware_interface">
+  <class
+    name="sts_hardware_interface/STSHardwareInterface"
+    type="sts_hardware_interface::STSHardwareInterface"
+    base_class_type="hardware_interface::ActuatorInterface">
+    <description>
+      Hardware interface for Feetech STS series servo motors.
+      Provides complete diagnostics including position, velocity, load,
+      voltage, temperature, current, and motion status.
+      Supports all three operating modes: servo (position), velocity, and PWM.
+    </description>
+  </class>
+</library>
