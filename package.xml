@@ -8,6 +8,7 @@
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
 
   <!-- C++ dependencies -->
   <depend>rclcpp</depend>
@@ -15,8 +16,10 @@
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
 
-  <!-- SCServo library from lekiwi_ros2 -->
-  <depend>lekiwi_ros2</depend>
+  <!-- SCServo motor control SDK -->
+  <!-- Note: SCServo_Linux is included as a git submodule in external/ and built automatically -->
+  <build_depend>python3-dev</build_depend>
+  <buildtool_depend>python3-nanobind</buildtool_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

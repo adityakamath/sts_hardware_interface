@@ -1,0 +1,3 @@
+[submodule "external/SCServo_Linux"]
+	path = external/SCServo_Linux
+	url = https://github.com/adityakamath/SCServo_Linux.git

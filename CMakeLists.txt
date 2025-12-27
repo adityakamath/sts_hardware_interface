@@ -12,16 +12,22 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 
-# Find SCServo library from lekiwi_ros2 package
-find_package(lekiwi_ros2 REQUIRED)
+# Find Python for SCServo_Linux bindings
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 
-# Get SCServo include directory and library from lekiwi_ros2
-set(SCSERVO_INCLUDE_DIR ${lekiwi_ros2_DIR}/../../../src/lekiwi_ros2/external/SCServo_Linux/src)
+# Build SCServo_Linux as a subdirectory
+# This will compile the C++ library and Python bindings
+add_subdirectory(external/SCServo_Linux)
+
+# Make SCServo library available
+set(SCSERVO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SCServo_Linux/src)
+set(SCSERVO_LIBRARY SCServo)
 
 # STS Hardware Interface (ros2_control plugin)
 add_library(${PROJECT_NAME} SHARED
@@ -34,7 +40,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME}
-  SCServo
+  ${SCSERVO_LIBRARY}
   hardware_interface::hardware_interface
   pluginlib::pluginlib
   rclcpp::rclcpp
@@ -59,6 +65,29 @@ install(FILES sts_hardware_interface.xml
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Install SCServo library
+install(
+  TARGETS ${SCSERVO_LIBRARY}
+  EXPORT ${PROJECT_NAME}Targets
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Install SCServo headers
+install(
+  DIRECTORY ${SCSERVO_INCLUDE_DIR}/
+  DESTINATION include/${PROJECT_NAME}/scservo
+  FILES_MATCHING PATTERN "*.h"
+)
+
+# Install SCServo Python bindings to site-packages (optional)
+install(
+  FILES ${CMAKE_CURRENT_BINARY_DIR}/external/SCServo_Linux/scservo_python.cpython-312-aarch64-linux-gnu.so
+  DESTINATION ${Python3_SITELIB}
+  OPTIONAL
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
@@ -73,7 +102,6 @@ ament_export_dependencies(
   rclcpp_lifecycle
   hardware_interface
   pluginlib
-  lekiwi_ros2
 )
 
 ament_package()

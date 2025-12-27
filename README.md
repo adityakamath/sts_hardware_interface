@@ -21,7 +21,8 @@ This package provides a `ros2_control` hardware interface for individual Feetech
 
 - `rclcpp` and `rclcpp_lifecycle`
 - `hardware_interface` and `pluginlib`
-- `lekiwi_ros2` (for SCServo library)
+- SCServo_Linux library (included as git submodule)
+- Python 3 (for SCServo Python bindings)
 
 ## Usage
 
@@ -90,6 +91,15 @@ This package provides a `ros2_control` hardware interface for individual Feetech
 - **effort**: PWM duty cycle (-1.0 to +1.0)
 
 ## Building
+
+First, initialize and update the SCServo_Linux submodule:
+
+```bash
+cd ~/ros2_ws/src/sts_hardware_interface
+git submodule update --init --recursive
+```
+
+Then build the package:
 
 ```bash
 cd ~/ros2_ws
