@@ -1,5 +1,10 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(sts_hardware_interface)
+
+# Suppress FindBoost policy warning
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
 
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
@@ -17,6 +22,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(diagnostic_updater REQUIRED)
 
 # Find Python for SCServo_Linux bindings
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
@@ -45,6 +51,7 @@ target_link_libraries(${PROJECT_NAME}
   pluginlib::pluginlib
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
+  ${diagnostic_updater_TARGETS}
 )
 
 # Export hardware interface as plugin
@@ -102,6 +109,7 @@ ament_export_dependencies(
   rclcpp_lifecycle
   hardware_interface
   pluginlib
+  diagnostic_updater
 )
 
 ament_package()
