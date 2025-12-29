@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="single_motor">
+
+  <!-- Arguments -->
+  <xacro:arg name="serial_port" default="/dev/ttyACM0"/>
+  <xacro:arg name="motor_id" default="1"/>
+  <xacro:arg name="baud_rate" default="1000000"/>
+  <xacro:arg name="use_mock" default="false"/>
+
+  <!-- Robot description -->
+  <link name="base_link"/>
+
+  <link name="wheel_link"/>
+
+  <joint name="wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <!-- ros2_control hardware interface -->
+  <ros2_control name="sts_system" type="system">
+    <hardware>
+      <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+      <param name="serial_port">$(arg serial_port)</param>
+      <param name="baud_rate">$(arg baud_rate)</param>
+      <param name="use_sync_write">false</param>
+      <param name="enable_mock_mode">$(arg use_mock)</param>
+    </hardware>
+
+    <joint name="wheel_joint">
+      <param name="motor_id">$(arg motor_id)</param>
+      <param name="operating_mode">1</param>  <!-- Velocity mode -->
+      <param name="max_velocity">15.0</param>  <!-- rad/s -->
+      <param name="max_effort">1.0</param>
+
+      <command_interface name="velocity"/>
+      <command_interface name="acceleration"/>
+      <command_interface name="emergency_stop"/>
+
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="load"/>
+      <state_interface name="voltage"/>
+      <state_interface name="temperature"/>
+      <state_interface name="current"/>
+      <state_interface name="is_moving"/>
+    </joint>
+  </ros2_control>
+
+</robot>

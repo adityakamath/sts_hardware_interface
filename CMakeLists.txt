@@ -72,6 +72,24 @@ install(FILES sts_hardware_interface.xml
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Install launch files
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+  FILES_MATCHING PATTERN "*.py"
+)
+
+# Install config files
+install(DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
+  FILES_MATCHING PATTERN "*.yaml" PATTERN "*.xacro"
+)
+
+# Install documentation
+install(DIRECTORY docs/
+  DESTINATION share/${PROJECT_NAME}/docs
+  FILES_MATCHING PATTERN "*.md"
+)
+
 # Install SCServo library
 install(
   TARGETS ${SCSERVO_LIBRARY}

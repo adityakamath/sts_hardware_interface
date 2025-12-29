@@ -3,12 +3,14 @@
   <class
     name="sts_hardware_interface/STSHardwareInterface"
     type="sts_hardware_interface::STSHardwareInterface"
-    base_class_type="hardware_interface::ActuatorInterface">
+    base_class_type="hardware_interface::SystemInterface">
     <description>
-      Hardware interface for Feetech STS series servo motors.
+      Hardware interface for Feetech STS series servo motors (single or chain).
+      Supports controlling single motors or chains of motors on the same serial bus.
       Provides complete diagnostics including position, velocity, load,
-      voltage, temperature, current, and motion status.
+      voltage, temperature, current, and motion status for each motor.
       Supports all three operating modes: servo (position), velocity, and PWM.
+      Uses SyncWrite for efficient multi-motor control.
     </description>
   </class>
 </library>

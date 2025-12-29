@@ -1,0 +1,109 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mixed_mode_robot">
+
+  <!-- Arguments -->
+  <xacro:arg name="serial_port" default="/dev/ttyACM0"/>
+  <xacro:arg name="baud_rate" default="1000000"/>
+  <xacro:arg name="use_mock" default="false"/>
+
+  <!-- Robot description -->
+  <link name="base_link"/>
+
+  <link name="wheel_link"/>
+  <link name="arm_link"/>
+  <link name="gripper_link"/>
+
+  <joint name="wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <joint name="arm_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="arm_link"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="5.0"/>
+  </joint>
+
+  <joint name="gripper_joint" type="revolute">
+    <parent link="arm_link"/>
+    <child link="gripper_link"/>
+    <origin xyz="0.2 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.5" effort="1.0" velocity="2.0"/>
+  </joint>
+
+  <!-- ros2_control hardware interface with mixed-mode motors -->
+  <ros2_control name="sts_system" type="system">
+    <hardware>
+      <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+      <param name="serial_port">$(arg serial_port)</param>
+      <param name="baud_rate">$(arg baud_rate)</param>
+      <param name="use_sync_write">true</param>  <!-- Enable for multi-motor chains -->
+      <param name="enable_mock_mode">$(arg use_mock)</param>
+    </hardware>
+
+    <!-- Wheel: Velocity mode -->
+    <joint name="wheel_joint">
+      <param name="motor_id">1</param>
+      <param name="operating_mode">1</param>  <!-- Velocity mode -->
+      <param name="max_velocity">15.0</param>  <!-- rad/s -->
+
+      <command_interface name="velocity"/>
+      <command_interface name="acceleration"/>
+      <command_interface name="emergency_stop"/>
+
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="load"/>
+      <state_interface name="voltage"/>
+      <state_interface name="temperature"/>
+      <state_interface name="current"/>
+      <state_interface name="is_moving"/>
+    </joint>
+
+    <!-- Arm: Servo/Position mode -->
+    <joint name="arm_joint">
+      <param name="motor_id">2</param>
+      <param name="operating_mode">0</param>  <!-- Servo mode -->
+      <param name="min_position">-1.57</param>  <!-- -π/2 rad -->
+      <param name="max_position">1.57</param>   <!-- +π/2 rad -->
+      <param name="max_velocity">5.0</param>    <!-- rad/s -->
+
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <command_interface name="acceleration"/>
+      <command_interface name="emergency_stop"/>
+
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="load"/>
+      <state_interface name="voltage"/>
+      <state_interface name="temperature"/>
+      <state_interface name="current"/>
+      <state_interface name="is_moving"/>
+    </joint>
+
+    <!-- Gripper: PWM/Effort mode -->
+    <joint name="gripper_joint">
+      <param name="motor_id">3</param>
+      <param name="operating_mode">2</param>  <!-- PWM mode -->
+      <param name="max_effort">0.8</param>    <!-- 80% max -->
+
+      <command_interface name="effort"/>
+      <command_interface name="emergency_stop"/>
+
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="load"/>
+      <state_interface name="voltage"/>
+      <state_interface name="temperature"/>
+      <state_interface name="current"/>
+      <state_interface name="is_moving"/>
+    </joint>
+  </ros2_control>
+
+</robot>

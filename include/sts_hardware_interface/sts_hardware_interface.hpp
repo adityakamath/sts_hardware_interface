@@ -26,7 +26,10 @@
 #include <vector>
 #include <chrono>
 
-#include "hardware_interface/actuator_interface.hpp"
+#include <map>
+#include <mutex>
+
+#include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/handle.hpp"
 #include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
@@ -42,18 +45,17 @@ namespace sts_hardware_interface
 {
 
 /**
- * @brief ros2_control ActuatorInterface for Feetech STS series servo motors
- * 
- * Supports all three STS operating modes with complete diagnostics access.
- * Each actuator instance represents one motor on the shared serial bus.
- * Uses SyncWrite functions for optimal serial bus efficiency.
- * 
+ * @brief ros2_control SystemInterface for Feetech STS series servo motors (single or chain)
+ *
+ * Supports controlling a single motor or chain of motors on the same serial bus.
+ * Uses SyncWrite functions for efficient multi-motor control.
+ *
  * OPERATING MODES:
  * - Mode 0 (Servo): Position control with speed and acceleration limits
  * - Mode 1 (Velocity): Closed-loop velocity control (default)
  * - Mode 2 (PWM): Open-loop PWM/effort control
- * 
- * STATE INTERFACES (Read from hardware - all modes):
+ *
+ * STATE INTERFACES (Read from hardware - all modes, per joint):
  * - position: Current position in radians
  * - velocity: Current velocity in rad/s
  * - load: Motor load/torque as percentage (-100.0 to +100.0)
@@ -61,42 +63,69 @@ namespace sts_hardware_interface
  * - temperature: Internal temperature in degrees Celsius
  * - current: Motor current draw in amperes
  * - is_moving: Motion status (1.0=moving, 0.0=stopped)
- * 
- * COMMAND INTERFACES (Write to hardware - mode dependent):
+ *
+ * COMMAND INTERFACES (Write to hardware - mode dependent, per joint):
  * Mode 0: position (rad), velocity (max speed, rad/s), acceleration (0-254)
  * Mode 1: velocity (rad/s), acceleration (0-254)
  * Mode 2: effort (PWM duty cycle, -1.0 to +1.0)
- * 
+ * All modes: emergency_stop (boolean)
+ *
  * PARAMETERS (from ros2_control URDF):
  * - serial_port: Serial port path (e.g., "/dev/ttyACM0") [required]
- * - motor_id: Motor ID on the serial bus (1-253) [required]
+ * - motor_id: Motor ID on the serial bus (1-253) [required for each joint]
  * - operating_mode: 0=servo, 1=velocity, 2=PWM (default: 1)
  * - baud_rate: Communication baud rate (default: 1000000)
- * 
- * USAGE IN URDF:
+ * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
+ *
+ * SINGLE MOTOR USAGE:
  * @code{.xml}
- * <ros2_control name="motor_left" type="actuator">
+ * <ros2_control name="my_motor" type="system">
  *   <hardware>
  *     <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
  *     <param name="serial_port">/dev/ttyACM0</param>
- *     <param name="motor_id">7</param>
+ *     <param name="operating_mode">1</param>
+ *     <param name="baud_rate">1000000</param>
  *   </hardware>
- *   <joint name="left_wheel_joint">
+ *   <joint name="wheel_joint">
+ *     <param name="motor_id">1</param>
  *     <command_interface name="velocity"/>
  *     <command_interface name="acceleration"/>
  *     <state_interface name="position"/>
  *     <state_interface name="velocity"/>
- *     <state_interface name="load"/>
- *     <state_interface name="voltage"/>
- *     <state_interface name="temperature"/>
- *     <state_interface name="current"/>
- *     <state_interface name="is_moving"/>
+ *     ...
+ *   </joint>
+ * </ros2_control>
+ * @endcode
+ *
+ * MOTOR CHAIN USAGE:
+ * @code{.xml}
+ * <ros2_control name="motor_chain" type="system">
+ *   <hardware>
+ *     <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+ *     <param name="serial_port">/dev/ttyACM0</param>
+ *     <param name="operating_mode">1</param>
+ *     <param name="use_sync_write">true</param>
+ *   </hardware>
+ *   <joint name="joint1">
+ *     <param name="motor_id">1</param>
+ *     <command_interface name="velocity"/>
+ *     ...
+ *   </joint>
+ *   <joint name="joint2">
+ *     <param name="motor_id">2</param>
+ *     <command_interface name="velocity"/>
+ *     ...
+ *   </joint>
+ *   <joint name="joint3">
+ *     <param name="motor_id">3</param>
+ *     <command_interface name="velocity"/>
+ *     ...
  *   </joint>
  * </ros2_control>
  * @endcode
  */
 
-class STSHardwareInterface : public hardware_interface::ActuatorInterface {
+class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(STSHardwareInterface)
 
@@ -135,87 +164,78 @@ public:
     const rclcpp::Time & time,
     const rclcpp::Duration & period) override;
 
-  /**
-   * @brief Write speed to a single motor (individual write).
-   * @param motor_id Motor ID
-   * @param speed Target speed (rad/s)
-   */
-  void write_motor(int motor_id, double speed);
-
-  /**
-   * @brief SyncWrite speeds to all motors (atomic bus transaction).
-   * @param speeds Vector of target speeds (rad/s), one per motor
-   */
-  void sync_write_speeds(const std::vector<double>& speeds);
-
-  /**
-   * @brief Set syncWrite mode (true = syncWrite, false = individual write)
-   */
-  void set_sync_write_mode(bool enable) { sync_write_mode_ = enable; }
-
-  /**
-   * @brief Get syncWrite mode
-   */
-  bool get_sync_write_mode() const { return sync_write_mode_; }
-
-  /**
-   * @brief Get list of motor IDs
-   */
-  const std::vector<int>& get_motor_ids() const { return motor_ids_; }
-
-  // ...existing conversion and diagnostic methods remain unchanged...
-
 private:
-  // List of all motor IDs managed by this interface
-  std::vector<int> motor_ids_;
+  // ===== SHARED STATIC RESOURCES (for serial port sharing) =====
+  static std::map<std::string, std::shared_ptr<SMS_STS>> serial_port_connections_;
+  static std::mutex serial_port_mutex_;
 
-  // Command/state buffers for each motor
-  std::vector<double> hw_cmd_velocity_;
-  std::vector<double> hw_state_velocity_;
+  // ===== CONFIGURATION PARAMETERS (from URDF) =====
+  std::string serial_port_;
+  int baud_rate_;
+  int communication_timeout_ms_;
+  bool enable_multi_turn_;
+  bool enable_mock_mode_;
+  bool use_sync_write_;  // Use SyncWrite for multi-motor commands
+
+  // ===== HARDWARE COMMUNICATION =====
+  std::shared_ptr<SMS_STS> servo_;
+  bool owns_serial_connection_;
+
+  // ===== JOINT/MOTOR CONFIGURATION =====
+  std::vector<std::string> joint_names_;  // Joint names from URDF
+  std::vector<int> motor_ids_;            // Corresponding motor IDs (1-253)
+  std::vector<int> operating_modes_;      // Per-joint operating mode (0=servo, 1=velocity, 2=PWM)
+  std::map<std::string, size_t> joint_name_to_index_;  // Quick lookup
+
+  // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
   std::vector<double> hw_state_position_;
+  std::vector<double> hw_state_velocity_;
   std::vector<double> hw_state_load_;
   std::vector<double> hw_state_voltage_;
   std::vector<double> hw_state_temperature_;
   std::vector<double> hw_state_current_;
   std::vector<double> hw_state_is_moving_;
 
-  // SyncWrite mode flag
-  bool sync_write_mode_ = true;
+  // ===== PER-JOINT COMMAND INTERFACES (indexed by joint) =====
+  std::vector<double> hw_cmd_position_;      // Mode 0
+  std::vector<double> hw_cmd_velocity_;      // Mode 0, 1
+  std::vector<double> hw_cmd_acceleration_;  // Mode 0, 1
+  std::vector<double> hw_cmd_effort_;        // Mode 2
+  std::vector<double> hw_cmd_emergency_stop_;
+  std::vector<bool> emergency_stop_active_;
 
-  // ...existing private members remain unchanged...
+  // ===== BROADCAST EMERGENCY STOP =====
+  double hw_cmd_broadcast_emergency_stop_;  // Stops ALL motors when > 0.5
+  bool broadcast_emergency_stop_active_;
 
-private:
-  // Configuration parameters (from URDF)
-  int motor_id_;
-  std::string serial_port_;
-  int baud_rate_;
-  int operating_mode_;  // 0=servo, 1=velocity, 2=PWM
-  int communication_timeout_ms_;  // Timeout for serial operations (milliseconds)
-  bool enable_multi_turn_;  // Enable multi-turn position tracking
-  bool enable_mock_mode_;  // Enable simulation mode for testing without hardware
-  
-  // Hardware limits (from URDF joint limits)
-  double position_min_;
-  double position_max_;
-  double velocity_max_;
-  double effort_max_;
-  bool has_position_limits_;
-  bool has_velocity_limits_;
-  bool has_effort_limits_;
-  
-  // SCServo communication object (shared among motors on same bus)
-  std::shared_ptr<SMS_STS> servo_;
-  bool owns_serial_connection_;  // True if this instance opened the serial port
-  
-  // Diagnostic updater
-  std::shared_ptr<diagnostic_updater::Updater> diagnostic_updater_;
-  
-  // Error tracking and recovery
+  // ===== PER-JOINT HARDWARE LIMITS =====
+  std::vector<double> position_min_;
+  std::vector<double> position_max_;
+  std::vector<double> velocity_max_;
+  std::vector<double> effort_max_;
+  std::vector<bool> has_position_limits_;
+  std::vector<bool> has_velocity_limits_;
+  std::vector<bool> has_effort_limits_;
+
+  // ===== PER-JOINT MULTI-TURN TRACKING =====
+  std::vector<int> last_raw_position_;
+  std::vector<int> revolution_count_;
+  std::vector<double> continuous_position_;
+
+  // ===== PER-JOINT MOCK MODE STATE =====
+  std::vector<double> mock_position_;
+  std::vector<double> mock_velocity_;
+  std::vector<double> mock_load_;
+  std::vector<double> mock_temperature_;
+  std::vector<double> mock_voltage_;
+  std::vector<double> mock_current_;
+
+  // ===== ERROR TRACKING =====
   int consecutive_read_errors_;
   int consecutive_write_errors_;
-  static constexpr int MAX_CONSECUTIVE_ERRORS = 5;  // Trigger recovery after this many errors
-  
-  // Performance monitoring
+  static constexpr int MAX_CONSECUTIVE_ERRORS = 5;
+
+  // ===== PERFORMANCE MONITORING =====
   std::chrono::steady_clock::time_point last_read_time_;
   std::chrono::steady_clock::time_point last_write_time_;
   double read_duration_ms_;
@@ -223,40 +243,10 @@ private:
   double max_read_duration_ms_;
   double max_write_duration_ms_;
   unsigned int cycle_count_;
-  static constexpr unsigned int PERFORMANCE_LOG_INTERVAL = 1000;  // Log every N cycles
-  
-  // State interfaces (read from hardware) - all in SI units
-  double hw_state_position_;      // radians
-  double hw_state_velocity_;      // rad/s  
-  double hw_state_load_;          // Percentage: -100.0 to +100.0
-  double hw_state_voltage_;       // Volts
-  double hw_state_temperature_;   // Degrees Celsius
-  double hw_state_current_;       // Amperes
-  double hw_state_is_moving_;     // Boolean: 1.0=moving, 0.0=stopped
-  
-  // Multi-turn position tracking
-  int last_raw_position_;         // Last raw position reading (0-4095)
-  int revolution_count_;          // Number of complete revolutions
-  double continuous_position_;    // Continuous position in radians (unbounded)
-  
-  // Command interfaces (write to hardware) - all in SI units
-  // Mode 0 (Servo): position, velocity (max speed), acceleration
-  double hw_cmd_position_;        // rad (Mode 0 only)
-  double hw_cmd_velocity_;        // rad/s (Mode 0: max speed, Mode 1: target velocity)
-  double hw_cmd_acceleration_;    // Acceleration value (0-254, 0=no limit) (Mode 0, 1)
-  // Mode 2 (PWM): effort
-  double hw_cmd_effort_;          // PWM duty cycle -1.0 to +1.0 (Mode 2 only)
-  // Emergency stop (all modes)
-  double hw_cmd_emergency_stop_;  // 1.0 = emergency stop active, 0.0 = normal operation
-  bool emergency_stop_active_;    // Internal flag tracking emergency stop state
-  
-  // Mock/simulation mode state variables
-  double mock_position_;          // Simulated position (rad)
-  double mock_velocity_;          // Simulated velocity (rad/s)
-  double mock_load_;              // Simulated load (%)
-  double mock_temperature_;       // Simulated temperature (°C)
-  double mock_voltage_;           // Simulated voltage (V)
-  double mock_current_;           // Simulated current (A)
+  static constexpr unsigned int PERFORMANCE_LOG_INTERVAL = 1000;
+
+  // ===== DIAGNOSTICS =====
+  std::shared_ptr<diagnostic_updater::Updater> diagnostic_updater_;
   
   // Unit conversion constants
   static constexpr double STEPS_PER_REVOLUTION = 4096.0;
@@ -273,6 +263,7 @@ private:
   static constexpr int STS_MAX_PWM = 1000;             // Maximum PWM value
   static constexpr int STS_MIN_MOTOR_ID = 1;           // Minimum valid motor ID
   static constexpr int STS_MAX_MOTOR_ID = 253;         // Maximum valid motor ID
+  static constexpr int STS_BROADCAST_ID = 0xFE;        // Broadcast ID (254) for all motors
   
   // Operating mode constants
   static constexpr int MODE_SERVO = 0;      // Position control mode

@@ -258,19 +258,20 @@ colcon build --packages-select sts_hardware_interface
   <hardware>
     <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
     <param name="serial_port">/dev/ttyACM0</param>
-    <param name="motor_id">1</param>
-    <param name="operating_mode">1</param>  <!-- velocity mode -->
     <param name="baud_rate">1000000</param>
     <param name="communication_timeout_ms">100</param>
     <param name="enable_multi_turn">false</param>  <!-- Enable for multi-revolution tracking -->
     <param name="enable_mock_mode">false</param>   <!-- Enable for simulation/testing -->
   </hardware>
   <joint name="test_joint">
+    <param name="motor_id">1</param>
+    <param name="operating_mode">1</param>  <!-- velocity mode -->
+
     <!-- Command interfaces -->
     <command_interface name="velocity"/>
     <command_interface name="acceleration"/>
     <command_interface name="emergency_stop"/>
-    
+
     <!-- State interfaces -->
     <state_interface name="position"/>
     <state_interface name="velocity"/>
@@ -279,7 +280,7 @@ colcon build --packages-select sts_hardware_interface
     <state_interface name="temperature"/>
     <state_interface name="current"/>
     <state_interface name="is_moving"/>
-    
+
     <!-- Hardware limits -->
     <param name="max_velocity">10.0</param>  <!-- rad/s -->
     <param name="max_effort">1.0</param>
