@@ -42,7 +42,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   const hardware_interface::HardwareComponentInterfaceParams & params)
 {
   // Store hardware info
-  info_ = params;
+  info_ = params.hardware_info;
 
   RCLCPP_INFO(
     rclcpp::get_logger("STSHardwareInterface"),
@@ -281,14 +281,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
       "Mock mode enabled - skipping serial port initialization");
 
     // Create diagnostic updater
-    diagnostic_updater_ = std::make_shared<diagnostic_updater::Updater>(
-      rclcpp::get_node_base_interface(),
-      rclcpp::get_node_timers_interface(),
-      rclcpp::get_node_topics_interface(),
-      rclcpp::get_node_logging_interface(),
-      rclcpp::get_node_clock_interface(),
-      rclcpp::get_node_parameters_interface()
-    );
+    diagnostic_updater_ = std::make_shared<diagnostic_updater::Updater>(this->get_node());
 
     diagnostic_updater_->setHardwareID(info_.name);
     diagnostic_updater_->add(
@@ -348,14 +341,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
   }
 
   // Create diagnostic updater
-  diagnostic_updater_ = std::make_shared<diagnostic_updater::Updater>(
-    rclcpp::get_node_base_interface(),
-    rclcpp::get_node_timers_interface(),
-    rclcpp::get_node_topics_interface(),
-    rclcpp::get_node_logging_interface(),
-    rclcpp::get_node_clock_interface(),
-    rclcpp::get_node_parameters_interface()
-  );
+  diagnostic_updater_ = std::make_shared<diagnostic_updater::Updater>(this->get_node());
 
   diagnostic_updater_->setHardwareID(info_.name);
   diagnostic_updater_->add(
@@ -881,24 +867,11 @@ hardware_interface::return_type STSHardwareInterface::write(
       }
 
       // SyncWrite to all servo mode motors
-      int result = servo_->SyncWritePosEx(
+      servo_->SyncWritePosEx(
         ids.data(), ids.size(),
         positions.data(), speeds.data(), accelerations.data());
 
-      if (result != 1) {
-        consecutive_write_errors_++;
-        int servo_error = servo_->getErr();
-        RCLCPP_WARN_THROTTLE(
-          rclcpp::get_logger("STSHardwareInterface"),
-          *rclcpp::Clock::make_shared(), 1000,
-          "SyncWritePosEx failed for %zu servo mode motors - error count: %d/%d, servo error: %d",
-          servo_motors.size(), consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
-
-        if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
-          consecutive_write_errors_ = 0;
-        }
-        return hardware_interface::return_type::ERROR;
-      }
+      // No result to check for SyncWritePosEx (void return)
 
     } else {
       // Individual writes for single servo motor or when SyncWrite disabled
@@ -962,24 +935,11 @@ hardware_interface::return_type STSHardwareInterface::write(
       }
 
       // SyncWrite to all velocity mode motors
-      int result = servo_->SyncWriteSpe(
+      servo_->SyncWriteSpe(
         ids.data(), ids.size(),
         velocities.data(), accelerations.data());
 
-      if (result != 1) {
-        consecutive_write_errors_++;
-        int servo_error = servo_->getErr();
-        RCLCPP_WARN_THROTTLE(
-          rclcpp::get_logger("STSHardwareInterface"),
-          *rclcpp::Clock::make_shared(), 1000,
-          "SyncWriteSpe failed for %zu velocity mode motors - error count: %d/%d, servo error: %d",
-          velocity_motors.size(), consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
-
-        if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
-          consecutive_write_errors_ = 0;
-        }
-        return hardware_interface::return_type::ERROR;
-      }
+      // No result to check for SyncWriteSpe (void return)
 
     } else {
       // Individual writes for single velocity motor or when SyncWrite disabled
@@ -1034,22 +994,9 @@ hardware_interface::return_type STSHardwareInterface::write(
       }
 
       // SyncWrite to all PWM mode motors
-      int result = servo_->SyncWritePwm(ids.data(), ids.size(), pwm_values.data());
+      servo_->SyncWritePwm(ids.data(), ids.size(), pwm_values.data());
 
-      if (result != 1) {
-        consecutive_write_errors_++;
-        int servo_error = servo_->getErr();
-        RCLCPP_WARN_THROTTLE(
-          rclcpp::get_logger("STSHardwareInterface"),
-          *rclcpp::Clock::make_shared(), 1000,
-          "SyncWritePwm failed for %zu PWM mode motors - error count: %d/%d, servo error: %d",
-          pwm_motors.size(), consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
-
-        if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
-          consecutive_write_errors_ = 0;
-        }
-        return hardware_interface::return_type::ERROR;
-      }
+      // No result to check for SyncWritePwm (void return)
 
     } else {
       // Individual writes for single PWM motor or when SyncWrite disabled
