@@ -140,7 +140,7 @@ Start with [docs/INDEX.md](INDEX.md) for complete documentation navigation.
 | `serial_port` | string | *required* | Serial port path (e.g., `/dev/ttyACM0`) |
 | `baud_rate` | int | `1000000` | Communication baud rate |
 | `use_sync_write` | bool | `true` | Enable SyncWrite for multi-motor |
-| `enable_multi_turn` | bool | `false` | Multi-revolution position tracking |
+| `enable_multi_turn` | bool | `false` | Multi-revolution position tracking (enable for wheels/continuous rotation) |
 | `enable_mock_mode` | bool | `false` | Simulation mode (no hardware) |
 
 ### Joint Parameters
@@ -170,7 +170,7 @@ Start with [docs/INDEX.md](INDEX.md) for complete documentation navigation.
 - **SCServo_Linux** - Feetech servo SDK (included as git submodule)
 
 ### System Requirements
-- ROS 2: Humble, Iron, or Jazzy
+- ROS 2: Humble, Iron, Jazzy, or Kilted (Ubuntu 24.04)
 - C++17 compiler
 - CMake 3.10+
 - Python 3
@@ -326,5 +326,5 @@ MIT License - See [LICENSE](../LICENSE) file for details.
 
 **Package Version**: 1.0.0
 **Last Updated**: 2025-12-29
-**ROS 2 Distributions**: Humble, Iron, Jazzy
+**ROS 2 Distributions**: Humble, Iron, Jazzy, Kilted
 **Status**: ✅ Production Ready

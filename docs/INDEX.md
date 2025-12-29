@@ -188,4 +188,4 @@ MIT License - See [LICENSE](../LICENSE) file for details
 
 **Last Updated**: 2025-12-29
 **Package Version**: 1.0.0
-**ROS 2 Distribution**: Humble, Iron, Jazzy
+**ROS 2 Distribution**: Humble, Iron, Jazzy, Kilted

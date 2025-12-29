@@ -1,6 +1,6 @@
 # STS Hardware Interface
 
-[![ROS 2](https://img.shields.io/badge/ROS_2-Humble%20%7C%20Iron%20%7C%20Jazzy-blue)](https://docs.ros.org)
+[![ROS 2](https://img.shields.io/badge/ROS_2-Humble%20%7C%20Iron%20%7C%20Jazzy%20%7C%20Kilted-blue)](https://docs.ros.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A production-ready `ros2_control` hardware interface for Feetech STS series servo motors with advanced features for mixed-mode operation, safety, and performance.
@@ -152,7 +152,7 @@ ros2 topic pub /joint_name/emergency_stop std_msgs/msg/Float64 "{data: 1.0}"
 | `serial_port` | string | *required* | Serial port path (e.g., `/dev/ttyACM0`) |
 | `baud_rate` | int | `1000000` | Communication baud rate |
 | `use_sync_write` | bool | `true` | Enable SyncWrite for multi-motor chains |
-| `enable_multi_turn` | bool | `false` | Multi-revolution position tracking |
+| `enable_multi_turn` | bool | `false` | Multi-revolution position tracking (enable for wheels/continuous rotation) |
 | `enable_mock_mode` | bool | `false` | Simulation mode (no hardware) |
 
 ### Joint Parameters
@@ -299,7 +299,7 @@ Simulates motor behavior for testing controllers without physical hardware.
 
 ## 📦 Dependencies
 
-- **ROS 2**: Humble, Iron, or Jazzy
+- **ROS 2**: Humble, Iron, Jazzy, or Kilted (Ubuntu 24.04)
 - **ros2_control**: `hardware_interface`, `controller_manager`
 - **Standard**: `rclcpp`, `rclcpp_lifecycle`, `pluginlib`
 - **SCServo_Linux**: Included as git submodule
