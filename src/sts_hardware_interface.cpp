@@ -1304,19 +1304,21 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
 // UNIT CONVERSION HELPER FUNCTIONS
 // ============================================================================
 
+//TODO
 double STSHardwareInterface::raw_position_to_radians(int raw_position) const
 {
   return static_cast<double>(raw_position) * STEPS_TO_RAD;
-}
 
+// Negate to match ROS convention: positive = CCW
 double STSHardwareInterface::raw_velocity_to_rad_s(int raw_velocity) const
 {
-  return static_cast<double>(raw_velocity) * STEPS_TO_RAD;
+  return static_cast<double>(-raw_velocity) * STEPS_TO_RAD;
 }
 
+// Negate to match ROS convention: positive = CCW
 int STSHardwareInterface::rad_s_to_raw_velocity(double velocity_rad_s) const
 {
-  double raw = velocity_rad_s * RAD_TO_STEPS;
+  double raw = -velocity_rad_s * RAD_TO_STEPS;
   int clamped = static_cast<int>(std::clamp(
     raw,
     static_cast<double>(-STS_MAX_VELOCITY_STEPS),
@@ -1339,19 +1341,15 @@ double STSHardwareInterface::raw_current_to_amperes(int raw_current) const
   return static_cast<double>(raw_current) * CURRENT_SCALE;
 }
 
+
+// Negate to match ROS convention: positive = CCW
 int STSHardwareInterface::radians_to_raw_position(double position_rad) const
 {
-  // Normalize to [0, 2π) range first
-  double normalized = std::fmod(position_rad, 2.0 * M_PI);
-  if (normalized < 0.0) {
+  double normalized = std::fmod(-position_rad, 2.0 * M_PI);
+  if (normalized < 0.0)
     normalized += 2.0 * M_PI;
-  }
-
-  // Convert to raw position
   int raw = static_cast<int>(normalized * RAD_TO_STEPS);
-
-  // Ensure within valid range
-  return std::clamp(raw, 0, STS_MAX_POSITION);
+  return std::clamp(raw, 0, 4095);
 }
 
 int STSHardwareInterface::effort_to_raw_pwm(double effort) const
