@@ -18,8 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef STS_HARDWARE_INTERFACE__STS_HARDWARE_INTERFACE_HPP_
-#define STS_HARDWARE_INTERFACE__STS_HARDWARE_INTERFACE_HPP_
+#ifndef STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
+#define STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 
 #include <memory>
 #include <string>
@@ -246,7 +246,7 @@ private:
   static constexpr int STS_MIN_MOTOR_ID = 1;           // Minimum valid motor ID
   static constexpr int STS_MAX_MOTOR_ID = 253;         // Maximum valid motor ID
   static constexpr int STS_BROADCAST_ID = 0xFE;        // Broadcast ID (254) for all motors
-  
+
   // Operating mode constants
   static constexpr int MODE_SERVO = 0;      // Position control mode
   static constexpr int MODE_VELOCITY = 1;   // Velocity control mode
@@ -305,4 +305,4 @@ private:
 
 }  // namespace sts_hardware_interface
 
-#endif  // STS_HARDWARE_INTERFACE__STS_HARDWARE_INTERFACE_HPP_
+#endif  // STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_

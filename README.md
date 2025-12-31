@@ -1,7 +1,12 @@
 # STS Hardware Interface
 
-[![ROS 2](https://img.shields.io/badge/ROS_2-Humble%20%7C%20Iron%20%7C%20Jazzy%20%7C%20Kilted-blue)](https://docs.ros.org)
+[![ROS 2](https://img.shields.io/badge/ROS_2-Humble%20%7C%20Iron%20%7C%20Jazzy%20%7C%20Kilted%20%7C%20Rolling-blue)](https://docs.ros.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+[![Build & Test](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml)
+[![clang-tidy](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/clang-tidy.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/clang-tidy.yml)
+[![Lint](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/lint.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/lint.yml)
+[![PR Comments Check](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/pr-comments-check.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/pr-comments-check.yml)
 
 A production-ready `ros2_control` hardware interface for Feetech STS series servo motors with advanced features for mixed-mode operation, safety, and performance.
 
@@ -303,6 +308,17 @@ Simulates motor behavior for testing controllers without physical hardware.
 - **ros2_control**: `hardware_interface`, `controller_manager`
 - **Standard**: `rclcpp`, `rclcpp_lifecycle`, `pluginlib`
 - **SCServo_Linux**: Included as git submodule
+
+---
+
+## 🚧 Future Enhancements
+
+Potential features for future development:
+
+- [ ] **PID Coefficient Tuning** - Add per-joint PID coefficient configuration via URDF parameters
+  (P/D/I coefficients at memory addresses 21/22/23) for advanced servo performance fine-tuning
+- [ ] **Hardware Tests** - Expand test coverage for hardware communication edge cases
+- [ ] **Additional State Interfaces** - Motor internal position/velocity error for advanced diagnostics
 
 ---
 

@@ -20,12 +20,12 @@
 
 #include "sts_hardware_interface/sts_hardware_interface.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
-#include <algorithm>
 
 namespace sts_hardware_interface
 {
