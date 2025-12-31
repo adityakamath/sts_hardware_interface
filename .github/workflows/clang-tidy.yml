@@ -1,0 +1,137 @@
+name: clang-tidy
+
+# DISABLED FOR PRIVATE REPO - Enable when repo becomes public (uncomment lines below)
+on:
+  # pull_request:
+  #   paths:
+  #     - '**.cpp'
+  #     - '**.hpp'
+  #     - '**.h'
+  #     - 'CMakeLists.txt'
+  #     - '.clang-tidy'
+  # push:
+  #   branches:
+  #     - main
+  #     - develop
+  #   paths:
+  #     - '**.cpp'
+  #     - '**.hpp'
+  #     - '**.h'
+  #     - 'CMakeLists.txt'
+  #     - '.clang-tidy'
+  workflow_dispatch:
+
+jobs:
+  clang-tidy-check:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-18
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 100
+
+      - name: Setup ROS 2 Jazzy
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: jazzy
+
+      - name: Install ROS 2 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ros-jazzy-hardware-interface \
+            ros-jazzy-pluginlib \
+            ros-jazzy-rclcpp \
+            ros-jazzy-rclcpp-lifecycle \
+            python3-nanobind \
+            python3-dev
+
+      - name: Create workspace
+        run: |
+          mkdir -p ~/ros2_ws/src
+          cp -r ${{ github.workspace }} ~/ros2_ws/src/sts_hardware_interface
+
+      - name: Build with compile_commands.json
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cd ~/ros2_ws
+          colcon build \
+            --packages-select sts_hardware_interface \
+            --cmake-args \
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+              -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Run clang-tidy
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cd ~/ros2_ws/src/sts_hardware_interface
+
+          # Create results directory
+          mkdir -p clang-tidy-results
+
+          # Run clang-tidy on all C++ files
+          EXIT_CODE=0
+
+          echo "Running clang-tidy on source files..."
+          for file in $(find src include -name "*.cpp" -o -name "*.hpp"); do
+            echo "Checking: $file"
+            clang-tidy \
+              -p ~/ros2_ws/build/sts_hardware_interface \
+              "$file" \
+              > clang-tidy-results/$(basename $file).txt 2>&1 || EXIT_CODE=1
+          done
+
+          # Combine all results
+          cat clang-tidy-results/*.txt > clang-tidy-results/full-report.txt
+
+          # Display summary
+          echo "================================"
+          echo "clang-tidy Summary"
+          echo "================================"
+          cat clang-tidy-results/full-report.txt
+
+          exit $EXIT_CODE
+
+      - name: Upload clang-tidy results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-results
+          path: ~/ros2_ws/src/sts_hardware_interface/clang-tidy-results/
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = process.env.HOME + '/ros2_ws/src/sts_hardware_interface/clang-tidy-results/full-report.txt';
+
+            let report = 'clang-tidy found issues:\n\n```\n';
+            try {
+              report += fs.readFileSync(reportPath, 'utf8');
+            } catch (error) {
+              report += 'Error reading report file';
+            }
+            report += '\n```';
+
+            // Truncate if too long (GitHub has comment size limits)
+            if (report.length > 65000) {
+              report = report.substring(0, 65000) + '\n... (truncated)';
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });

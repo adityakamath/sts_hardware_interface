@@ -1,0 +1,83 @@
+name: Build & Test
+
+# DISABLED FOR PRIVATE REPO - Enable when repo becomes public (uncomment lines below)
+on:
+  # pull_request:
+  # push:
+  #   branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ROS 2 ${{ matrix.ros_distro }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Humble (LTS) - Ubuntu 22.04
+          - ros_distro: humble
+            os: ubuntu-22.04
+          # Iron - Ubuntu 22.04
+          - ros_distro: iron
+            os: ubuntu-22.04
+          # Jazzy - Ubuntu 24.04
+          - ros_distro: jazzy
+            os: ubuntu-24.04
+          # Kilted - Ubuntu 24.04
+          - ros_distro: kilted
+            os: ubuntu-24.04
+          # Rolling (latest) - Ubuntu 24.04
+          - ros_distro: rolling
+            os: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup ROS 2
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: ${{ matrix.ros_distro }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ros-${{ matrix.ros_distro }}-hardware-interface \
+            ros-${{ matrix.ros_distro }}-pluginlib \
+            ros-${{ matrix.ros_distro }}-rclcpp \
+            ros-${{ matrix.ros_distro }}-rclcpp-lifecycle \
+            python3-nanobind \
+            python3-dev
+
+      - name: Build package
+        run: |
+          source /opt/ros/${{ matrix.ros_distro }}/setup.bash
+          mkdir -p ~/ros2_ws/src
+          cp -r $GITHUB_WORKSPACE ~/ros2_ws/src/sts_hardware_interface
+          cd ~/ros2_ws
+          colcon build --packages-select sts_hardware_interface --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+      - name: Run tests
+        run: |
+          source /opt/ros/${{ matrix.ros_distro }}/setup.bash
+          cd ~/ros2_ws
+          colcon test --packages-select sts_hardware_interface --event-handlers console_direct+
+          colcon test-result --verbose
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.ros_distro }}-${{ matrix.os }}
+          path: ~/ros2_ws/log/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.ros_distro }}-${{ matrix.os }}
+          path: ~/ros2_ws/build/*/test_results/**/*.xml

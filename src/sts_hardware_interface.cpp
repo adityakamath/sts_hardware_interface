@@ -110,6 +110,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   joint_names_.resize(num_joints);
   motor_ids_.resize(num_joints);
   operating_modes_.resize(num_joints, MODE_VELOCITY);  // Default to velocity mode
+  invert_direction_.resize(num_joints, false);  // Default: no inversion
 
   hw_state_position_.resize(num_joints, 0.0);
   hw_state_velocity_.resize(num_joints, 0.0);
@@ -194,6 +195,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
         joint.name.c_str(), operating_modes_[i]);
       return hardware_interface::CallbackReturn::ERROR;
     }
+
+    // Parse invert_direction (per joint, default: false)
+    invert_direction_[i] = (joint.parameters.count("invert_direction") &&
+                            joint.parameters.at("invert_direction") == "true");
 
     // Parse and validate optional joint limits
     if (joint.parameters.count("min_position")) {
@@ -706,14 +711,18 @@ hardware_interface::return_type STSHardwareInterface::read(
       if (enable_multi_turn_) {
         int position_diff = raw_position - last_raw_position_[i];
 
+        // Since we negate positions, wrap detection needs to be inverted:
+        // Forward motion (positive raw diff crossing 0->4095) becomes backward revolution
+        // Backward motion (negative raw diff crossing 4095->0) becomes forward revolution
         if (position_diff > STS_MAX_POSITION / 2) {
-          revolution_count_[i]--;
+          revolution_count_[i]++;  // Inverted: raw wrapped forward, negated position goes backward
         } else if (position_diff < -STS_MAX_POSITION / 2) {
-          revolution_count_[i]++;
+          revolution_count_[i]--;  // Inverted: raw wrapped backward, negated position goes forward
         }
 
         last_raw_position_[i] = raw_position;
-        continuous_position_[i] = (revolution_count_[i] * 2.0 * M_PI) +
+        // Negate the revolution count accumulation to match negated position
+        continuous_position_[i] = -(revolution_count_[i] * 2.0 * M_PI) +
                                    raw_position_to_radians(raw_position);
         hw_state_position_[i] = continuous_position_[i];
       } else {
@@ -1304,10 +1313,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
 // UNIT CONVERSION HELPER FUNCTIONS
 // ============================================================================
 
-//TODO
+// Negate to match ROS convention: positive = CCW
 double STSHardwareInterface::raw_position_to_radians(int raw_position) const
 {
-  return static_cast<double>(raw_position) * STEPS_TO_RAD;
+  // Convert raw position to radians and negate to reverse motor direction
+  // This inverts the motor reading so positive commands result in positive feedback
+  return -static_cast<double>(raw_position) * STEPS_TO_RAD;
+}
 
 // Negate to match ROS convention: positive = CCW
 double STSHardwareInterface::raw_velocity_to_rad_s(int raw_velocity) const
