@@ -49,13 +49,12 @@ Position feedback processing follows this exact order:
 2. **Convert to radians** using `raw_position_to_radians()`
 3. **Multi-turn tracking** (if enabled): accumulate revolutions
 4. **Apply initial offset**: `position -= initial_position_offset_[i]` ← **NEW**
-5. **Apply direction reversal** (if configured): `position = -position`
-6. Report final position to controller
+5. Report final position to controller
 
 This order ensures:
 - Offset is applied in the motor's natural coordinate frame
-- Direction reversal happens after zeroing (maintains consistency)
 - Multi-turn tracking works correctly across zero point
+- Coordinate transformations (e.g., for upside-down mounting) are handled via URDF joint axis
 
 ## Benefits
 
@@ -83,9 +82,9 @@ All motors correctly report 0.5 rad relative motion.
 ## Compatibility
 
 - **Multi-turn tracking**: Fully compatible - offset is subtracted from continuous position
-- **Direction reversal**: Fully compatible - offset applied before reversal
 - **Mock mode**: Fully compatible - offset initialized to 0.0 for simulated motors
 - **Existing configurations**: No URDF changes required - feature is automatic
+- **Motor orientation**: Works seamlessly with URDF joint axis definitions for upside-down motors
 
 ## Testing
 
