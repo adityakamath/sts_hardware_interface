@@ -25,9 +25,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
-
 #include <map>
-#include <mutex>
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/handle.hpp"
@@ -35,8 +33,6 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/macros.hpp"
 #include "rclcpp_lifecycle/state.hpp"
-#include "diagnostic_updater/diagnostic_updater.hpp"
-#include "diagnostic_updater/publisher.hpp"
 
 // SCServo SDK
 #include "SMS_STS.h"
@@ -165,10 +161,6 @@ public:
     const rclcpp::Duration & period) override;
 
 private:
-  // ===== SHARED STATIC RESOURCES (for serial port sharing) =====
-  static std::map<std::string, std::shared_ptr<SMS_STS>> serial_port_connections_;
-  static std::mutex serial_port_mutex_;
-
   // ===== CONFIGURATION PARAMETERS (from URDF) =====
   std::string serial_port_;
   int baud_rate_;
@@ -179,7 +171,6 @@ private:
 
   // ===== HARDWARE COMMUNICATION =====
   std::shared_ptr<SMS_STS> servo_;
-  bool owns_serial_connection_;
 
   // ===== JOINT/MOTOR CONFIGURATION =====
   std::vector<std::string> joint_names_;  // Joint names from URDF
@@ -195,6 +186,15 @@ private:
   std::vector<double> hw_state_temperature_;
   std::vector<double> hw_state_current_;
   std::vector<double> hw_state_is_moving_;
+
+  // Track which state interfaces are enabled per joint (for efficiency)
+  std::vector<bool> has_position_state_;
+  std::vector<bool> has_velocity_state_;
+  std::vector<bool> has_load_state_;
+  std::vector<bool> has_voltage_state_;
+  std::vector<bool> has_temperature_state_;
+  std::vector<bool> has_current_state_;
+  std::vector<bool> has_is_moving_state_;
 
   // ===== PER-JOINT COMMAND INTERFACES (indexed by joint) =====
   std::vector<double> hw_cmd_position_;      // Mode 0
@@ -225,32 +225,11 @@ private:
   // ===== PER-JOINT POSITION ZEROING =====
   std::vector<double> initial_position_offset_;  // Position offset captured on activation
 
-  // ===== PER-JOINT MOCK MODE STATE =====
-  std::vector<double> mock_position_;
-  std::vector<double> mock_velocity_;
-  std::vector<double> mock_load_;
-  std::vector<double> mock_temperature_;
-  std::vector<double> mock_voltage_;
-  std::vector<double> mock_current_;
-
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;
   int consecutive_write_errors_;
   static constexpr int MAX_CONSECUTIVE_ERRORS = 5;
 
-  // ===== PERFORMANCE MONITORING =====
-  std::chrono::steady_clock::time_point last_read_time_;
-  std::chrono::steady_clock::time_point last_write_time_;
-  double read_duration_ms_;
-  double write_duration_ms_;
-  double max_read_duration_ms_;
-  double max_write_duration_ms_;
-  unsigned int cycle_count_;
-  static constexpr unsigned int PERFORMANCE_LOG_INTERVAL = 1000;
-
-  // ===== DIAGNOSTICS =====
-  std::shared_ptr<diagnostic_updater::Updater> diagnostic_updater_;
-  
   // Unit conversion constants
   static constexpr double STEPS_PER_REVOLUTION = 4096.0;
   static constexpr double STEPS_TO_RAD = (2.0 * M_PI) / STEPS_PER_REVOLUTION;
@@ -315,22 +294,13 @@ private:
   
   /**
    * @brief Attempt to recover from communication errors
-   * 
+   *
    * Tries to re-establish communication with the motor by pinging it.
    * If ping fails, attempts to reinitialize the serial connection.
-   * 
+   *
    * @return true if recovery successful, false otherwise
    */
   bool attempt_error_recovery();
-  
-  /**
-   * @brief Diagnostic callback for hardware status
-   * 
-   * Updates diagnostic status with motor health information.
-   * 
-   * @param stat Diagnostic status wrapper to update
-   */
-  void diagnostics_callback(diagnostic_updater::DiagnosticStatusWrapper & stat);
 };
 
 }  // namespace sts_hardware_interface

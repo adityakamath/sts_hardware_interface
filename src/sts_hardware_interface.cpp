@@ -30,10 +30,6 @@
 namespace sts_hardware_interface
 {
 
-// Static member initialization
-std::map<std::string, std::shared_ptr<SMS_STS>> STSHardwareInterface::serial_port_connections_;
-std::mutex STSHardwareInterface::serial_port_mutex_;
-
 // ============================================================================
 // LIFECYCLE: on_init
 // ============================================================================
@@ -58,15 +54,35 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Parse optional hardware parameters with defaults
+  // Parse and validate baud_rate (default: 1000000)
+  // Supported baud rates: 9600, 19200, 38400, 57600, 115200, 500000, 1000000
+  static const std::vector<int> valid_baud_rates = {9600, 19200, 38400, 57600, 115200, 500000, 1000000};
   baud_rate_ = std::stoi(
     info_.hardware_parameters.count("baud_rate") ?
     info_.hardware_parameters.at("baud_rate") : "1000000");
 
+  if (std::find(valid_baud_rates.begin(), valid_baud_rates.end(), baud_rate_) == valid_baud_rates.end()) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("STSHardwareInterface"),
+      "Invalid baud_rate: %d. Supported rates: 9600, 19200, 38400, 57600, 115200, 500000, 1000000",
+      baud_rate_);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  // Parse and validate communication_timeout_ms (default: 100, range: 1-1000)
   communication_timeout_ms_ = std::stoi(
     info_.hardware_parameters.count("communication_timeout_ms") ?
     info_.hardware_parameters.at("communication_timeout_ms") : "100");
 
+  if (communication_timeout_ms_ < 1 || communication_timeout_ms_ > 1000) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("STSHardwareInterface"),
+      "Invalid communication_timeout_ms: %d. Must be between 1 and 1000 ms",
+      communication_timeout_ms_);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  // Parse boolean parameters
   enable_multi_turn_ = (info_.hardware_parameters.count("enable_multi_turn") &&
                         info_.hardware_parameters.at("enable_multi_turn") == "true");
 
@@ -98,10 +114,19 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   hw_state_position_.resize(num_joints, 0.0);
   hw_state_velocity_.resize(num_joints, 0.0);
   hw_state_load_.resize(num_joints, 0.0);
-  hw_state_voltage_.resize(num_joints, 0.0);
-  hw_state_temperature_.resize(num_joints, 0.0);
+  hw_state_voltage_.resize(num_joints, 12.0);  // Mock voltage value
+  hw_state_temperature_.resize(num_joints, 25.0);  // Mock temperature value
   hw_state_current_.resize(num_joints, 0.0);
   hw_state_is_moving_.resize(num_joints, 0.0);
+
+  // Initialize state interface tracking (will be populated based on URDF)
+  has_position_state_.resize(num_joints, false);
+  has_velocity_state_.resize(num_joints, false);
+  has_load_state_.resize(num_joints, false);
+  has_voltage_state_.resize(num_joints, false);
+  has_temperature_state_.resize(num_joints, false);
+  has_current_state_.resize(num_joints, false);
+  has_is_moving_state_.resize(num_joints, false);
 
   hw_cmd_position_.resize(num_joints, 0.0);
   hw_cmd_velocity_.resize(num_joints, 0.0);
@@ -127,13 +152,6 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   continuous_position_.resize(num_joints, 0.0);
 
   initial_position_offset_.resize(num_joints, 0.0);
-
-  mock_position_.resize(num_joints, 0.0);
-  mock_velocity_.resize(num_joints, 0.0);
-  mock_load_.resize(num_joints, 0.0);
-  mock_temperature_.resize(num_joints, 25.0);
-  mock_voltage_.resize(num_joints, 12.0);
-  mock_current_.resize(num_joints, 0.0);
 
   // Parse each joint
   for (size_t i = 0; i < num_joints; ++i) {
@@ -177,7 +195,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       return hardware_interface::CallbackReturn::ERROR;
     }
 
-    // Parse optional joint limits
+    // Parse and validate optional joint limits
     if (joint.parameters.count("min_position")) {
       position_min_[i] = std::stod(joint.parameters.at("min_position"));
       has_position_limits_[i] = true;
@@ -186,12 +204,52 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       position_max_[i] = std::stod(joint.parameters.at("max_position"));
       has_position_limits_[i] = true;
     }
+
+    // Validate position limits are sensible
+    if (has_position_limits_[i] && position_min_[i] >= position_max_[i]) {
+      RCLCPP_ERROR(
+        rclcpp::get_logger("STSHardwareInterface"),
+        "Joint '%s': min_position (%.3f) must be less than max_position (%.3f)",
+        joint.name.c_str(), position_min_[i], position_max_[i]);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+
     if (joint.parameters.count("max_velocity")) {
       velocity_max_[i] = std::stod(joint.parameters.at("max_velocity"));
+
+      // Validate velocity limit is positive and reasonable
+      if (velocity_max_[i] <= 0.0) {
+        RCLCPP_ERROR(
+          rclcpp::get_logger("STSHardwareInterface"),
+          "Joint '%s': max_velocity must be positive (got %.3f rad/s)",
+          joint.name.c_str(), velocity_max_[i]);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+
+      // Warn if velocity exceeds hardware maximum (~20 rad/s based on 3400 steps/s)
+      const double hw_max_velocity = (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD);
+      if (velocity_max_[i] > hw_max_velocity) {
+        RCLCPP_WARN(
+          rclcpp::get_logger("STSHardwareInterface"),
+          "Joint '%s': max_velocity (%.3f rad/s) exceeds hardware maximum (~%.3f rad/s)",
+          joint.name.c_str(), velocity_max_[i], hw_max_velocity);
+      }
+
       has_velocity_limits_[i] = true;
     }
+
     if (joint.parameters.count("max_effort")) {
       effort_max_[i] = std::stod(joint.parameters.at("max_effort"));
+
+      // Validate effort limit for PWM mode (should be 0-1)
+      if (operating_modes_[i] == MODE_PWM && (effort_max_[i] <= 0.0 || effort_max_[i] > 1.0)) {
+        RCLCPP_ERROR(
+          rclcpp::get_logger("STSHardwareInterface"),
+          "Joint '%s': max_effort must be between 0 and 1 for PWM mode (got %.3f)",
+          joint.name.c_str(), effort_max_[i]);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+
       has_effort_limits_[i] = true;
     }
 
@@ -227,6 +285,25 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       }
     }
 
+    // Populate state interface tracking based on URDF declarations
+    for (const auto & state_interface : joint.state_interfaces) {
+      if (state_interface.name == hardware_interface::HW_IF_POSITION) {
+        has_position_state_[i] = true;
+      } else if (state_interface.name == hardware_interface::HW_IF_VELOCITY) {
+        has_velocity_state_[i] = true;
+      } else if (state_interface.name == "load") {
+        has_load_state_[i] = true;
+      } else if (state_interface.name == "voltage") {
+        has_voltage_state_[i] = true;
+      } else if (state_interface.name == "temperature") {
+        has_temperature_state_[i] = true;
+      } else if (state_interface.name == "current") {
+        has_current_state_[i] = true;
+      } else if (state_interface.name == "is_moving") {
+        has_is_moving_state_[i] = true;
+      }
+    }
+
     RCLCPP_INFO(
       rclcpp::get_logger("STSHardwareInterface"),
       "Joint '%s': motor_id=%d, mode=%d, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f]",
@@ -247,14 +324,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     }
   }
 
-  // Initialize performance monitoring
+  // Initialize error tracking
   consecutive_read_errors_ = 0;
   consecutive_write_errors_ = 0;
-  cycle_count_ = 0;
-  read_duration_ms_ = 0.0;
-  write_duration_ms_ = 0.0;
-  max_read_duration_ms_ = 0.0;
-  max_write_duration_ms_ = 0.0;
 
   RCLCPP_INFO(
     rclcpp::get_logger("STSHardwareInterface"),
@@ -283,48 +355,24 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
       rclcpp::get_logger("STSHardwareInterface"),
       "Mock mode enabled - skipping serial port initialization");
 
-    // Create diagnostic updater
-    diagnostic_updater_ = std::make_shared<diagnostic_updater::Updater>(this->get_node());
-
-    diagnostic_updater_->setHardwareID(info_.name);
-    diagnostic_updater_->add(
-      "Motor Status", this, &STSHardwareInterface::diagnostics_callback);
-
     return hardware_interface::CallbackReturn::SUCCESS;
   }
 
-  // Thread-safe serial port management
-  std::lock_guard<std::mutex> lock(serial_port_mutex_);
+  // Create serial connection
+  servo_ = std::make_shared<SMS_STS>();
 
-  // Check if serial port is already open
-  auto it = serial_port_connections_.find(serial_port_);
-  if (it != serial_port_connections_.end()) {
-    // Reuse existing connection
-    servo_ = it->second;
-    owns_serial_connection_ = false;
-    RCLCPP_INFO(
+  if (!servo_->begin(baud_rate_, serial_port_.c_str())) {
+    RCLCPP_ERROR(
       rclcpp::get_logger("STSHardwareInterface"),
-      "Reusing existing serial connection to %s", serial_port_.c_str());
-  } else {
-    // Create new serial connection
-    servo_ = std::make_shared<SMS_STS>();
-
-    if (!servo_->begin(baud_rate_, serial_port_.c_str())) {
-      RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
-        "Failed to open serial port %s at baud rate %d",
-        serial_port_.c_str(), baud_rate_);
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-
-    serial_port_connections_[serial_port_] = servo_;
-    owns_serial_connection_ = true;
-
-    RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
-      "Opened serial port %s at baud rate %d",
+      "Failed to open serial port %s at baud rate %d",
       serial_port_.c_str(), baud_rate_);
+    return hardware_interface::CallbackReturn::ERROR;
   }
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("STSHardwareInterface"),
+    "Opened serial port %s at baud rate %d",
+    serial_port_.c_str(), baud_rate_);
 
   // Verify communication with all motors
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
@@ -342,13 +390,6 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
       "Motor %d (joint '%s') responded to ping",
       motor_ids_[i], joint_names_[i].c_str());
   }
-
-  // Create diagnostic updater
-  diagnostic_updater_ = std::make_shared<diagnostic_updater::Updater>(this->get_node());
-
-  diagnostic_updater_->setHardwareID(info_.name);
-  diagnostic_updater_->add(
-    "Motor Chain Status", this, &STSHardwareInterface::diagnostics_callback);
 
   RCLCPP_INFO(
     rclcpp::get_logger("STSHardwareInterface"),
@@ -439,33 +480,48 @@ STSHardwareInterface::export_state_interfaces()
   for (size_t i = 0; i < joint_names_.size(); ++i) {
     const std::string & joint_name = joint_names_[i];
 
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, hardware_interface::HW_IF_POSITION, &hw_state_position_[i]));
+    // Only export state interfaces declared in URDF
+    if (has_position_state_[i]) {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(
+          joint_name, hardware_interface::HW_IF_POSITION, &hw_state_position_[i]));
+    }
 
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, hardware_interface::HW_IF_VELOCITY, &hw_state_velocity_[i]));
+    if (has_velocity_state_[i]) {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(
+          joint_name, hardware_interface::HW_IF_VELOCITY, &hw_state_velocity_[i]));
+    }
 
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "load", &hw_state_load_[i]));
+    if (has_load_state_[i]) {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(
+          joint_name, "load", &hw_state_load_[i]));
+    }
 
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "voltage", &hw_state_voltage_[i]));
+    if (has_voltage_state_[i]) {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(
+          joint_name, "voltage", &hw_state_voltage_[i]));
+    }
 
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "temperature", &hw_state_temperature_[i]));
+    if (has_temperature_state_[i]) {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(
+          joint_name, "temperature", &hw_state_temperature_[i]));
+    }
 
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "current", &hw_state_current_[i]));
+    if (has_current_state_[i]) {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(
+          joint_name, "current", &hw_state_current_[i]));
+    }
 
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "is_moving", &hw_state_is_moving_[i]));
+    if (has_is_moving_state_[i]) {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(
+          joint_name, "is_moving", &hw_state_is_moving_[i]));
+    }
   }
 
   RCLCPP_INFO(
@@ -544,65 +600,63 @@ STSHardwareInterface::export_command_interfaces()
 hardware_interface::return_type STSHardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
-  auto start_time = std::chrono::steady_clock::now();
-
-  // Mock mode: simulate hardware behavior for all motors
+  // Mock mode: simulate hardware behavior using state variables directly
   if (enable_mock_mode_) {
     double dt = period.seconds();
 
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
+      // Always simulate position and velocity for control logic
+      double prev_position = hw_state_position_[i];
+
       if (operating_modes_[i] == MODE_SERVO) {
         // Simulate position control with first-order response
-        double position_error = hw_cmd_position_[i] - mock_position_[i];
+        double position_error = hw_cmd_position_[i] - hw_state_position_[i];
         double max_step = hw_cmd_velocity_[i] * dt;
         if (std::abs(position_error) > max_step && max_step > 0) {
-          mock_position_[i] += (position_error > 0 ? max_step : -max_step);
+          hw_state_position_[i] += (position_error > 0 ? max_step : -max_step);
         } else {
-          mock_position_[i] = hw_cmd_position_[i];
+          hw_state_position_[i] = hw_cmd_position_[i];
         }
-        mock_velocity_[i] = (mock_position_[i] - hw_state_position_[i]) / (dt > 0 ? dt : 0.001);
+        hw_state_velocity_[i] = (hw_state_position_[i] - prev_position) / (dt > 0 ? dt : 0.001);
       } else if (operating_modes_[i] == MODE_VELOCITY) {
         // Simulate velocity control
-        mock_velocity_[i] = hw_cmd_velocity_[i];
-        mock_position_[i] += mock_velocity_[i] * dt;
+        hw_state_velocity_[i] = hw_cmd_velocity_[i];
+        hw_state_position_[i] += hw_state_velocity_[i] * dt;
       } else {  // MODE_PWM
         // Simulate PWM as torque control
-        mock_velocity_[i] = hw_cmd_effort_[i] * 10.0;
-        mock_position_[i] += mock_velocity_[i] * dt;
+        hw_state_velocity_[i] = hw_cmd_effort_[i] * 10.0;
+        hw_state_position_[i] += hw_state_velocity_[i] * dt;
       }
 
-      // Simulate load based on velocity
-      mock_load_[i] = mock_velocity_[i] / (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD) * 100.0;
-      mock_load_[i] = std::clamp(mock_load_[i], -100.0, 100.0);
+      // Only simulate other state interfaces if they are enabled
+      if (has_load_state_[i]) {
+        // Simulate load based on velocity
+        hw_state_load_[i] = hw_state_velocity_[i] / (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD) * 100.0;
+        hw_state_load_[i] = std::clamp(hw_state_load_[i], -100.0, 100.0);
+      }
 
-      // Simulate temperature increase with load
-      double temp_increase = std::abs(mock_load_[i]) * 0.01 * dt;
-      mock_temperature_[i] += temp_increase;
-      mock_temperature_[i] -= (mock_temperature_[i] - 25.0) * 0.1 * dt;
-      mock_temperature_[i] = std::clamp(mock_temperature_[i], 20.0, 80.0);
+      if (has_temperature_state_[i]) {
+        // Simulate temperature increase with load
+        double load_value = has_load_state_[i] ? hw_state_load_[i] : 0.0;
+        double temp_increase = std::abs(load_value) * 0.01 * dt;
+        hw_state_temperature_[i] += temp_increase;
+        hw_state_temperature_[i] -= (hw_state_temperature_[i] - 25.0) * 0.1 * dt;
+        hw_state_temperature_[i] = std::clamp(hw_state_temperature_[i], 20.0, 80.0);
+      }
 
-      // Simulate current based on load
-      mock_current_[i] = std::abs(mock_load_[i]) * 0.01;
+      if (has_current_state_[i]) {
+        // Simulate current based on load
+        double load_value = has_load_state_[i] ? hw_state_load_[i] : 0.0;
+        hw_state_current_[i] = std::abs(load_value) * 0.01;
+      }
 
-      // Update state interfaces
-      hw_state_position_[i] = mock_position_[i];
-      hw_state_velocity_[i] = mock_velocity_[i];
-      hw_state_load_[i] = mock_load_[i];
-      hw_state_temperature_[i] = mock_temperature_[i];
-      hw_state_voltage_[i] = mock_voltage_[i];
-      hw_state_current_[i] = mock_current_[i];
-      hw_state_is_moving_[i] = (std::abs(mock_velocity_[i]) > 0.01) ? 1.0 : 0.0;
+      if (has_is_moving_state_[i]) {
+        // Update is_moving state
+        hw_state_is_moving_[i] = (std::abs(hw_state_velocity_[i]) > 0.01) ? 1.0 : 0.0;
+      }
+
+      // Note: hw_state_voltage remains constant at initialization value (12.0) if enabled
     }
-
-    // Update diagnostics
-    if (diagnostic_updater_) {
-      diagnostic_updater_->force_update();
-    }
-
-    auto end_time = std::chrono::steady_clock::now();
-    read_duration_ms_ = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-    max_read_duration_ms_ = std::max(max_read_duration_ms_, read_duration_ms_);
-    cycle_count_++;
 
     return hardware_interface::return_type::OK;
   }
@@ -644,65 +698,61 @@ hardware_interface::return_type STSHardwareInterface::read(
     // Reset error counter on successful read
     consecutive_read_errors_ = 0;
 
-    // Read all state data using cached values (ID = -1)
-    int raw_position = servo_->ReadPos(-1);
-    int raw_velocity = servo_->ReadSpeed(-1);
-    int raw_load = servo_->ReadLoad(-1);
-    int raw_voltage = servo_->ReadVoltage(-1);
-    int raw_temperature = servo_->ReadTemper(-1);
-    int raw_current = servo_->ReadCurrent(-1);
-    int raw_is_moving = servo_->ReadMove(-1);
+    // Read and update only enabled state interfaces for efficiency
+    if (has_position_state_[i]) {
+      int raw_position = servo_->ReadPos(-1);
 
-    // Multi-turn position tracking
-    if (enable_multi_turn_) {
-      int position_diff = raw_position - last_raw_position_[i];
+      // Multi-turn position tracking
+      if (enable_multi_turn_) {
+        int position_diff = raw_position - last_raw_position_[i];
 
-      if (position_diff > STS_MAX_POSITION / 2) {
-        revolution_count_[i]--;
-      } else if (position_diff < -STS_MAX_POSITION / 2) {
-        revolution_count_[i]++;
+        if (position_diff > STS_MAX_POSITION / 2) {
+          revolution_count_[i]--;
+        } else if (position_diff < -STS_MAX_POSITION / 2) {
+          revolution_count_[i]++;
+        }
+
+        last_raw_position_[i] = raw_position;
+        continuous_position_[i] = (revolution_count_[i] * 2.0 * M_PI) +
+                                   raw_position_to_radians(raw_position);
+        hw_state_position_[i] = continuous_position_[i];
+      } else {
+        hw_state_position_[i] = raw_position_to_radians(raw_position);
       }
 
-      last_raw_position_[i] = raw_position;
-      continuous_position_[i] = (revolution_count_[i] * 2.0 * M_PI) +
-                                 raw_position_to_radians(raw_position);
-      hw_state_position_[i] = continuous_position_[i];
-    } else {
-      hw_state_position_[i] = raw_position_to_radians(raw_position);
+      // Apply initial position offset (zeroing)
+      hw_state_position_[i] -= initial_position_offset_[i];
     }
 
-    // Apply initial position offset (zeroing)
-    // This makes the first reading become the reference zero point
-    hw_state_position_[i] -= initial_position_offset_[i];
+    if (has_velocity_state_[i]) {
+      int raw_velocity = servo_->ReadSpeed(-1);
+      hw_state_velocity_[i] = raw_velocity_to_rad_s(raw_velocity);
+    }
 
-    // Convert other state data to SI units
-    hw_state_velocity_[i] = raw_velocity_to_rad_s(raw_velocity);
-    hw_state_load_[i] = raw_load_to_percentage(raw_load);
-    hw_state_voltage_[i] = raw_voltage_to_volts(raw_voltage);
-    hw_state_temperature_[i] = static_cast<double>(raw_temperature);
-    hw_state_current_[i] = raw_current_to_amperes(raw_current);
-    hw_state_is_moving_[i] = (raw_is_moving > 0) ? 1.0 : 0.0;
-  }
+    if (has_load_state_[i]) {
+      int raw_load = servo_->ReadLoad(-1);
+      hw_state_load_[i] = raw_load_to_percentage(raw_load);
+    }
 
-  // Performance monitoring
-  auto end_time = std::chrono::steady_clock::now();
-  read_duration_ms_ = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-  max_read_duration_ms_ = std::max(max_read_duration_ms_, read_duration_ms_);
-  last_read_time_ = end_time;
+    if (has_voltage_state_[i]) {
+      int raw_voltage = servo_->ReadVoltage(-1);
+      hw_state_voltage_[i] = raw_voltage_to_volts(raw_voltage);
+    }
 
-  // Update diagnostics
-  if (diagnostic_updater_) {
-    diagnostic_updater_->force_update();
-  }
+    if (has_temperature_state_[i]) {
+      int raw_temperature = servo_->ReadTemper(-1);
+      hw_state_temperature_[i] = static_cast<double>(raw_temperature);
+    }
 
-  // Log performance periodically
-  cycle_count_++;
-  if (cycle_count_ % PERFORMANCE_LOG_INTERVAL == 0) {
-    RCLCPP_DEBUG(
-      rclcpp::get_logger("STSHardwareInterface"),
-      "Performance: read=%.2fms (max=%.2fms), write=%.2fms (max=%.2fms)",
-      read_duration_ms_, max_read_duration_ms_,
-      write_duration_ms_, max_write_duration_ms_);
+    if (has_current_state_[i]) {
+      int raw_current = servo_->ReadCurrent(-1);
+      hw_state_current_[i] = raw_current_to_amperes(raw_current);
+    }
+
+    if (has_is_moving_state_[i]) {
+      int raw_is_moving = servo_->ReadMove(-1);
+      hw_state_is_moving_[i] = (raw_is_moving > 0) ? 1.0 : 0.0;
+    }
   }
 
   return hardware_interface::return_type::OK;
@@ -715,14 +765,12 @@ hardware_interface::return_type STSHardwareInterface::read(
 hardware_interface::return_type STSHardwareInterface::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  auto start_time = std::chrono::steady_clock::now();
-
   // Mock mode: skip hardware writes
   if (enable_mock_mode_) {
     // Handle broadcast emergency stop in mock mode
     if (hw_cmd_broadcast_emergency_stop_ > 0.5 && !broadcast_emergency_stop_active_) {
       for (size_t i = 0; i < motor_ids_.size(); ++i) {
-        mock_velocity_[i] = 0.0;
+        hw_state_velocity_[i] = 0.0;
       }
       broadcast_emergency_stop_active_ = true;
       RCLCPP_WARN(
@@ -738,16 +786,12 @@ hardware_interface::return_type STSHardwareInterface::write(
     // Handle per-joint emergency stop in mock mode
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
       if (hw_cmd_emergency_stop_[i] > 0.5) {
-        mock_velocity_[i] = 0.0;
+        hw_state_velocity_[i] = 0.0;
         emergency_stop_active_[i] = true;
       } else if (emergency_stop_active_[i]) {
         emergency_stop_active_[i] = false;
       }
     }
-
-    auto end_time = std::chrono::steady_clock::now();
-    write_duration_ms_ = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-    max_write_duration_ms_ = std::max(max_write_duration_ms_, write_duration_ms_);
 
     return hardware_interface::return_type::OK;
   }
@@ -1047,12 +1091,6 @@ hardware_interface::return_type STSHardwareInterface::write(
 
   consecutive_write_errors_ = 0;
 
-  // Performance monitoring
-  auto end_time = std::chrono::steady_clock::now();
-  write_duration_ms_ = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-  max_write_duration_ms_ = std::max(max_write_duration_ms_, write_duration_ms_);
-  last_write_time_ = end_time;
-
   return hardware_interface::return_type::OK;
 }
 
@@ -1070,8 +1108,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
   // Skip hardware deactivation in mock mode
   if (enable_mock_mode_) {
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      mock_velocity_[i] = 0.0;
-      mock_load_[i] = 0.0;
+      hw_state_velocity_[i] = 0.0;
+      hw_state_load_[i] = 0.0;
     }
     RCLCPP_INFO(
       rclcpp::get_logger("STSHardwareInterface"),
@@ -1135,11 +1173,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
     rclcpp::get_logger("STSHardwareInterface"),
     "Cleaning up STS hardware interface...");
 
-  // Close serial connection only if we own it (thread-safe)
-  if (owns_serial_connection_ && servo_) {
-    std::lock_guard<std::mutex> lock(serial_port_mutex_);
+  // Close serial connection
+  if (servo_) {
     servo_->end();
-    serial_port_connections_.erase(serial_port_);
     RCLCPP_INFO(
       rclcpp::get_logger("STSHardwareInterface"),
       "Closed serial connection to %s", serial_port_.c_str());
@@ -1190,15 +1226,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
         motor_ids_[i], joint_names_[i].c_str());
     }
 
-    // Close serial connection if we own it
-    if (owns_serial_connection_) {
-      std::lock_guard<std::mutex> lock(serial_port_mutex_);
-      servo_->end();
-      serial_port_connections_.erase(serial_port_);
-      RCLCPP_INFO(
-        rclcpp::get_logger("STSHardwareInterface"),
-        "Closed serial connection to %s during shutdown", serial_port_.c_str());
-    }
+    // Close serial connection
+    servo_->end();
+    RCLCPP_INFO(
+      rclcpp::get_logger("STSHardwareInterface"),
+      "Closed serial connection to %s during shutdown", serial_port_.c_str());
 
     servo_.reset();
   }
@@ -1371,143 +1403,53 @@ bool STSHardwareInterface::attempt_error_recovery()
     return true;
   }
 
-  // If we own the connection, try to re-establish it
-  if (owns_serial_connection_) {
-    RCLCPP_WARN(
+  // Try to re-establish serial connection
+  RCLCPP_WARN(
+    rclcpp::get_logger("STSHardwareInterface"),
+    "Some motors not responding, attempting to reinitialize serial connection to %s",
+    serial_port_.c_str());
+
+  // Close and reopen serial port
+  servo_->end();
+
+  if (!servo_->begin(baud_rate_, serial_port_.c_str())) {
+    RCLCPP_ERROR(
       rclcpp::get_logger("STSHardwareInterface"),
-      "Some motors not responding, attempting to reinitialize serial connection to %s",
-      serial_port_.c_str());
+      "Failed to reopen serial port %s during recovery", serial_port_.c_str());
+    return false;
+  }
 
-    std::lock_guard<std::mutex> lock(serial_port_mutex_);
-
-    // Close and reopen serial port
-    servo_->end();
-
-    if (!servo_->begin(baud_rate_, serial_port_.c_str())) {
+  // Verify all motors communication
+  for (size_t i = 0; i < motor_ids_.size(); ++i) {
+    int ping_result = servo_->Ping(motor_ids_[i]);
+    if (ping_result == -1) {
       RCLCPP_ERROR(
         rclcpp::get_logger("STSHardwareInterface"),
-        "Failed to reopen serial port %s during recovery", serial_port_.c_str());
+        "Motor %d (joint '%s') still not responding after serial reinit",
+        motor_ids_[i], joint_names_[i].c_str());
       return false;
     }
 
-    // Verify all motors communication
-    for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      int ping_result = servo_->Ping(motor_ids_[i]);
-      if (ping_result == -1) {
-        RCLCPP_ERROR(
-          rclcpp::get_logger("STSHardwareInterface"),
-          "Motor %d (joint '%s') still not responding after serial reinit",
-          motor_ids_[i], joint_names_[i].c_str());
-        return false;
-      }
-
-      // Re-activate motor
-      int init_result = servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1);
-      if (init_result != 1) {
-        RCLCPP_ERROR(
-          rclcpp::get_logger("STSHardwareInterface"),
-          "Failed to reinitialize motor %d (joint '%s') after recovery",
-          motor_ids_[i], joint_names_[i].c_str());
-        return false;
-      }
-
-      RCLCPP_INFO(
+    // Re-activate motor
+    int init_result = servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1);
+    if (init_result != 1) {
+      RCLCPP_ERROR(
         rclcpp::get_logger("STSHardwareInterface"),
-        "Motor %d (joint '%s') reinitialized successfully",
+        "Failed to reinitialize motor %d (joint '%s') after recovery",
         motor_ids_[i], joint_names_[i].c_str());
+      return false;
     }
 
     RCLCPP_INFO(
       rclcpp::get_logger("STSHardwareInterface"),
-      "Successfully recovered communication with all motors");
-    return true;
+      "Motor %d (joint '%s') reinitialized successfully",
+      motor_ids_[i], joint_names_[i].c_str());
   }
 
-  RCLCPP_ERROR(
+  RCLCPP_INFO(
     rclcpp::get_logger("STSHardwareInterface"),
-    "Recovery failed: motors not responding and we don't own the serial connection");
-  return false;
-}
-
-// ============================================================================
-// DIAGNOSTICS
-// ============================================================================
-
-void STSHardwareInterface::diagnostics_callback(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  // Determine overall status
-  if (consecutive_read_errors_ > 0 || consecutive_write_errors_ > 0) {
-    if (consecutive_read_errors_ >= MAX_CONSECUTIVE_ERRORS ||
-        consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS) {
-      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR,
-                   "Communication errors detected");
-    } else {
-      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN,
-                   "Intermittent communication errors");
-    }
-  } else {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK,
-                 "All motors operating normally");
-  }
-
-  // Hardware configuration
-  // Check if all motors have the same mode
-  bool mixed_mode = false;
-  if (operating_modes_.size() > 1) {
-    for (size_t i = 1; i < operating_modes_.size(); ++i) {
-      if (operating_modes_[i] != operating_modes_[0]) {
-        mixed_mode = true;
-        break;
-      }
-    }
-  }
-
-  if (mixed_mode) {
-    stat.add("Operating Mode", "Mixed (per-motor modes)");
-  } else if (!operating_modes_.empty()) {
-    const char* mode_name = (operating_modes_[0] == MODE_SERVO) ? "Servo" :
-                           (operating_modes_[0] == MODE_VELOCITY) ? "Velocity" : "PWM";
-    stat.add("Operating Mode", mode_name);
-  }
-  stat.add("Serial Port", serial_port_);
-  stat.add("Baud Rate", baud_rate_);
-  stat.add("Number of Motors", static_cast<int>(motor_ids_.size()));
-  stat.add("SyncWrite Enabled", use_sync_write_ ? "Yes" : "No");
-  stat.add("Mock Mode", enable_mock_mode_ ? "Yes" : "No");
-  stat.add("Multi-turn Tracking", enable_multi_turn_ ? "Yes" : "No");
-
-  // Per-motor status (show first motor or summary)
-  for (size_t i = 0; i < std::min(motor_ids_.size(), size_t(3)); ++i) {
-    std::string prefix = "Motor " + std::to_string(motor_ids_[i]) +
-                        " (" + joint_names_[i] + ")";
-
-    const char* mode_name = (operating_modes_[i] == MODE_SERVO) ? "Servo" :
-                           (operating_modes_[i] == MODE_VELOCITY) ? "Velocity" : "PWM";
-    stat.add(prefix + " Mode", mode_name);
-    stat.add(prefix + " Position (rad)", hw_state_position_[i]);
-    stat.add(prefix + " Velocity (rad/s)", hw_state_velocity_[i]);
-    stat.add(prefix + " Load (%)", hw_state_load_[i]);
-    stat.add(prefix + " Voltage (V)", hw_state_voltage_[i]);
-    stat.add(prefix + " Temperature (°C)", hw_state_temperature_[i]);
-    stat.add(prefix + " Current (A)", hw_state_current_[i]);
-    stat.add(prefix + " Is Moving", hw_state_is_moving_[i] > 0.5 ? "Yes" : "No");
-  }
-
-  if (motor_ids_.size() > 3) {
-    stat.add("Note", "Showing first 3 motors only");
-  }
-
-  // Error counters
-  stat.add("Read Errors", consecutive_read_errors_);
-  stat.add("Write Errors", consecutive_write_errors_);
-
-  // Performance metrics
-  stat.add("Read Duration (ms)", read_duration_ms_);
-  stat.add("Write Duration (ms)", write_duration_ms_);
-  stat.add("Max Read Duration (ms)", max_read_duration_ms_);
-  stat.add("Max Write Duration (ms)", max_write_duration_ms_);
-  stat.add("Cycle Count", static_cast<int>(cycle_count_));
+    "Successfully recovered communication with all motors");
+  return true;
 }
 
 }  // namespace sts_hardware_interface

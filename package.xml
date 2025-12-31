@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>sts_hardware_interface</name>
-  <version>0.1.0</version>
+  <version>0.3.0</version>
   <description>ROS 2 hardware interface for Feetech STS series servo motors</description>
   <maintainer email="adityakamath@live.com">adityakamath</maintainer>
   <license>MIT</license>
@@ -15,7 +15,6 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
-  <depend>diagnostic_updater</depend>
 
   <!-- SCServo motor control SDK -->
   <!-- Note: SCServo_Linux is included as a git submodule in external/ and built automatically -->
