@@ -94,6 +94,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   joint_names_.resize(num_joints);
   motor_ids_.resize(num_joints);
   operating_modes_.resize(num_joints, MODE_VELOCITY);  // Default to velocity mode
+  reverse_direction_.resize(num_joints, false);  // Default to no reversal
 
   hw_state_position_.resize(num_joints, 0.0);
   hw_state_velocity_.resize(num_joints, 0.0);
@@ -191,6 +192,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     if (joint.parameters.count("max_effort")) {
       effort_max_[i] = std::stod(joint.parameters.at("max_effort"));
       has_effort_limits_[i] = true;
+    }
+
+    // Parse optional reverse_direction parameter
+    if (joint.parameters.count("reverse_direction")) {
+      reverse_direction_[i] = (joint.parameters.at("reverse_direction") == "true");
+    } else {
+      reverse_direction_[i] = false;
     }
 
     // Validate command interfaces match operating mode
@@ -666,6 +674,12 @@ hardware_interface::return_type STSHardwareInterface::read(
     hw_state_temperature_[i] = static_cast<double>(raw_temperature);
     hw_state_current_[i] = raw_current_to_amperes(raw_current);
     hw_state_is_moving_[i] = (raw_is_moving > 0) ? 1.0 : 0.0;
+
+    // Apply direction reversal to feedback if configured
+    if (reverse_direction_[i]) {
+      hw_state_velocity_[i] = -hw_state_velocity_[i];
+      hw_state_position_[i] = -hw_state_position_[i];
+    }
   }
 
   // Performance monitoring
@@ -928,6 +942,11 @@ hardware_interface::return_type STSHardwareInterface::write(
           target_velocity = std::clamp(target_velocity, -velocity_max_[idx], velocity_max_[idx]);
         }
 
+        // Apply direction reversal if configured
+        if (reverse_direction_[idx]) {
+          target_velocity = -target_velocity;
+        }
+
         ids.push_back(motor_ids_[idx]);
         velocities.push_back(rad_s_to_raw_velocity(target_velocity));
         accelerations.push_back(static_cast<u8>(std::clamp(
@@ -947,6 +966,11 @@ hardware_interface::return_type STSHardwareInterface::write(
         double target_velocity = hw_cmd_velocity_[idx];
         if (has_velocity_limits_[idx]) {
           target_velocity = std::clamp(target_velocity, -velocity_max_[idx], velocity_max_[idx]);
+        }
+
+        // Apply direction reversal if configured
+        if (reverse_direction_[idx]) {
+          target_velocity = -target_velocity;
         }
 
         int raw_velocity = rad_s_to_raw_velocity(target_velocity);

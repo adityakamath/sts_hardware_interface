@@ -185,6 +185,7 @@ private:
   std::vector<std::string> joint_names_;  // Joint names from URDF
   std::vector<int> motor_ids_;            // Corresponding motor IDs (1-253)
   std::vector<int> operating_modes_;      // Per-joint operating mode (0=servo, 1=velocity, 2=PWM)
+  std::vector<bool> reverse_direction_;   // Per-joint direction reversal flag
   std::map<std::string, size_t> joint_name_to_index_;  // Quick lookup
 
   // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
