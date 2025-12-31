@@ -674,12 +674,6 @@ hardware_interface::return_type STSHardwareInterface::read(
     hw_state_temperature_[i] = static_cast<double>(raw_temperature);
     hw_state_current_[i] = raw_current_to_amperes(raw_current);
     hw_state_is_moving_[i] = (raw_is_moving > 0) ? 1.0 : 0.0;
-
-    // Apply direction reversal to feedback if configured
-    if (reverse_direction_[i]) {
-      hw_state_velocity_[i] = -hw_state_velocity_[i];
-      hw_state_position_[i] = -hw_state_position_[i];
-    }
   }
 
   // Performance monitoring
