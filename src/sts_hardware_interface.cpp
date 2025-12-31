@@ -127,6 +127,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   revolution_count_.resize(num_joints, 0);
   continuous_position_.resize(num_joints, 0.0);
 
+  initial_position_offset_.resize(num_joints, 0.0);
+
   mock_position_.resize(num_joints, 0.0);
   mock_velocity_.resize(num_joints, 0.0);
   mock_load_.resize(num_joints, 0.0);
@@ -377,6 +379,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
 
   // Skip hardware activation in mock mode
   if (enable_mock_mode_) {
+    // In mock mode, initialize position offset to 0 (mock motors start at 0)
+    for (size_t i = 0; i < motor_ids_.size(); ++i) {
+      initial_position_offset_[i] = 0.0;
+    }
     RCLCPP_INFO(
       rclcpp::get_logger("STSHardwareInterface"),
       "Mock mode: Motors initialized (simulated)");
@@ -401,18 +407,23 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
       motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i]);
   }
 
-  // Read initial state from all motors
+  // Read initial state from all motors and capture position offset
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
     int result = servo_->FeedBack(motor_ids_[i]);
     if (result == 1) {
       int raw_position = servo_->ReadPos(-1);
-      hw_state_position_[i] = raw_position_to_radians(raw_position);
+      double raw_position_rad = raw_position_to_radians(raw_position);
       last_raw_position_[i] = raw_position;
+
+      // Capture initial position as zero reference
+      // This allows position to start at 0.0 regardless of motor's absolute encoder position
+      initial_position_offset_[i] = raw_position_rad;
+      hw_state_position_[i] = 0.0;
 
       RCLCPP_INFO(
         rclcpp::get_logger("STSHardwareInterface"),
-        "Motor %d (joint '%s') initial position: %.3f rad",
-        motor_ids_[i], joint_names_[i].c_str(), hw_state_position_[i]);
+        "Motor %d (joint '%s') initial raw position: %.3f rad (zeroed to 0.0)",
+        motor_ids_[i], joint_names_[i].c_str(), raw_position_rad);
     }
   }
 
@@ -588,6 +599,13 @@ hardware_interface::return_type STSHardwareInterface::read(
       hw_state_voltage_[i] = mock_voltage_[i];
       hw_state_current_[i] = mock_current_[i];
       hw_state_is_moving_[i] = (std::abs(mock_velocity_[i]) > 0.01) ? 1.0 : 0.0;
+
+      // Apply direction reversal to feedback if configured
+      // This ensures controller sees consistent joint-space motion
+      if (reverse_direction_[i]) {
+        hw_state_position_[i] = -hw_state_position_[i];
+        hw_state_velocity_[i] = -hw_state_velocity_[i];
+      }
     }
 
     // Update diagnostics
@@ -667,6 +685,10 @@ hardware_interface::return_type STSHardwareInterface::read(
       hw_state_position_[i] = raw_position_to_radians(raw_position);
     }
 
+    // Apply initial position offset (zeroing)
+    // This makes the first reading become the reference zero point
+    hw_state_position_[i] -= initial_position_offset_[i];
+
     // Convert other state data to SI units
     hw_state_velocity_[i] = raw_velocity_to_rad_s(raw_velocity);
     hw_state_load_[i] = raw_load_to_percentage(raw_load);
@@ -674,6 +696,13 @@ hardware_interface::return_type STSHardwareInterface::read(
     hw_state_temperature_[i] = static_cast<double>(raw_temperature);
     hw_state_current_[i] = raw_current_to_amperes(raw_current);
     hw_state_is_moving_[i] = (raw_is_moving > 0) ? 1.0 : 0.0;
+
+    // Apply direction reversal to feedback if configured
+    // This ensures controller sees consistent joint-space motion
+    if (reverse_direction_[i]) {
+      hw_state_position_[i] = -hw_state_position_[i];
+      hw_state_velocity_[i] = -hw_state_velocity_[i];
+    }
   }
 
   // Performance monitoring

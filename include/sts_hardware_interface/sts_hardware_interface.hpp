@@ -185,7 +185,7 @@ private:
   std::vector<std::string> joint_names_;  // Joint names from URDF
   std::vector<int> motor_ids_;            // Corresponding motor IDs (1-253)
   std::vector<int> operating_modes_;      // Per-joint operating mode (0=servo, 1=velocity, 2=PWM)
-  std::vector<bool> reverse_direction_;   // Per-joint direction reversal flag
+  std::vector<bool> reverse_direction_;   // Per-joint direction reversal (applies to both commands and feedback)
   std::map<std::string, size_t> joint_name_to_index_;  // Quick lookup
 
   // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
@@ -222,6 +222,9 @@ private:
   std::vector<int> last_raw_position_;
   std::vector<int> revolution_count_;
   std::vector<double> continuous_position_;
+
+  // ===== PER-JOINT POSITION ZEROING =====
+  std::vector<double> initial_position_offset_;  // Position offset captured on activation
 
   // ===== PER-JOINT MOCK MODE STATE =====
   std::vector<double> mock_position_;
