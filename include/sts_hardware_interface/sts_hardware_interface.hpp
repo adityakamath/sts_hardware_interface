@@ -129,6 +129,8 @@ class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(STSHardwareInterface)
 
+  STSHardwareInterface() : logger_(rclcpp::get_logger("STSHardwareInterface")) {}
+
   /** @brief Parse URDF parameters and validate configuration */
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareComponentInterfaceParams & params) override;

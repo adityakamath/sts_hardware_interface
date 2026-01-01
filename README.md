@@ -9,6 +9,8 @@
 
 > `ros2_control` hardware interface for Feetech STS series servo motors.
 
+**⚠️ Note:** This hardware interface has only been tested with **mode 1 (Velocity Control mode)**. Mode 0 (Servo mode) and mode 2 (Effort/PWM mode) have not been tested and may not work as expected.
+
 ## Overview
 
 This package provides a complete hardware interface for controlling Feetech STS3215 (and compatible) servo motors through the ros2_control framework. It supports single motors, motor chains, and mixed-mode operation where different motors can operate in different control modes (untested).
@@ -66,9 +68,9 @@ Single motor in velocity mode:
 |------|-------------|----------|-------------------|
 | 0 (Servo) | Position | Arms, joints | position, velocity, acceleration |
 | 1 (Velocity) | Speed | Wheels, continuous | velocity, acceleration |
-| 2 (PWM) | Effort | Force control | effort (PWM duty cycle) |
+| 2 (PWM) | PWM | Effort/Force control | PWM duty cycle |
 
-All modes support broadcast emergency_stop command interface and full state feedback.
+All modes support broadcast emergency_stop command interface and (optional) full state feedback.
 
 ## Documentation
 
