@@ -133,7 +133,7 @@ public:
 
   /** @brief Parse URDF parameters and validate configuration */
   hardware_interface::CallbackReturn on_init(
-    const hardware_interface::HardwareComponentInterfaceParams & params) override;
+    const hardware_interface::HardwareInfo & hardware_info) override;
 
   /** @brief Initialize serial communication and verify motors */
   hardware_interface::CallbackReturn on_configure(
@@ -204,15 +204,6 @@ private:
   std::vector<double> hw_state_current_;
   std::vector<double> hw_state_is_moving_;
 
-  // Track which state interfaces are enabled per joint (for efficiency)
-  std::vector<bool> has_position_state_;
-  std::vector<bool> has_velocity_state_;
-  std::vector<bool> has_load_state_;
-  std::vector<bool> has_voltage_state_;
-  std::vector<bool> has_temperature_state_;
-  std::vector<bool> has_current_state_;
-  std::vector<bool> has_is_moving_state_;
-
   // ===== PER-JOINT COMMAND INTERFACES (indexed by joint) =====
   std::vector<double> hw_cmd_position_;      // Mode 0
   std::vector<double> hw_cmd_velocity_;      // Mode 0, 1
@@ -268,26 +259,11 @@ private:
   /** @brief Convert rad/s to motor velocity (steps/s) */
   int rad_s_to_raw_velocity(double velocity_rad_s) const;
 
-  /** @brief Convert motor load (-1000 to +1000) to percentage */
-  double raw_load_to_percentage(int raw_load) const;
-
-  /** @brief Convert motor voltage (decivolts) to volts */
-  double raw_voltage_to_volts(int raw_voltage) const;
-
-  /** @brief Convert motor current (milliamps) to amperes */
-  double raw_current_to_amperes(int raw_current) const;
-
   /** @brief Convert radians to motor steps (0-4095) */
   int radians_to_raw_position(double position_rad) const;
 
   /** @brief Convert effort (-1.0 to +1.0) to motor PWM (-1000 to +1000) */
   int effort_to_raw_pwm(double effort) const;
-
-  /** @brief Apply position limits to a target position */
-  double apply_position_limits(double target_position, size_t joint_idx) const;
-
-  /** @brief Apply velocity limits to a target velocity */
-  double apply_velocity_limits(double target_velocity, size_t joint_idx) const;
 
   /** @brief Attempt to recover from communication errors by pinging motors */
   bool attempt_error_recovery();
