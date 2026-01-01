@@ -1,22 +1,16 @@
-// Copyright (c) 2025 Aditya Kamath
+// Copyright 2025 Aditya Kamath
 //
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 #define STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
@@ -64,14 +58,22 @@ namespace sts_hardware_interface
  * Mode 0: position (rad), velocity (max speed, rad/s), acceleration (0-254)
  * Mode 1: velocity (rad/s), acceleration (0-254)
  * Mode 2: effort (PWM duty cycle, -1.0 to +1.0)
- * All modes: emergency_stop (boolean)
+ * Broadcast: emergency_stop (boolean, stops ALL motors)
  *
- * PARAMETERS (from ros2_control URDF):
+ * HARDWARE PARAMETERS (from ros2_control URDF):
  * - serial_port: Serial port path (e.g., "/dev/ttyACM0") [required]
- * - motor_id: Motor ID on the serial bus (1-253) [required for each joint]
- * - operating_mode: 0=servo, 1=velocity, 2=PWM (default: 1)
- * - baud_rate: Communication baud rate (default: 1000000)
+ * - baud_rate: Communication baud rate, 9600-1000000 (default: 1000000)
+ * - communication_timeout_ms: Communication timeout, 1-1000 ms (default: 100)
  * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
+ * - enable_mock_mode: Enable simulation mode without hardware (default: false)
+ *
+ * JOINT PARAMETERS (from ros2_control URDF, per joint):
+ * - motor_id: Motor ID on the serial bus (1-253) [required]
+ * - operating_mode: 0=servo, 1=velocity, 2=PWM (default: 1)
+ * - min_position: Minimum position limit in radians (default: 0.0)
+ * - max_position: Maximum position limit in radians (default: 6.283, 2π)
+ * - max_velocity: Maximum velocity limit in rad/s (default: 5.22, 3400 steps/s)
+ * - max_effort: Maximum effort limit, 0-1 for PWM mode (default: 1.0)
  *
  * SINGLE MOTOR USAGE:
  * @code{.xml}
@@ -79,11 +81,11 @@ namespace sts_hardware_interface
  *   <hardware>
  *     <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
  *     <param name="serial_port">/dev/ttyACM0</param>
- *     <param name="operating_mode">1</param>
  *     <param name="baud_rate">1000000</param>
  *   </hardware>
  *   <joint name="wheel_joint">
  *     <param name="motor_id">1</param>
+ *     <param name="operating_mode">1</param>
  *     <command_interface name="velocity"/>
  *     <command_interface name="acceleration"/>
  *     <state_interface name="position"/>
@@ -99,21 +101,23 @@ namespace sts_hardware_interface
  *   <hardware>
  *     <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
  *     <param name="serial_port">/dev/ttyACM0</param>
- *     <param name="operating_mode">1</param>
  *     <param name="use_sync_write">true</param>
  *   </hardware>
  *   <joint name="joint1">
  *     <param name="motor_id">1</param>
+ *     <param name="operating_mode">1</param>
  *     <command_interface name="velocity"/>
  *     ...
  *   </joint>
  *   <joint name="joint2">
  *     <param name="motor_id">2</param>
+ *     <param name="operating_mode">1</param>
  *     <command_interface name="velocity"/>
  *     ...
  *   </joint>
  *   <joint name="joint3">
  *     <param name="motor_id">3</param>
+ *     <param name="operating_mode">1</param>
  *     <command_interface name="velocity"/>
  *     ...
  *   </joint>
@@ -125,37 +129,46 @@ class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(STSHardwareInterface)
 
-  /**
-   * @brief Initialize the hardware interface from URDF hardware info (multi-motor)
-   */
+  /** @brief Parse URDF parameters and validate configuration */
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareComponentInterfaceParams & params) override;
 
+  /** @brief Initialize serial communication and verify motors */
   hardware_interface::CallbackReturn on_configure(
     const rclcpp_lifecycle::State & previous_state) override;
+
+  /** @brief Set operating modes, enable torque, and read initial states */
   hardware_interface::CallbackReturn on_activate(
     const rclcpp_lifecycle::State & previous_state) override;
+
+  /** @brief Disable motor torque and stop all motion */
   hardware_interface::CallbackReturn on_deactivate(
     const rclcpp_lifecycle::State & previous_state) override;
+
+  /** @brief Close serial port and cleanup resources */
   hardware_interface::CallbackReturn on_cleanup(
     const rclcpp_lifecycle::State & previous_state) override;
+
+  /** @brief Emergency shutdown and resource cleanup */
   hardware_interface::CallbackReturn on_shutdown(
     const rclcpp_lifecycle::State & previous_state) override;
+
+  /** @brief Handle error state with recovery attempts */
   hardware_interface::CallbackReturn on_error(
     const rclcpp_lifecycle::State & previous_state) override;
 
+  /** @brief Export state interfaces for all joints */
   std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
+
+  /** @brief Export command interfaces for all joints */
   std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
+
+  /** @brief Read motor states from hardware */
   hardware_interface::return_type read(
     const rclcpp::Time & time,
     const rclcpp::Duration & period) override;
 
-  /**
-   * @brief Write all velocity commands using syncWrite or individual write.
-   *
-   * If sync_write_mode_ is true, uses syncWrite to send all commands in one packet.
-   * Otherwise, writes each motor individually.
-   */
+  /** @brief Write motor commands to hardware */
   hardware_interface::return_type write(
     const rclcpp::Time & time,
     const rclcpp::Duration & period) override;
@@ -165,9 +178,11 @@ private:
   std::string serial_port_;
   int baud_rate_;
   int communication_timeout_ms_;
-  bool enable_multi_turn_;
   bool enable_mock_mode_;
   bool use_sync_write_;  // Use SyncWrite for multi-motor commands
+
+  // ===== LOGGING =====
+  rclcpp::Logger logger_;
 
   // ===== HARDWARE COMMUNICATION =====
   std::shared_ptr<SMS_STS> servo_;
@@ -176,7 +191,6 @@ private:
   std::vector<std::string> joint_names_;  // Joint names from URDF
   std::vector<int> motor_ids_;            // Corresponding motor IDs (1-253)
   std::vector<int> operating_modes_;      // Per-joint operating mode (0=servo, 1=velocity, 2=PWM)
-  std::vector<bool> invert_direction_;    // Per-joint direction inversion (default: false)
   std::map<std::string, size_t> joint_name_to_index_;  // Quick lookup
 
   // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
@@ -202,12 +216,10 @@ private:
   std::vector<double> hw_cmd_velocity_;      // Mode 0, 1
   std::vector<double> hw_cmd_acceleration_;  // Mode 0, 1
   std::vector<double> hw_cmd_effort_;        // Mode 2
-  std::vector<double> hw_cmd_emergency_stop_;
-  std::vector<bool> emergency_stop_active_;
 
   // ===== BROADCAST EMERGENCY STOP =====
-  double hw_cmd_broadcast_emergency_stop_;  // Stops ALL motors when > 0.5
-  bool broadcast_emergency_stop_active_;
+  double hw_cmd_emergency_stop_;  // Stops ALL motors when > 0.5
+  bool emergency_stop_active_;
 
   // ===== PER-JOINT HARDWARE LIMITS =====
   std::vector<double> position_min_;
@@ -218,14 +230,6 @@ private:
   std::vector<bool> has_velocity_limits_;
   std::vector<bool> has_effort_limits_;
 
-  // ===== PER-JOINT MULTI-TURN TRACKING =====
-  std::vector<int> last_raw_position_;
-  std::vector<int> revolution_count_;
-  std::vector<double> continuous_position_;
-
-  // ===== PER-JOINT POSITION ZEROING =====
-  std::vector<double> initial_position_offset_;  // Position offset captured on activation
-
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;
   int consecutive_write_errors_;
@@ -235,9 +239,9 @@ private:
   static constexpr double STEPS_PER_REVOLUTION = 4096.0;
   static constexpr double STEPS_TO_RAD = (2.0 * M_PI) / STEPS_PER_REVOLUTION;
   static constexpr double RAD_TO_STEPS = STEPS_PER_REVOLUTION / (2.0 * M_PI);
-  static constexpr double VOLTAGE_SCALE = 0.1;      // Decivolts to volts
-  static constexpr double CURRENT_SCALE = 0.001;    // Milliamps to amps
-  static constexpr double LOAD_SCALE = 0.1;         // Raw load to percentage
+  static constexpr double VOLTAGE_SCALE = 0.1;      // 1 unit = 0.1V (Feetech spec)
+  static constexpr double CURRENT_SCALE = 0.0065;   // 1 unit = 6.5mA (Feetech spec)
+  static constexpr double LOAD_SCALE = 0.1;         // 1 unit = 0.1% (Feetech spec)
   
   // STS servo motor limits
   static constexpr int STS_MAX_VELOCITY_STEPS = 3400;  // Maximum velocity in steps/s
@@ -252,55 +256,38 @@ private:
   static constexpr int MODE_SERVO = 0;      // Position control mode
   static constexpr int MODE_VELOCITY = 1;   // Velocity control mode
   static constexpr int MODE_PWM = 2;        // PWM/effort control mode
-  
-  /**
-   * @brief Convert raw motor position (0-4095 steps) to radians
-   */
+
+  /** @brief Convert motor steps (0-4095) to radians (0-2π) */
   double raw_position_to_radians(int raw_position) const;
-  
-  /**
-   * @brief Convert raw motor velocity (steps/s) to rad/s
-   */
+
+  /** @brief Convert motor velocity (steps/s) to rad/s */
   double raw_velocity_to_rad_s(int raw_velocity) const;
 
-  /**
-   * @brief Convert velocity in rad/s to raw motor velocity (steps/s)
-   */
+  /** @brief Convert rad/s to motor velocity (steps/s) */
   int rad_s_to_raw_velocity(double velocity_rad_s) const;
-  
-  /**
-   * @brief Convert raw load value (-1000 to +1000) to percentage
-   */
+
+  /** @brief Convert motor load (-1000 to +1000) to percentage */
   double raw_load_to_percentage(int raw_load) const;
-  
-  /**
-   * @brief Convert raw voltage (decivolts) to volts
-   */
+
+  /** @brief Convert motor voltage (decivolts) to volts */
   double raw_voltage_to_volts(int raw_voltage) const;
-  
-  /**
-   * @brief Convert raw current (milliamps) to amperes
-   */
+
+  /** @brief Convert motor current (milliamps) to amperes */
   double raw_current_to_amperes(int raw_current) const;
-  
-  /**
-   * @brief Convert position in radians to raw motor position (steps)
-   */
+
+  /** @brief Convert radians to motor steps (0-4095) */
   int radians_to_raw_position(double position_rad) const;
-  
-  /**
-   * @brief Convert effort (-1.0 to +1.0) to raw PWM (-1000 to +1000)
-   */
+
+  /** @brief Convert effort (-1.0 to +1.0) to motor PWM (-1000 to +1000) */
   int effort_to_raw_pwm(double effort) const;
-  
-  /**
-   * @brief Attempt to recover from communication errors
-   *
-   * Tries to re-establish communication with the motor by pinging it.
-   * If ping fails, attempts to reinitialize the serial connection.
-   *
-   * @return true if recovery successful, false otherwise
-   */
+
+  /** @brief Apply position limits to a target position */
+  double apply_position_limits(double target_position, size_t joint_idx) const;
+
+  /** @brief Apply velocity limits to a target velocity */
+  double apply_velocity_limits(double target_velocity, size_t joint_idx) const;
+
+  /** @brief Attempt to recover from communication errors by pinging motors */
   bool attempt_error_recovery();
 };
 

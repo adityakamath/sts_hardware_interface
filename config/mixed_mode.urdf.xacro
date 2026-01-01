@@ -54,7 +54,6 @@
 
       <command_interface name="velocity"/>
       <command_interface name="acceleration"/>
-      <command_interface name="emergency_stop"/>
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>
@@ -76,7 +75,6 @@
       <command_interface name="position"/>
       <command_interface name="velocity"/>
       <command_interface name="acceleration"/>
-      <command_interface name="emergency_stop"/>
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>
@@ -94,7 +92,6 @@
       <param name="max_effort">0.8</param>    <!-- 80% max -->
 
       <command_interface name="effort"/>
-      <command_interface name="emergency_stop"/>
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>

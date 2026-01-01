@@ -1,22 +1,19 @@
-// Copyright (c) 2025 Aditya Kamath
+// Copyright 2025 Aditya Kamath
 //
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/** @file sts_hardware_interface.cpp
+ * @brief ros2_control hardware interface implementation for Feetech STS servo motors */
 
 #include "sts_hardware_interface/sts_hardware_interface.hpp"
 
@@ -30,26 +27,24 @@
 namespace sts_hardware_interface
 {
 
-// ============================================================================
-// LIFECYCLE: on_init
-// ============================================================================
-
+/** @brief Parse URDF parameters and validate configuration */
 hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   const hardware_interface::HardwareComponentInterfaceParams & params)
 {
   // Store hardware info
   info_ = params.hardware_info;
 
-  RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
-    "Initializing STS Hardware Interface: %s", info_.name.c_str());
+  // Initialize logger
+  logger_ = rclcpp::get_logger("STSHardwareInterface");
+
+  RCLCPP_INFO(logger_, "Initializing STS Hardware Interface: %s", info_.name.c_str());
 
   // ===== Parse hardware-level parameters =====
   try {
     serial_port_ = info_.hardware_parameters.at("serial_port");
   } catch (const std::out_of_range &) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Missing required parameter: serial_port");
     return hardware_interface::CallbackReturn::ERROR;
   }
@@ -63,7 +58,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   if (std::find(valid_baud_rates.begin(), valid_baud_rates.end(), baud_rate_) == valid_baud_rates.end()) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Invalid baud_rate: %d. Supported rates: 9600, 19200, 38400, 57600, 115200, 500000, 1000000",
       baud_rate_);
     return hardware_interface::CallbackReturn::ERROR;
@@ -76,16 +71,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   if (communication_timeout_ms_ < 1 || communication_timeout_ms_ > 1000) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Invalid communication_timeout_ms: %d. Must be between 1 and 1000 ms",
       communication_timeout_ms_);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
   // Parse boolean parameters
-  enable_multi_turn_ = (info_.hardware_parameters.count("enable_multi_turn") &&
-                        info_.hardware_parameters.at("enable_multi_turn") == "true");
-
   enable_mock_mode_ = (info_.hardware_parameters.count("enable_mock_mode") &&
                        info_.hardware_parameters.at("enable_mock_mode") == "true");
 
@@ -97,20 +89,19 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   if (num_joints == 0) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "No joints defined in hardware interface");
     return hardware_interface::CallbackReturn::ERROR;
   }
 
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Configuring %zu joint(s)", num_joints);
 
   // Resize all per-joint vectors
   joint_names_.resize(num_joints);
   motor_ids_.resize(num_joints);
   operating_modes_.resize(num_joints, MODE_VELOCITY);  // Default to velocity mode
-  invert_direction_.resize(num_joints, false);  // Default: no inversion
 
   hw_state_position_.resize(num_joints, 0.0);
   hw_state_velocity_.resize(num_joints, 0.0);
@@ -133,26 +124,18 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   hw_cmd_velocity_.resize(num_joints, 0.0);
   hw_cmd_acceleration_.resize(num_joints, 0.0);
   hw_cmd_effort_.resize(num_joints, 0.0);
-  hw_cmd_emergency_stop_.resize(num_joints, 0.0);
-  emergency_stop_active_.resize(num_joints, false);
 
   // Initialize broadcast emergency stop
-  hw_cmd_broadcast_emergency_stop_ = 0.0;
-  broadcast_emergency_stop_active_ = false;
+  hw_cmd_emergency_stop_ = 0.0;
+  emergency_stop_active_ = false;
 
-  position_min_.resize(num_joints, -std::numeric_limits<double>::infinity());
-  position_max_.resize(num_joints, std::numeric_limits<double>::infinity());
-  velocity_max_.resize(num_joints, std::numeric_limits<double>::infinity());
+  position_min_.resize(num_joints, 0.0);  // Default: 0 radians (0 steps)
+  position_max_.resize(num_joints, 2.0 * M_PI);  // Default: 2π radians (4096 steps)
+  velocity_max_.resize(num_joints, static_cast<double>(STS_MAX_VELOCITY_STEPS) * STEPS_TO_RAD);  // Default: 3400 steps/s ≈ 5.22 rad/s
   effort_max_.resize(num_joints, 1.0);
   has_position_limits_.resize(num_joints, false);
   has_velocity_limits_.resize(num_joints, false);
   has_effort_limits_.resize(num_joints, false);
-
-  last_raw_position_.resize(num_joints, 0);
-  revolution_count_.resize(num_joints, 0);
-  continuous_position_.resize(num_joints, 0.0);
-
-  initial_position_offset_.resize(num_joints, 0.0);
 
   // Parse each joint
   for (size_t i = 0; i < num_joints; ++i) {
@@ -165,7 +148,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       motor_ids_[i] = std::stoi(joint.parameters.at("motor_id"));
     } catch (const std::out_of_range &) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Joint '%s': Missing required parameter 'motor_id'", joint.name.c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
@@ -173,7 +156,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     // Validate motor ID range
     if (motor_ids_[i] < STS_MIN_MOTOR_ID || motor_ids_[i] > STS_MAX_MOTOR_ID) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Joint '%s': Invalid motor_id %d (must be between %d and %d)",
         joint.name.c_str(), motor_ids_[i], STS_MIN_MOTOR_ID, STS_MAX_MOTOR_ID);
       return hardware_interface::CallbackReturn::ERROR;
@@ -190,15 +173,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     // Validate operating mode
     if (operating_modes_[i] < MODE_SERVO || operating_modes_[i] > MODE_PWM) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Joint '%s': Invalid operating_mode: %d (must be 0, 1, or 2)",
         joint.name.c_str(), operating_modes_[i]);
       return hardware_interface::CallbackReturn::ERROR;
     }
-
-    // Parse invert_direction (per joint, default: false)
-    invert_direction_[i] = (joint.parameters.count("invert_direction") &&
-                            joint.parameters.at("invert_direction") == "true");
 
     // Parse and validate optional joint limits
     if (joint.parameters.count("min_position")) {
@@ -213,7 +192,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     // Validate position limits are sensible
     if (has_position_limits_[i] && position_min_[i] >= position_max_[i]) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Joint '%s': min_position (%.3f) must be less than max_position (%.3f)",
         joint.name.c_str(), position_min_[i], position_max_[i]);
       return hardware_interface::CallbackReturn::ERROR;
@@ -225,7 +204,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       // Validate velocity limit is positive and reasonable
       if (velocity_max_[i] <= 0.0) {
         RCLCPP_ERROR(
-          rclcpp::get_logger("STSHardwareInterface"),
+          logger_,
           "Joint '%s': max_velocity must be positive (got %.3f rad/s)",
           joint.name.c_str(), velocity_max_[i]);
         return hardware_interface::CallbackReturn::ERROR;
@@ -235,7 +214,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       const double hw_max_velocity = (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD);
       if (velocity_max_[i] > hw_max_velocity) {
         RCLCPP_WARN(
-          rclcpp::get_logger("STSHardwareInterface"),
+          logger_,
           "Joint '%s': max_velocity (%.3f rad/s) exceeds hardware maximum (~%.3f rad/s)",
           joint.name.c_str(), velocity_max_[i], hw_max_velocity);
       }
@@ -249,7 +228,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       // Validate effort limit for PWM mode (should be 0-1)
       if (operating_modes_[i] == MODE_PWM && (effort_max_[i] <= 0.0 || effort_max_[i] > 1.0)) {
         RCLCPP_ERROR(
-          rclcpp::get_logger("STSHardwareInterface"),
+          logger_,
           "Joint '%s': max_effort must be between 0 and 1 for PWM mode (got %.3f)",
           joint.name.c_str(), effort_max_[i]);
         return hardware_interface::CallbackReturn::ERROR;
@@ -283,7 +262,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       }
       if (!found) {
         RCLCPP_ERROR(
-          rclcpp::get_logger("STSHardwareInterface"),
+          logger_,
           "Joint '%s': Missing required command interface '%s' for operating mode %d",
           joint.name.c_str(), required_interface.c_str(), operating_modes_[i]);
         return hardware_interface::CallbackReturn::ERROR;
@@ -310,7 +289,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     }
 
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Joint '%s': motor_id=%d, mode=%d, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f]",
       joint.name.c_str(), motor_ids_[i], operating_modes_[i],
       position_min_[i], position_max_[i], velocity_max_[i], effort_max_[i]);
@@ -321,7 +300,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     for (size_t j = i + 1; j < num_joints; ++j) {
       if (motor_ids_[i] == motor_ids_[j]) {
         RCLCPP_ERROR(
-          rclcpp::get_logger("STSHardwareInterface"),
+          logger_,
           "Duplicate motor_id %d found in joints '%s' and '%s'",
           motor_ids_[i], joint_names_[i].c_str(), joint_names_[j].c_str());
         return hardware_interface::CallbackReturn::ERROR;
@@ -334,7 +313,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   consecutive_write_errors_ = 0;
 
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Initialization complete: %zu joints, port=%s, baud=%d, sync_write=%s, mock=%s",
     num_joints, serial_port_.c_str(), baud_rate_,
     use_sync_write_ ? "true" : "false",
@@ -343,21 +322,18 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ============================================================================
-// LIFECYCLE: on_configure
-// ============================================================================
-
+/** @brief Initialize serial communication and verify motors */
 hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Configuring STS hardware interface...");
 
   // Skip serial port initialization in mock mode
   if (enable_mock_mode_) {
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Mock mode enabled - skipping serial port initialization");
 
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -368,14 +344,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
 
   if (!servo_->begin(baud_rate_, serial_port_.c_str())) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Failed to open serial port %s at baud rate %d",
       serial_port_.c_str(), baud_rate_);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Opened serial port %s at baud rate %d",
     serial_port_.c_str(), baud_rate_);
 
@@ -385,45 +361,36 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     if (ping_result == -1) {
       int servo_error = servo_->getErr();
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Failed to ping motor %d (joint '%s') - servo error: %d",
         motor_ids_[i], joint_names_[i].c_str(), servo_error);
       return hardware_interface::CallbackReturn::ERROR;
     }
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Motor %d (joint '%s') responded to ping",
       motor_ids_[i], joint_names_[i].c_str());
   }
 
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Configuration complete");
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// TO BE CONTINUED - This file is getting very long. Let me save this and continue in the next section.
-
-// ============================================================================
-// LIFECYCLE: on_activate
-// ============================================================================
-
+/** @brief Set operating modes, enable torque, and read initial states */
 hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Activating STS hardware interface...");
 
   // Skip hardware activation in mock mode
   if (enable_mock_mode_) {
-    // In mock mode, initialize position offset to 0 (mock motors start at 0)
-    for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      initial_position_offset_[i] = 0.0;
-    }
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Mock mode: Motors initialized (simulated)");
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -434,49 +401,26 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
     if (result != 1) {
       int servo_error = servo_->getErr();
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Failed to initialize motor %d (joint '%s') in mode %d - servo error: %d",
         motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i], servo_error);
       return hardware_interface::CallbackReturn::ERROR;
     }
 
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Motor %d (joint '%s') initialized in mode %d with torque enabled",
       motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i]);
   }
 
-  // Read initial state from all motors and capture position offset
-  for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    int result = servo_->FeedBack(motor_ids_[i]);
-    if (result == 1) {
-      int raw_position = servo_->ReadPos(-1);
-      double raw_position_rad = raw_position_to_radians(raw_position);
-      last_raw_position_[i] = raw_position;
-
-      // Capture initial position as zero reference
-      // This allows position to start at 0.0 regardless of motor's absolute encoder position
-      initial_position_offset_[i] = raw_position_rad;
-      hw_state_position_[i] = 0.0;
-
-      RCLCPP_INFO(
-        rclcpp::get_logger("STSHardwareInterface"),
-        "Motor %d (joint '%s') initial raw position: %.3f rad (zeroed to 0.0)",
-        motor_ids_[i], joint_names_[i].c_str(), raw_position_rad);
-    }
-  }
-
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "All motors activated and ready");
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ============================================================================
-// INTERFACE EXPORT: export_state_interfaces
-// ============================================================================
-
+/** @brief Export state interfaces for all joints */
 std::vector<hardware_interface::StateInterface>
 STSHardwareInterface::export_state_interfaces()
 {
@@ -530,17 +474,14 @@ STSHardwareInterface::export_state_interfaces()
   }
 
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Exported %zu state interfaces for %zu joints",
     state_interfaces.size(), joint_names_.size());
 
   return state_interfaces;
 }
 
-// ============================================================================
-// INTERFACE EXPORT: export_command_interfaces
-// ============================================================================
-
+/** @brief Export command interfaces for all joints */
 std::vector<hardware_interface::CommandInterface>
 STSHardwareInterface::export_command_interfaces()
 {
@@ -579,29 +520,22 @@ STSHardwareInterface::export_command_interfaces()
         break;
     }
 
-    // Per-joint emergency stop (available in all modes)
-    command_interfaces.emplace_back(
-      hardware_interface::CommandInterface(
-        joint_name, "emergency_stop", &hw_cmd_emergency_stop_[i]));
   }
 
   // Broadcast emergency stop (stops ALL motors at once)
   command_interfaces.emplace_back(
     hardware_interface::CommandInterface(
-      info_.name, "broadcast_emergency_stop", &hw_cmd_broadcast_emergency_stop_));
+      info_.name, "emergency_stop", &hw_cmd_emergency_stop_));
 
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Exported %zu command interfaces for %zu joints (per-joint modes)",
     command_interfaces.size(), joint_names_.size());
 
   return command_interfaces;
 }
 
-// ============================================================================
-// CONTROL LOOP: read (with multi-motor support)
-// ============================================================================
-
+/** @brief Read motor states from hardware */
 hardware_interface::return_type STSHardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
@@ -633,34 +567,19 @@ hardware_interface::return_type STSHardwareInterface::read(
         hw_state_position_[i] += hw_state_velocity_[i] * dt;
       }
 
-      // Only simulate other state interfaces if they are enabled
+      // Only simulate dynamic state interfaces
       if (has_load_state_[i]) {
         // Simulate load based on velocity
         hw_state_load_[i] = hw_state_velocity_[i] / (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD) * 100.0;
         hw_state_load_[i] = std::clamp(hw_state_load_[i], -100.0, 100.0);
       }
 
-      if (has_temperature_state_[i]) {
-        // Simulate temperature increase with load
-        double load_value = has_load_state_[i] ? hw_state_load_[i] : 0.0;
-        double temp_increase = std::abs(load_value) * 0.01 * dt;
-        hw_state_temperature_[i] += temp_increase;
-        hw_state_temperature_[i] -= (hw_state_temperature_[i] - 25.0) * 0.1 * dt;
-        hw_state_temperature_[i] = std::clamp(hw_state_temperature_[i], 20.0, 80.0);
-      }
-
-      if (has_current_state_[i]) {
-        // Simulate current based on load
-        double load_value = has_load_state_[i] ? hw_state_load_[i] : 0.0;
-        hw_state_current_[i] = std::abs(load_value) * 0.01;
-      }
+      // Voltage, temperature, and current remain at constant mock values (12.0V, 25.0°C, 0.0A)
 
       if (has_is_moving_state_[i]) {
         // Update is_moving state
         hw_state_is_moving_[i] = (std::abs(hw_state_velocity_[i]) > 0.01) ? 1.0 : 0.0;
       }
-
-      // Note: hw_state_voltage remains constant at initialization value (12.0) if enabled
     }
 
     return hardware_interface::return_type::OK;
@@ -673,7 +592,7 @@ hardware_interface::return_type STSHardwareInterface::read(
       consecutive_read_errors_++;
       int servo_error = servo_->getErr();
       RCLCPP_WARN_THROTTLE(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         *rclcpp::Clock::make_shared(), 1000,
         "Failed to read feedback from motor %d (joint '%s') - error count: %d/%d, servo error: %d",
         motor_ids_[i], joint_names_[i].c_str(),
@@ -681,18 +600,18 @@ hardware_interface::return_type STSHardwareInterface::read(
 
       if (consecutive_read_errors_ >= MAX_CONSECUTIVE_ERRORS) {
         RCLCPP_ERROR(
-          rclcpp::get_logger("STSHardwareInterface"),
+          logger_,
           "Too many consecutive read errors (%d), attempting recovery...",
           consecutive_read_errors_);
 
         if (attempt_error_recovery()) {
           RCLCPP_INFO(
-            rclcpp::get_logger("STSHardwareInterface"),
+            logger_,
             "Error recovery successful");
           consecutive_read_errors_ = 0;
         } else {
           RCLCPP_ERROR(
-            rclcpp::get_logger("STSHardwareInterface"),
+            logger_,
             "Error recovery failed");
           return hardware_interface::return_type::ERROR;
         }
@@ -706,31 +625,7 @@ hardware_interface::return_type STSHardwareInterface::read(
     // Read and update only enabled state interfaces for efficiency
     if (has_position_state_[i]) {
       int raw_position = servo_->ReadPos(-1);
-
-      // Multi-turn position tracking
-      if (enable_multi_turn_) {
-        int position_diff = raw_position - last_raw_position_[i];
-
-        // Since we negate positions, wrap detection needs to be inverted:
-        // Forward motion (positive raw diff crossing 0->4095) becomes backward revolution
-        // Backward motion (negative raw diff crossing 4095->0) becomes forward revolution
-        if (position_diff > STS_MAX_POSITION / 2) {
-          revolution_count_[i]++;  // Inverted: raw wrapped forward, negated position goes backward
-        } else if (position_diff < -STS_MAX_POSITION / 2) {
-          revolution_count_[i]--;  // Inverted: raw wrapped backward, negated position goes forward
-        }
-
-        last_raw_position_[i] = raw_position;
-        // Negate the revolution count accumulation to match negated position
-        continuous_position_[i] = -(revolution_count_[i] * 2.0 * M_PI) +
-                                   raw_position_to_radians(raw_position);
-        hw_state_position_[i] = continuous_position_[i];
-      } else {
-        hw_state_position_[i] = raw_position_to_radians(raw_position);
-      }
-
-      // Apply initial position offset (zeroing)
-      hw_state_position_[i] -= initial_position_offset_[i];
+      hw_state_position_[i] = raw_position_to_radians(raw_position);
     }
 
     if (has_velocity_state_[i]) {
@@ -767,127 +662,47 @@ hardware_interface::return_type STSHardwareInterface::read(
   return hardware_interface::return_type::OK;
 }
 
-// ============================================================================
-// CONTROL LOOP: write (with SyncWrite support for motor chains)
-// ============================================================================
-
+/** @brief Send commands to motors based on operating mode */
 hardware_interface::return_type STSHardwareInterface::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   // Mock mode: skip hardware writes
   if (enable_mock_mode_) {
     // Handle broadcast emergency stop in mock mode
-    if (hw_cmd_broadcast_emergency_stop_ > 0.5 && !broadcast_emergency_stop_active_) {
+    if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
       for (size_t i = 0; i < motor_ids_.size(); ++i) {
         hw_state_velocity_[i] = 0.0;
       }
-      broadcast_emergency_stop_active_ = true;
-      RCLCPP_WARN(
-        rclcpp::get_logger("STSHardwareInterface"),
-        "Broadcast emergency stop activated for ALL motors");
-    } else if (hw_cmd_broadcast_emergency_stop_ <= 0.5 && broadcast_emergency_stop_active_) {
-      broadcast_emergency_stop_active_ = false;
-      RCLCPP_INFO(
-        rclcpp::get_logger("STSHardwareInterface"),
-        "Broadcast emergency stop released");
-    }
-
-    // Handle per-joint emergency stop in mock mode
-    for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      if (hw_cmd_emergency_stop_[i] > 0.5) {
-        hw_state_velocity_[i] = 0.0;
-        emergency_stop_active_[i] = true;
-      } else if (emergency_stop_active_[i]) {
-        emergency_stop_active_[i] = false;
-      }
+      emergency_stop_active_ = true;
+      RCLCPP_WARN(logger_, "Emergency stop activated - ALL motors stopped");
+    } else if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
+      emergency_stop_active_ = false;
+      RCLCPP_INFO(logger_, "Emergency stop released");
     }
 
     return hardware_interface::return_type::OK;
   }
 
-  // ===== BROADCAST EMERGENCY STOP (Real Hardware) =====
   // Check for broadcast emergency stop (stops ALL motors)
-  if (hw_cmd_broadcast_emergency_stop_ > 0.5 && !broadcast_emergency_stop_active_) {
-    RCLCPP_WARN(
-      rclcpp::get_logger("STSHardwareInterface"),
-      "Broadcast emergency stop activated - stopping ALL motors");
-
-    // Use broadcast ID to stop all motors at once
+  if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
+    RCLCPP_WARN(logger_, "Emergency stop activated - stopping ALL motors");
     servo_->WriteSpe(STS_BROADCAST_ID, 0, STS_MAX_ACCELERATION);
-    broadcast_emergency_stop_active_ = true;
-
+    emergency_stop_active_ = true;
     return hardware_interface::return_type::OK;
   }
 
-  if (hw_cmd_broadcast_emergency_stop_ <= 0.5 && broadcast_emergency_stop_active_) {
-    RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
-      "Broadcast emergency stop released");
-    broadcast_emergency_stop_active_ = false;
+  if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
+    RCLCPP_INFO(logger_, "Emergency stop released");
+    emergency_stop_active_ = false;
   }
 
-  // Skip all commands if broadcast emergency stop is active
-  if (broadcast_emergency_stop_active_) {
+  // Skip all commands if emergency stop is active
+  if (emergency_stop_active_) {
     return hardware_interface::return_type::OK;
   }
 
-  // ===== PER-JOINT EMERGENCY STOP =====
-  // Check for emergency stop on any motor
-  bool any_emergency_stop = false;
-  for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    bool emergency_stop_requested = (hw_cmd_emergency_stop_[i] > 0.5);
-
-    if (emergency_stop_requested && !emergency_stop_active_[i]) {
-      // Emergency stop activated for this motor
-      RCLCPP_WARN(
-        rclcpp::get_logger("STSHardwareInterface"),
-        "Emergency stop activated for motor %d (joint '%s', mode %d)",
-        motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i]);
-
-      // Stop motor immediately based on its operating mode
-      switch (operating_modes_[i]) {
-        case MODE_SERVO: {
-          int current_pos = servo_->ReadPos(motor_ids_[i]);
-          if (current_pos != -1) {
-            servo_->WritePosEx(motor_ids_[i], current_pos, 0, 0);
-          }
-          break;
-        }
-        case MODE_VELOCITY:
-          servo_->WriteSpe(motor_ids_[i], 0, STS_MAX_ACCELERATION);
-          break;
-        case MODE_PWM:
-          servo_->WritePwm(motor_ids_[i], 0);
-          break;
-      }
-
-      emergency_stop_active_[i] = true;
-      any_emergency_stop = true;
-    }
-
-    if (!emergency_stop_requested && emergency_stop_active_[i]) {
-      // Emergency stop released
-      RCLCPP_INFO(
-        rclcpp::get_logger("STSHardwareInterface"),
-        "Emergency stop released for motor %d (joint '%s')",
-        motor_ids_[i], joint_names_[i].c_str());
-      emergency_stop_active_[i] = false;
-    }
-
-    if (emergency_stop_active_[i]) {
-      any_emergency_stop = true;
-    }
-  }
-
-  // Skip normal commands if any emergency stop is active
-  if (any_emergency_stop) {
-    return hardware_interface::return_type::OK;
-  }
-
-  // ===== MODE-SPECIFIC WRITE LOGIC WITH MIXED-MODE SYNCWRITE SUPPORT =====
   // Group motors by operating mode for efficient SyncWrite
-
-  std::vector<size_t> servo_motors;    // MODE_SERVO (position control)
+  std::vector<size_t> servo_motors;     // MODE_SERVO (position control)
   std::vector<size_t> velocity_motors;  // MODE_VELOCITY
   std::vector<size_t> pwm_motors;       // MODE_PWM
 
@@ -916,10 +731,7 @@ hardware_interface::return_type STSHardwareInterface::write(
 
       for (size_t idx : servo_motors) {
         // Apply position limits
-        double target_position = hw_cmd_position_[idx];
-        if (has_position_limits_[idx]) {
-          target_position = std::clamp(target_position, position_min_[idx], position_max_[idx]);
-        }
+        double target_position = apply_position_limits(hw_cmd_position_[idx], idx);
 
         // Apply velocity limits
         double max_speed = hw_cmd_velocity_[idx];
@@ -945,10 +757,7 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single servo motor or when SyncWrite disabled
       for (size_t idx : servo_motors) {
-        double target_position = hw_cmd_position_[idx];
-        if (has_position_limits_[idx]) {
-          target_position = std::clamp(target_position, position_min_[idx], position_max_[idx]);
-        }
+        double target_position = apply_position_limits(hw_cmd_position_[idx], idx);
 
         double max_speed = hw_cmd_velocity_[idx];
         if (has_velocity_limits_[idx]) {
@@ -967,7 +776,7 @@ hardware_interface::return_type STSHardwareInterface::write(
           consecutive_write_errors_++;
           int servo_error = servo_->getErr();
           RCLCPP_WARN_THROTTLE(
-            rclcpp::get_logger("STSHardwareInterface"),
+            logger_,
             *rclcpp::Clock::make_shared(), 1000,
             "Failed to write position to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
             motor_ids_[idx], joint_names_[idx].c_str(),
@@ -992,10 +801,7 @@ hardware_interface::return_type STSHardwareInterface::write(
 
       for (size_t idx : velocity_motors) {
         // Apply velocity limits
-        double target_velocity = hw_cmd_velocity_[idx];
-        if (has_velocity_limits_[idx]) {
-          target_velocity = std::clamp(target_velocity, -velocity_max_[idx], velocity_max_[idx]);
-        }
+        double target_velocity = apply_velocity_limits(hw_cmd_velocity_[idx], idx);
 
         ids.push_back(motor_ids_[idx]);
         velocities.push_back(rad_s_to_raw_velocity(target_velocity));
@@ -1013,10 +819,7 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single velocity motor or when SyncWrite disabled
       for (size_t idx : velocity_motors) {
-        double target_velocity = hw_cmd_velocity_[idx];
-        if (has_velocity_limits_[idx]) {
-          target_velocity = std::clamp(target_velocity, -velocity_max_[idx], velocity_max_[idx]);
-        }
+        double target_velocity = apply_velocity_limits(hw_cmd_velocity_[idx], idx);
 
         int raw_velocity = rad_s_to_raw_velocity(target_velocity);
         int acceleration = static_cast<int>(std::clamp(
@@ -1028,7 +831,7 @@ hardware_interface::return_type STSHardwareInterface::write(
           consecutive_write_errors_++;
           int servo_error = servo_->getErr();
           RCLCPP_WARN_THROTTLE(
-            rclcpp::get_logger("STSHardwareInterface"),
+            logger_,
             *rclcpp::Clock::make_shared(), 1000,
             "Failed to write velocity to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
             motor_ids_[idx], joint_names_[idx].c_str(),
@@ -1065,8 +868,6 @@ hardware_interface::return_type STSHardwareInterface::write(
       // SyncWrite to all PWM mode motors
       servo_->SyncWritePwm(ids.data(), ids.size(), pwm_values.data());
 
-      // No result to check for SyncWritePwm (void return)
-
     } else {
       // Individual writes for single PWM motor or when SyncWrite disabled
       for (size_t idx : pwm_motors) {
@@ -1083,7 +884,7 @@ hardware_interface::return_type STSHardwareInterface::write(
           consecutive_write_errors_++;
           int servo_error = servo_->getErr();
           RCLCPP_WARN_THROTTLE(
-            rclcpp::get_logger("STSHardwareInterface"),
+            logger_,
             *rclcpp::Clock::make_shared(), 1000,
             "Failed to write PWM to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
             motor_ids_[idx], joint_names_[idx].c_str(),
@@ -1103,15 +904,12 @@ hardware_interface::return_type STSHardwareInterface::write(
   return hardware_interface::return_type::OK;
 }
 
-// ============================================================================
-// LIFECYCLE: on_deactivate
-// ============================================================================
-
+/** @brief Stop motors and disable torque */
 hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Deactivating STS hardware interface...");
 
   // Skip hardware deactivation in mock mode
@@ -1121,7 +919,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
       hw_state_load_[i] = 0.0;
     }
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Mock mode: All motors stopped (simulated)");
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -1147,7 +945,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
 
     if (result != 1) {
       RCLCPP_WARN(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Failed to stop motor %d (joint '%s') during deactivation (mode: %d)",
         motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i]);
     }
@@ -1157,13 +955,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
     if (result != 1) {
       int servo_error = servo_->getErr();
       RCLCPP_WARN(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Failed to disable torque on motor %d (joint '%s') - servo error: %d",
         motor_ids_[i], joint_names_[i].c_str(), servo_error);
     }
 
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Motor %d (joint '%s') stopped and torque disabled",
       motor_ids_[i], joint_names_[i].c_str());
   }
@@ -1171,22 +969,19 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ============================================================================
-// LIFECYCLE: on_cleanup
-// ============================================================================
-
+/** @brief Close serial connection and release resources */
 hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Cleaning up STS hardware interface...");
 
   // Close serial connection
   if (servo_) {
     servo_->end();
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Closed serial connection to %s", serial_port_.c_str());
   }
 
@@ -1195,15 +990,12 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ============================================================================
-// LIFECYCLE: on_shutdown
-// ============================================================================
-
+/** @brief Emergency shutdown - stop all motors and close connection */
 hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Shutting down STS hardware interface...");
 
   // Ensure all motors are stopped and torque disabled
@@ -1230,7 +1022,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
       servo_->EnableTorque(motor_ids_[i], 0);
 
       RCLCPP_INFO(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Motor %d (joint '%s') shutdown complete",
         motor_ids_[i], joint_names_[i].c_str());
     }
@@ -1238,7 +1030,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
     // Close serial connection
     servo_->end();
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Closed serial connection to %s during shutdown", serial_port_.c_str());
 
     servo_.reset();
@@ -1247,20 +1039,17 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ============================================================================
-// LIFECYCLE: on_error
-// ============================================================================
-
+/** @brief Handle error state - emergency stop all motors */
 hardware_interface::CallbackReturn STSHardwareInterface::on_error(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_ERROR(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Error state detected, attempting emergency stop...");
 
   if (!servo_) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Servo interface not available for emergency stop");
     return hardware_interface::CallbackReturn::ERROR;
   }
@@ -1286,7 +1075,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
 
     if (result != 1) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Failed to send emergency stop command to motor %d (joint '%s')",
         motor_ids_[i], joint_names_[i].c_str());
     }
@@ -1295,12 +1084,12 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
     result = servo_->EnableTorque(motor_ids_[i], 0);
     if (result != 1) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Failed to disable torque on motor %d (joint '%s') during error handling",
         motor_ids_[i], joint_names_[i].c_str());
     } else {
       RCLCPP_INFO(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Motor %d (joint '%s') emergency stopped and torque disabled",
         motor_ids_[i], joint_names_[i].c_str());
     }
@@ -1309,25 +1098,25 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ============================================================================
-// UNIT CONVERSION HELPER FUNCTIONS
-// ============================================================================
-
-// Negate to match ROS convention: positive = CCW
+/** @brief Convert motor steps (0-4095) to radians (0-2π) */
 double STSHardwareInterface::raw_position_to_radians(int raw_position) const
 {
-  // Convert raw position to radians and negate to reverse motor direction
-  // This inverts the motor reading so positive commands result in positive feedback
-  return -static_cast<double>(raw_position) * STEPS_TO_RAD;
+  // Convert raw position (0-4095) to radians, then invert direction
+  // We want: raw 0 → 0, raw increases → position decreases
+  // Invert by computing (4095 - raw_position) which maps:
+  //   raw 0 → 4095 → ~2π, raw 4095 → 0 → 0
+  // This makes increasing raw position correspond to decreasing angle
+  int inverted_raw = STS_MAX_POSITION - raw_position;
+  return static_cast<double>(inverted_raw) * STEPS_TO_RAD;
 }
 
-// Negate to match ROS convention: positive = CCW
+/** @brief Convert motor velocity (steps/s) to rad/s */
 double STSHardwareInterface::raw_velocity_to_rad_s(int raw_velocity) const
 {
   return static_cast<double>(-raw_velocity) * STEPS_TO_RAD;
 }
 
-// Negate to match ROS convention: positive = CCW
+/** @brief Convert rad/s to motor velocity (steps/s) */
 int STSHardwareInterface::rad_s_to_raw_velocity(double velocity_rad_s) const
 {
   double raw = -velocity_rad_s * RAD_TO_STEPS;
@@ -1338,23 +1127,25 @@ int STSHardwareInterface::rad_s_to_raw_velocity(double velocity_rad_s) const
   return clamped;
 }
 
+/** @brief Convert motor load (-1000 to +1000) to percentage */
 double STSHardwareInterface::raw_load_to_percentage(int raw_load) const
 {
   return static_cast<double>(raw_load) * LOAD_SCALE;
 }
 
+/** @brief Convert motor voltage (decivolts) to volts */
 double STSHardwareInterface::raw_voltage_to_volts(int raw_voltage) const
 {
   return static_cast<double>(raw_voltage) * VOLTAGE_SCALE;
 }
 
+/** @brief Convert motor current (milliamps) to amperes */
 double STSHardwareInterface::raw_current_to_amperes(int raw_current) const
 {
   return static_cast<double>(raw_current) * CURRENT_SCALE;
 }
 
-
-// Negate to match ROS convention: positive = CCW
+/** @brief Convert radians to motor steps (0-4095) */
 int STSHardwareInterface::radians_to_raw_position(double position_rad) const
 {
   double normalized = std::fmod(-position_rad, 2.0 * M_PI);
@@ -1364,6 +1155,7 @@ int STSHardwareInterface::radians_to_raw_position(double position_rad) const
   return std::clamp(raw, 0, 4095);
 }
 
+/** @brief Convert effort (-1.0 to +1.0) to motor PWM (-1000 to +1000) */
 int STSHardwareInterface::effort_to_raw_pwm(double effort) const
 {
   // Effort is normalized [-1.0, 1.0] -> raw PWM [-1000, 1000]
@@ -1371,19 +1163,34 @@ int STSHardwareInterface::effort_to_raw_pwm(double effort) const
   return static_cast<int>(clamped * STS_MAX_PWM);
 }
 
-// ============================================================================
-// ERROR RECOVERY
-// ============================================================================
+/** @brief Apply position limits to a target position */
+double STSHardwareInterface::apply_position_limits(double target_position, size_t joint_idx) const
+{
+  if (has_position_limits_[joint_idx]) {
+    return std::clamp(target_position, position_min_[joint_idx], position_max_[joint_idx]);
+  }
+  return target_position;
+}
 
+/** @brief Apply velocity limits to a target velocity */
+double STSHardwareInterface::apply_velocity_limits(double target_velocity, size_t joint_idx) const
+{
+  if (has_velocity_limits_[joint_idx]) {
+    return std::clamp(target_velocity, -velocity_max_[joint_idx], velocity_max_[joint_idx]);
+  }
+  return target_velocity;
+}
+
+/** @brief Attempt to recover from communication errors by pinging motors */
 bool STSHardwareInterface::attempt_error_recovery()
 {
   RCLCPP_WARN(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Attempting error recovery for all motors...");
 
   if (!servo_) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Servo interface not available for recovery");
     return false;
   }
@@ -1394,13 +1201,13 @@ bool STSHardwareInterface::attempt_error_recovery()
     int ping_result = servo_->Ping(motor_ids_[i]);
     if (ping_result == -1) {
       RCLCPP_WARN(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Motor %d (joint '%s') not responding to ping",
         motor_ids_[i], joint_names_[i].c_str());
       all_motors_responsive = false;
     } else {
       RCLCPP_INFO(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Motor %d (joint '%s') responded to ping",
         motor_ids_[i], joint_names_[i].c_str());
     }
@@ -1408,14 +1215,14 @@ bool STSHardwareInterface::attempt_error_recovery()
 
   if (all_motors_responsive) {
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "All motors responded to ping, communication restored");
     return true;
   }
 
   // Try to re-establish serial connection
   RCLCPP_WARN(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Some motors not responding, attempting to reinitialize serial connection to %s",
     serial_port_.c_str());
 
@@ -1424,7 +1231,7 @@ bool STSHardwareInterface::attempt_error_recovery()
 
   if (!servo_->begin(baud_rate_, serial_port_.c_str())) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Failed to reopen serial port %s during recovery", serial_port_.c_str());
     return false;
   }
@@ -1434,7 +1241,7 @@ bool STSHardwareInterface::attempt_error_recovery()
     int ping_result = servo_->Ping(motor_ids_[i]);
     if (ping_result == -1) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Motor %d (joint '%s') still not responding after serial reinit",
         motor_ids_[i], joint_names_[i].c_str());
       return false;
@@ -1444,29 +1251,25 @@ bool STSHardwareInterface::attempt_error_recovery()
     int init_result = servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1);
     if (init_result != 1) {
       RCLCPP_ERROR(
-        rclcpp::get_logger("STSHardwareInterface"),
+        logger_,
         "Failed to reinitialize motor %d (joint '%s') after recovery",
         motor_ids_[i], joint_names_[i].c_str());
       return false;
     }
 
     RCLCPP_INFO(
-      rclcpp::get_logger("STSHardwareInterface"),
+      logger_,
       "Motor %d (joint '%s') reinitialized successfully",
       motor_ids_[i], joint_names_[i].c_str());
   }
 
   RCLCPP_INFO(
-    rclcpp::get_logger("STSHardwareInterface"),
+    logger_,
     "Successfully recovered communication with all motors");
   return true;
 }
 
 }  // namespace sts_hardware_interface
-
-// ============================================================================
-// PLUGIN EXPORT
-// ============================================================================
 
 #include "pluginlib/class_list_macros.hpp"
 PLUGINLIB_EXPORT_CLASS(

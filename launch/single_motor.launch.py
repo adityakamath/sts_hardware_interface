@@ -1,4 +1,34 @@
-"""Launch file for single STS motor in velocity mode"""
+#!/usr/bin/env python3
+# Copyright 2025 Aditya Kamath
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Launch file for single STS motor in velocity mode.
+
+This launch file demonstrates basic usage of the STS Hardware Interface with a single motor
+configured in velocity (wheel) mode. It sets up the complete ros2_control stack including:
+- Robot state publisher for TF transforms
+- Controller manager for hardware interface lifecycle
+- Joint state broadcaster for publishing joint states
+- Forward command controller for velocity commands
+
+The launch file accepts command-line arguments for hardware configuration and supports
+both real hardware and mock/simulation mode for testing without motors.
+
+Example usage:
+    ros2 launch sts_hardware_interface single_motor.launch.py serial_port:=/dev/ttyACM0
+    ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true gui:=true
+"""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler
@@ -10,6 +40,11 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    """Generate launch description for single motor demonstration.
+
+    Returns:
+        LaunchDescription: Complete launch configuration with all nodes and parameters
+    """
     # Declare arguments
     declared_arguments = []
 

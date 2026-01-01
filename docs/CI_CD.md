@@ -1,23 +1,21 @@
 # CI/CD Documentation
 
-This package uses GitHub Actions for lightweight continuous integration and deployment suitable for an open-source DIY project.
+This package uses GitHub Actions for lightweight continuous integration suitable for a DIY/maker/academic project.
 
 > **⚠️ IMPORTANT**: All workflows are currently **DISABLED** to avoid costs on private repositories.
 > See [ENABLE_CI_CD.md](../ENABLE_CI_CD.md) for instructions to enable them when you make the repo public (FREE unlimited minutes!).
 
 ## Overview
 
-The CI/CD pipeline consists of five workflows:
+The CI/CD pipeline consists of two automated workflows plus Dependabot:
 
-1. **Build & Test** - Ensures code compiles and tests pass across all ROS 2 versions
-2. **clang-tidy** - Static analysis for code quality
-3. **Lint** - Code style and formatting checks
-4. **PR Comments Check** - Enforces resolution of all review comments
-5. **Release** - Automated release creation
+1. **Build & Test** - Ensures code compiles and tests pass across ROS 2 versions
+2. **clang-tidy** - Static analysis for code quality and security
+3. **Dependabot** - Automatic dependency updates (GitHub Actions, submodules)
 
 ## Workflows
 
-### 1. Build & Test ([build-test.yml](../.github/workflows/build-test.yml))
+### 1. Build & Test
 
 **When it runs:**
 - On every pull request
@@ -25,7 +23,7 @@ The CI/CD pipeline consists of five workflows:
 - Manually via workflow dispatch
 
 **What it does:**
-- Builds the package on **ALL** ROS 2 distributions:
+- Builds the package on multiple ROS 2 distributions:
   - Humble (LTS) on Ubuntu 22.04
   - Iron on Ubuntu 22.04
   - Jazzy on Ubuntu 24.04
@@ -34,17 +32,12 @@ The CI/CD pipeline consists of five workflows:
 - Runs all tests on each distribution
 - Uploads build logs and test results
 
-**Status Badge:**
-```markdown
-[![Build & Test](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml)
-```
-
-### 2. clang-tidy ([clang-tidy.yml](../.github/workflows/clang-tidy.yml))
+### 2. clang-tidy
 
 **When it runs:**
 - On pull requests that change C++ files
 - On pushes to `main`/`develop` that change C++ files
-- Manually
+- Manually via workflow dispatch
 
 **What it does:**
 - Runs clang-tidy static analysis
@@ -52,71 +45,112 @@ The CI/CD pipeline consists of five workflows:
 - Comments on PRs with findings
 - Uploads detailed results as artifacts
 
-See [CLANG_TIDY.md](CLANG_TIDY.md) for more details.
-
-### 3. Lint ([lint.yml](../.github/workflows/lint.yml))
-
-**When it runs:**
-- On every pull request
-- On pushes to `main` or `develop` branches
+### 3. Dependabot
 
 **What it does:**
-- Runs ROS 2 ament linters (cppcheck, cpplint, xmllint)
-- Checks markdown formatting
-- Validates package.xml and CMakeLists.txt
+- Automatically creates PRs to update GitHub Actions versions (monthly)
+- Automatically creates PRs to update git submodules like SCServo_Linux (monthly)
+- Keeps dependencies secure and up-to-date with zero manual effort
 
-**Configured checks:**
-- C++ code style (cpplint)
-- Static analysis (cppcheck)
-- XML formatting (package.xml, launch files)
-- Markdown style (documentation)
+**Configuration**: `.github/dependabot.yml`
 
-### 4. PR Comments Check ([pr-comments-check.yml](../.github/workflows/pr-comments-check.yml))
+## clang-tidy Static Analysis
 
-**When it runs:**
-- On every pull request event (opened, updated, edited)
-- On pull request review events
-- On review comment events
+### What is clang-tidy?
 
-**What it does:**
-- Checks for unresolved review conversations
-- Tracks comments from:
-  - CodeRabbit AI reviews
-  - GitHub Copilot reviews
-  - clang-tidy findings
-  - Human reviewers
-- **Blocks merging** if unresolved comments exist
-- Updates PR with comment resolution status
-- Distinguishes between bot and human comments
+clang-tidy is a clang-based C++ "linter" tool that provides an extensible framework for diagnosing and fixing typical programming errors, style violations, and interface misuse.
 
-**Status Badge:**
-```markdown
-[![PR Comments Check](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/pr-comments-check.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/pr-comments-check.yml)
+### Installation
+
+**macOS**:
+```bash
+brew install llvm
 ```
 
-**Why this is important:**
-This workflow ensures that:
-- All review feedback is addressed
-- No issues are accidentally ignored
-- Code quality standards are maintained
-- Bot suggestions (CodeRabbit, Copilot, clang-tidy) are reviewed
+**Ubuntu/Debian**:
+```bash
+sudo apt install clang-tidy
+```
 
-### 5. Release ([release.yml](../.github/workflows/release.yml))
+### Running Locally
 
-**When it runs:**
-- When a tag matching `v*` is pushed (e.g., `v0.3.1`)
-- Manually via workflow dispatch
+**Method 1: Enable during build (recommended)**:
 
-**What it does:**
-- Creates GitHub release with changelog
-- Builds release artifacts
-- Uploads compiled binaries as tarball
+```bash
+cd ~/ros2_ws
+colcon build --packages-select sts_hardware_interface \
+  --cmake-args -DENABLE_CLANG_TIDY=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+**Method 2: Run with ament tests**:
+
+```bash
+cd ~/ros2_ws
+colcon test --packages-select sts_hardware_interface --event-handlers console_direct+
+```
+
+**Method 3: Manual invocation**:
+
+```bash
+clang-tidy -p build/sts_hardware_interface src/sts_hardware_interface.cpp
+```
+
+### Configuration
+
+The `.clang-tidy` file in the package root contains the configuration for checks. Current setup:
+
+- Enables most standard C++ checks
+- Follows ROS 2 naming conventions
+- Disables overly pedantic checks
+- Configured for C++17
+
+**Key checks enabled:**
+- **bugprone-**: Detects suspicious constructs likely to be bugs
+- **cert-**: CERT C++ Coding Standard checks
+- **cppcoreguidelines-**: C++ Core Guidelines checks
+- **modernize-**: Suggests modern C++ replacements
+- **performance-**: Performance-related checks
+- **readability-**: Code readability improvements
+- **clang-analyzer-**: Deep static analysis
+
+### Customizing Checks
+
+Edit `.clang-tidy` to enable/disable specific checks:
+- Prefix with `-` to disable: `-modernize-use-trailing-return-type`
+- No prefix or `+` to enable: `modernize-use-auto`
+
+### Auto-fixing Issues
+
+Some issues can be auto-fixed:
+
+```bash
+clang-tidy -p build/sts_hardware_interface --fix src/sts_hardware_interface.cpp
+```
+
+**Warning:** Review changes before committing, as auto-fixes may sometimes be incorrect.
+
+### Suppressing Warnings
+
+Add `// NOLINT` or `// NOLINTNEXTLINE` comments:
+
+```cpp
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+auto* ptr = reinterpret_cast<uint8_t*>(data);
+```
+
+### IDE Integration
+
+**VS Code**: Install "C/C++" or "clangd" extension
+
+**CLion**: Built-in support in Settings → Editor → Inspections → C/C++ → General → Clang-Tidy
+
+**Vim/Neovim**: Use ALE or CoC with clangd LSP server
 
 ## Using the CI/CD Pipeline
 
 ### Running Checks Locally
 
-Before pushing, you can run checks locally:
+Before pushing, run checks locally:
 
 ```bash
 # Build and test
@@ -127,28 +161,7 @@ colcon test --packages-select sts_hardware_interface
 # Run clang-tidy
 colcon build --packages-select sts_hardware_interface \
   --cmake-args -DENABLE_CLANG_TIDY=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-
-# Run linters
-source /opt/ros/jazzy/setup.bash
-ament_cppcheck src/sts_hardware_interface
-ament_cpplint src/sts_hardware_interface
 ```
-
-### Creating a Release
-
-Two methods:
-
-**Method 1: Git tag (recommended)**
-```bash
-git tag -a v0.3.1 -m "Release v0.3.1"
-git push origin v0.3.1
-```
-
-**Method 2: Manual workflow**
-1. Go to Actions tab on GitHub
-2. Select "Release" workflow
-3. Click "Run workflow"
-4. Enter version number
 
 ### Pull Request Workflow
 
@@ -156,9 +169,16 @@ When you create a PR, the following happens automatically:
 
 1. **Build & Test** runs to verify compilation and tests
 2. **clang-tidy** analyzes code quality
-3. **Lint** checks code style
 
-All must pass before merging (you can configure this in branch protection rules).
+Both must pass before merging (configure this in branch protection rules).
+
+### Dependabot Updates
+
+Dependabot automatically creates PRs when:
+- GitHub Actions have new versions available
+- Git submodules (SCServo_Linux) have updates
+
+Simply review and merge these PRs to stay up-to-date.
 
 ## Adding Status Badges to README
 
@@ -167,44 +187,43 @@ Add these badges to your README.md:
 ```markdown
 [![Build & Test](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml)
 [![clang-tidy](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/clang-tidy.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/clang-tidy.yml)
-[![Lint](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/lint.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/lint.yml)
 ```
 
 Replace `YOUR_USERNAME` with your GitHub username.
 
 ## Branch Protection (Optional)
 
-To enforce CI checks before merging, configure branch protection:
+To enforce CI checks before merging:
 
 1. Go to repository Settings → Branches
 2. Add rule for `main` branch
 3. Enable "Require status checks to pass before merging"
-4. Select: `Build & Test`, `clang-tidy`, `Lint`
+4. Select: `Build & Test`, `clang-tidy`
 
 ## Customizing Workflows
 
 ### Changing ROS 2 Distribution
 
-Edit the workflow files and change `jazzy` to your desired distro (e.g., `humble`, `rolling`).
+Edit workflow files and change `jazzy` to your desired distro (e.g., `humble`, `rolling`).
 
-### Adding More Platforms
+### Reducing Tested Distributions
 
-To test on multiple ROS 2 versions, add a matrix to `build-test.yml`:
+For faster CI, test only LTS and Rolling:
 
+Edit `build-test.yml` matrix to include only:
 ```yaml
-strategy:
-  matrix:
-    ros_distro: [humble, jazzy, rolling]
+matrix:
+  include:
+    - ros_distro: humble
+      os: ubuntu-22.04
+    - ros_distro: rolling
+      os: ubuntu-24.04
 ```
-
-### Disabling Specific Workflows
-
-Comment out or delete workflows you don't need. The minimal setup would be just `build-test.yml`.
 
 ## Cost and Resource Usage
 
 All workflows run on GitHub-hosted runners which are:
-- **Free** for public repositories
+- **Free** for public repositories (unlimited minutes)
 - Run on Ubuntu VMs
 - Have 2-core CPU, 7GB RAM
 - Typical run time: 5-10 minutes per workflow
@@ -221,26 +240,35 @@ For private repos, GitHub provides 2,000 free minutes/month.
 
 ### clang-tidy finds too many issues
 
-Adjust `.clang-tidy` configuration to disable specific checks. See [CLANG_TIDY.md](CLANG_TIDY.md).
+Adjust `.clang-tidy` configuration to disable specific checks.
 
-### Tests fail intermittently
+### clang-tidy: "compile_commands.json not found"
 
-- May be timing issues in tests
-- Check for race conditions
-- Consider increasing timeouts
+Build with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`:
+```bash
+colcon build --packages-select sts_hardware_interface --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
 
-## Future Enhancements
+### Dependabot PRs failing
 
-Optional additions for growing projects:
+- Review the changelog of the updated dependency
+- Test locally before merging
+- Some updates may require code changes
 
-- **Code coverage** - Track test coverage percentage
-- **Documentation generation** - Auto-build Doxygen docs
-- **Docker images** - Build and publish Docker images
-- **Multiple platforms** - Test on macOS, Windows
-- **Dependency scanning** - Automated security updates
+## Best Practices
+
+1. **Run early and often**: Integrate clang-tidy into your development workflow
+2. **Keep dependencies updated**: Merge Dependabot PRs regularly
+3. **Fix issues progressively**: Don't try to fix everything at once
+4. **Understand warnings**: Learn what each check does before disabling it
+5. **Test locally first**: Don't rely solely on CI for catching issues
 
 ## References
 
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [Dependabot Documentation](https://docs.github.com/en/code-security/dependabot)
 - [ROS 2 CI/CD Best Practices](https://docs.ros.org/en/rolling/How-To-Guides/Developing-a-ROS-2-Package.html)
 - [ros-tooling/setup-ros](https://github.com/ros-tooling/setup-ros)
+- [clang-tidy documentation](https://clang.llvm.org/extra/clang-tidy/)
+- [List of all clang-tidy checks](https://clang.llvm.org/extra/clang-tidy/checks/list.html)
+- [ROS 2 C++ Style Guide](https://docs.ros.org/en/rolling/Contributing/Code-Style-Language-Versions.html)

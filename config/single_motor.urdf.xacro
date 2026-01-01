@@ -37,7 +37,6 @@
 
       <command_interface name="velocity"/>
       <command_interface name="acceleration"/>
-      <command_interface name="emergency_stop"/>
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>

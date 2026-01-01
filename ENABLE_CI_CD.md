@@ -77,85 +77,35 @@ on:
   workflow_dispatch:
 ```
 
-#### 3. [.github/workflows/lint.yml](.github/workflows/lint.yml)
+### Step 3: Dependabot (Already Configured ✓)
 
-Change:
-```yaml
-on:
-  # pull_request:
-  # push:
-  #   branches: [main, develop]
-  workflow_dispatch:
+Dependabot is already configured in [.github/dependabot.yml](.github/dependabot.yml) and will automatically:
+
+- Check for GitHub Actions updates monthly
+- Check for git submodule (SCServo_Linux) updates monthly
+- Create PRs for dependency updates
+
+No additional setup needed - it works on both private and public repos.
+
+### Step 4: Update Badge URLs (Optional)
+
+In [README.md](README.md), you can add status badges:
+
+```markdown
+[![Build & Test](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/build-test.yml)
+[![clang-tidy](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/clang-tidy.yml/badge.svg)](https://github.com/YOUR_USERNAME/sts_hardware_interface/actions/workflows/clang-tidy.yml)
 ```
 
-To:
-```yaml
-on:
-  pull_request:
-  push:
-    branches: [main, develop]
-```
-
-#### 4. [.github/workflows/pr-comments-check.yml](.github/workflows/pr-comments-check.yml)
-
-Change:
-```yaml
-on:
-  # pull_request:
-  #   types: [opened, synchronize, reopened, edited]
-  # pull_request_review:
-  #   ...
-  workflow_dispatch:
-```
-
-To:
-```yaml
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, edited]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
-  issue_comment:
-    types: [created, edited, deleted]
-```
-
-#### 5. [.github/workflows/release.yml](.github/workflows/release.yml)
-
-Change:
-```yaml
-on:
-  # push:
-  #   tags:
-  #     - 'v*'
-  workflow_dispatch:
-```
-
-To:
-```yaml
-on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-```
-
-### Step 3: Update Badge URLs
-
-In [README.md](README.md), replace `YOUR_USERNAME` with your actual GitHub username in all badge URLs.
-
-Find and replace:
-- `YOUR_USERNAME` → your actual GitHub username
+Replace `YOUR_USERNAME` with your actual GitHub username.
 
 ## Quick Enable Script
 
 Or use this one-liner to uncomment all at once:
 
 ```bash
-# Remove the comment markers from workflow files
-sed -i 's/^  # /  /g' .github/workflows/*.yml
-sed -i 's/^# DISABLED.*//g' .github/workflows/*.yml
+# Remove the comment markers from workflow trigger sections
+sed -i 's/^  # /  /g' .github/workflows/build-test.yml
+sed -i 's/^  # /  /g' .github/workflows/clang-tidy.yml
 ```
 
 ## Verify It's Working
@@ -164,23 +114,22 @@ sed -i 's/^# DISABLED.*//g' .github/workflows/*.yml
 2. Create a test PR
 3. Check the "Actions" tab - you should see workflows running
 4. Badges in README should show "passing" status
+5. Dependabot will start creating PRs for updates (check "Pull requests" tab)
 
 ## Cost Information
 
 | Repository Type | GitHub Actions Minutes | Your Workflows |
 |----------------|----------------------|----------------|
-| **Private** | 2,000 min/month (free tier) | ~25 min per PR |
+| **Private** | 2,000 min/month (free tier) | ~10-15 min per PR |
 | **Public** | ♾️ **UNLIMITED & FREE** | No cost! |
 
 ## What Each Workflow Does
 
 Once enabled:
 
-- ✅ **Build & Test** - Tests on Humble, Iron, Jazzy, Kilted, Rolling
-- ✅ **clang-tidy** - Static analysis, finds bugs
-- ✅ **Lint** - Code style checks
-- ✅ **PR Comments Check** - Enforces review resolution
-- ✅ **Release** - Automated releases on tags
+- ✅ **Build & Test** - Tests compilation on Humble, Iron, Jazzy, Kilted, Rolling (~7-10 min)
+- ✅ **clang-tidy** - Static analysis, finds bugs and style issues (~3-5 min)
+- ✅ **Dependabot** - Automatic dependency updates (already enabled, no minutes used)
 
 See [docs/CI_CD.md](docs/CI_CD.md) for complete documentation.
 

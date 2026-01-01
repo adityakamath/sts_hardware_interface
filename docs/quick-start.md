@@ -1,31 +1,19 @@
-# Quick Start Guide - STS Hardware Interface
+# Quick Start Guide
 
-Get your STS servo motors running with ros2_control in 5 minutes!
-
-## Prerequisites
-
-- ROS 2 (Humble, Iron, or newer)
-- STS servo motors (Feetech STS series)
-- USB-to-Serial adapter (or built-in serial port)
-- motors configured with unique IDs (1-253)
+Complete setup and basic usage instructions for the STS Hardware Interface.
 
 ## Installation
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 cd ~/ros2_ws/src
-git clone <your-repo-url> sts_hardware_interface
+git clone <repository-url> sts_hardware_interface
 cd sts_hardware_interface
-```
-
-### 2. Initialize submodule
-
-```bash
 git submodule update --init --recursive
 ```
 
-### 3. Build
+### 2. Build the Package
 
 ```bash
 cd ~/ros2_ws
@@ -33,420 +21,286 @@ colcon build --packages-select sts_hardware_interface
 source install/setup.bash
 ```
 
-## Quick Test (No Hardware)
+## Hardware Setup
 
-Test the interface without motors using mock mode:
+### 1. Connect Motors
+
+- Connect Feetech STS servos to USB-to-serial adapter
+- Default baud rate: 1000000
+- Ensure each motor has a unique ID (1-253)
+
+### 2. Configure Motor IDs
+
+Use the Feetech debugging software or vendor tools to:
+- Assign unique IDs to each motor
+- Set appropriate baud rate
+- Verify motors respond to commands
+
+### 3. Find Serial Port
 
 ```bash
-# Launch single motor in simulation mode
-ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
+# List available serial ports
+ls /dev/tty*
 
-# In another terminal, check hardware status
+# Common ports:
+# - Linux: /dev/ttyUSB0, /dev/ttyACM0
+# - macOS: /dev/tty.usbserial-*
+```
+
+## Basic Configuration
+
+### Single Motor Example
+
+Create a URDF file with ros2_control configuration:
+
+```xml
+<?xml version="1.0"?>
+<robot name="single_motor_robot">
+  <ros2_control name="sts_system" type="system">
+    <hardware>
+      <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+      <param name="serial_port">/dev/ttyUSB0</param>
+      <param name="baud_rate">1000000</param>
+    </hardware>
+
+    <joint name="joint1">
+      <param name="motor_id">1</param>
+      <param name="operating_mode">1</param>  <!-- Velocity mode -->
+      <command_interface name="velocity"/>
+      <command_interface name="acceleration"/>
+      <command_interface name="emergency_stop"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="load"/>
+      <state_interface name="voltage"/>
+      <state_interface name="temperature"/>
+      <state_interface name="current"/>
+    </joint>
+  </ros2_control>
+</robot>
+```
+
+### Controller Configuration
+
+Create `controllers.yaml`:
+
+```yaml
+controller_manager:
+  ros__parameters:
+    update_rate: 50  # Hz
+
+joint_state_broadcaster:
+  ros__parameters:
+    type: joint_state_broadcaster/JointStateBroadcaster
+
+forward_command_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    joints:
+      - joint1
+    interface_name: velocity
+```
+
+## Launching the System
+
+### 1. Load Robot Description
+
+```bash
+ros2 param set /robot_state_publisher robot_description \
+  "$(xacro /path/to/your/robot.urdf.xacro)"
+```
+
+### 2. Start Controller Manager
+
+```bash
+ros2 run controller_manager ros2_control_node \
+  --ros-args --params-file /path/to/controllers.yaml
+```
+
+### 3. Spawn Controllers
+
+```bash
+# Load and start joint state broadcaster
+ros2 control load_controller --set-state active joint_state_broadcaster
+
+# Load and start your command controller
+ros2 control load_controller --set-state active forward_command_controller
+```
+
+## Testing
+
+### 1. Verify Hardware Connection
+
+```bash
 ros2 control list_hardware_interfaces
-
-# Send velocity command
-ros2 topic pub /velocity_controller/commands std_msgs/msg/Float64MultiArray "{data: [2.0]}"
-
-# Monitor joint states
-ros2 topic echo /joint_states
 ```
 
-## Real Hardware Setup
+Expected output shows available command and state interfaces for each joint.
 
-### 1. Connect your motor
-
-- Connect STS motor to USB-to-Serial adapter
-- Power the motor (6-12V)
-- Note the serial port: `/dev/ttyACM0` or `/dev/ttyUSB0`
-
-### 2. Verify motor ID
-
-Use the Feetech Debug tool or SCServo library to verify/set motor ID:
-
-```bash
-# Example: Motor should respond to ping at ID 1
-# (Requires SCServo tools - see SCServo_Linux documentation)
-```
-
-### 3. Launch with real hardware
-
-**Single Motor (Velocity Mode):**
-
-```bash
-# Launch with your serial port and motor ID
-ros2 launch sts_hardware_interface single_motor.launch.py \
-  serial_port:=/dev/ttyACM0 \
-  motor_id:=1 \
-  baud_rate:=1000000
-
-# Send velocity command
-ros2 topic pub /velocity_controller/commands std_msgs/msg/Float64MultiArray "{data: [5.0]}"
-
-# Monitor diagnostics
-ros2 topic echo /diagnostics
-```
-
-**Mixed-Mode (Wheel + Arm + Gripper):**
-
-```bash
-# Launch with 3 motors in different operating modes
-ros2 launch sts_hardware_interface mixed_mode.launch.py \
-  serial_port:=/dev/ttyACM0
-
-# Send commands to different controllers
-ros2 topic pub /wheel_controller/commands std_msgs/msg/Float64MultiArray "{data: [5.0]}"
-ros2 topic pub /arm_controller/joint_trajectory ...
-ros2 topic pub /gripper_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.5]}"
-```
-
-### 4. Alternative: Manual URDF Configuration
-
-If you prefer to create your own URDF/launch files:
-
-**Single Motor Example:**
-
-```xml
-<ros2_control name="wheel_controller" type="system">
-  <hardware>
-    <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
-    <param name="serial_port">/dev/ttyACM0</param>
-    <param name="baud_rate">1000000</param>
-  </hardware>
-
-  <joint name="wheel_joint">
-    <param name="motor_id">1</param>
-    <param name="operating_mode">1</param>  <!-- Velocity mode (per-joint) -->
-    <param name="max_velocity">15.0</param>  <!-- rad/s -->
-    <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
-    <command_interface name="emergency_stop"/>
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-    <state_interface name="load"/>
-    <state_interface name="voltage"/>
-    <state_interface name="temperature"/>
-    <state_interface name="current"/>
-    <state_interface name="is_moving"/>
-  </joint>
-</ros2_control>
-```
-
-**Three-Motor Chain Example (Same Mode):**
-
-```xml
-<ros2_control name="mobile_base" type="system">
-  <hardware>
-    <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
-    <param name="serial_port">/dev/ttyACM0</param>
-    <param name="baud_rate">1000000</param>
-    <param name="use_sync_write">true</param>  <!-- Enable SyncWrite -->
-  </hardware>
-
-  <joint name="wheel_left">
-    <param name="motor_id">1</param>
-    <param name="operating_mode">1</param>  <!-- Velocity mode -->
-    <param name="max_velocity">15.0</param>
-    <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-  </joint>
-
-  <joint name="wheel_right">
-    <param name="motor_id">2</param>
-    <param name="operating_mode">1</param>  <!-- Velocity mode -->
-    <param name="max_velocity">15.0</param>
-    <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-  </joint>
-
-  <joint name="wheel_back">
-    <param name="motor_id">3</param>
-    <param name="operating_mode">1</param>  <!-- Velocity mode -->
-    <param name="max_velocity">15.0</param>
-    <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-  </joint>
-</ros2_control>
-```
-
-**Mixed-Mode Chain Example (NEW!):**
-
-```xml
-<ros2_control name="robot_arm" type="system">
-  <hardware>
-    <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
-    <param name="serial_port">/dev/ttyACM0</param>
-    <param name="baud_rate">1000000</param>
-    <param name="use_sync_write">true</param>  <!-- Automatic mode grouping -->
-  </hardware>
-
-  <joint name="wheel_joint">
-    <param name="motor_id">1</param>
-    <param name="operating_mode">1</param>  <!-- Velocity control -->
-    <param name="max_velocity">15.0</param>
-    <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-  </joint>
-
-  <joint name="arm_joint">
-    <param name="motor_id">2</param>
-    <param name="operating_mode">0</param>  <!-- Position/servo control -->
-    <param name="min_position">-1.57</param>
-    <param name="max_position">1.57</param>
-    <command_interface name="position"/>
-    <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-  </joint>
-
-  <joint name="gripper_joint">
-    <param name="motor_id">3</param>
-    <param name="operating_mode">2</param>  <!-- PWM/effort control -->
-    <command_interface name="effort"/>
-    <state_interface name="position"/>
-    <state_interface name="load"/>
-  </joint>
-</ros2_control>
-```
-
-See the complete URDF examples in `config/single_motor.urdf.xacro` and `config/mixed_mode.urdf.xacro`.
-
-## Monitoring
-
-### Check diagnostics
-
-```bash
-ros2 topic echo /diagnostics
-```
-
-Look for:
-- Motor status (OK/WARN/ERROR)
-- Temperature, voltage, current
-- Load percentage
-- Performance metrics (read/write duration)
-
-### Monitor state
+### 2. Monitor Joint States
 
 ```bash
 ros2 topic echo /joint_states
 ```
 
-## Common Issues
+Should show real-time position, velocity, and effort for all joints.
 
-### "Failed to open serial port"
+### 3. Send Commands
 
-**Cause:** Port doesn't exist or no permissions
+**Velocity Mode**:
 
-**Fix:**
 ```bash
-# Check available ports
-ls /dev/ttyACM* /dev/ttyUSB*
-
-# Add user to dialout group
-sudo usermod -a -G dialout $USER
-# Log out and back in
-
-# Or use sudo (not recommended)
-sudo chown $USER /dev/ttyACM0
+ros2 topic pub /forward_command_controller/commands std_msgs/msg/Float64MultiArray \
+  "data: [2.0]"  # 2.0 rad/s
 ```
 
-### "Failed to ping motor"
+**Position Mode** (operating_mode=0):
 
-**Cause:** Wrong motor ID, wrong baud rate, or motor not powered
+```bash
+ros2 topic pub /forward_command_controller/commands std_msgs/msg/Float64MultiArray \
+  "data: [1.57]"  # π/2 radians
+```
 
-**Fix:**
-- Verify motor is powered (LED on)
-- Check motor ID matches URDF
-- Try different baud rates (115200, 1000000)
-- Use Feetech Debug tool to verify motor responds
+**PWM Mode** (operating_mode=2):
 
-### "Communication timeout"
-
-**Cause:** Baud rate mismatch or cable issue
-
-**Fix:**
-- Try `<param name="baud_rate">115200</param>`
-- Check USB cable quality
-- Reduce cable length (<3m recommended)
-
-### Motors not moving
-
-**Cause:** Torque not enabled or safety limits
-
-**Fix:**
-- Check controller is loaded and active
-- Verify commands are being sent
-- Check `emergency_stop` is not active (should be 0.0)
-- Increase `max_velocity` limit if clamping
+```bash
+ros2 topic pub /forward_command_controller/commands std_msgs/msg/Float64MultiArray \
+  "data: [500.0]"  # PWM value
+```
 
 ## Operating Modes
 
-### Mode 0: Position Control (Servo)
+### Mode 0: Position (Servo)
 
-**Use for:** Arms, grippers, joints that need to hold position
-
-```xml
-<param name="operating_mode">0</param>
-```
-
-```cpp
-// Commands
-position: 1.57      // Target: π/2 radians
-velocity: 5.0       // Max speed limit
-acceleration: 100   // Acceleration (0-254)
-```
-
-### Mode 1: Velocity Control (Default)
-
-**Use for:** Wheels, continuous rotation
+- **Use Case**: Arm joints, precise positioning
+- **Interfaces**: position, velocity, acceleration commands
+- **Range**: ±π radians (with multi-turn: unlimited)
 
 ```xml
-<param name="operating_mode">1</param>
+<joint name="arm_joint">
+  <param name="motor_id">1</param>
+  <param name="operating_mode">0</param>
+  <param name="min_position">-3.14</param>
+  <param name="max_position">3.14</param>
+  <command_interface name="position"/>
+  <command_interface name="velocity"/>  <!-- optional profile velocity -->
+  <command_interface name="acceleration"/>  <!-- optional profile accel -->
+</joint>
 ```
 
-```cpp
-// Commands
-velocity: 10.0      // Target: 10 rad/s
-acceleration: 50    // Acceleration (0-254)
-```
+### Mode 1: Velocity (Wheel)
 
-### Mode 2: PWM/Effort Control
-
-**Use for:** Custom control, force control
+- **Use Case**: Continuous rotation (wheels, spinners)
+- **Interfaces**: velocity, acceleration commands
+- **Range**: Unlimited rotation
 
 ```xml
-<param name="operating_mode">2</param>
+<joint name="wheel_joint">
+  <param name="motor_id">2</param>
+  <param name="operating_mode">1</param>
+  <param name="max_velocity">15.0</param>  <!-- rad/s -->
+  <command_interface name="velocity"/>
+  <command_interface name="acceleration"/>
+</joint>
 ```
 
-```cpp
-// Commands
-effort: 0.5         // 50% PWM (+/- 1.0)
+### Mode 2: PWM (Effort)
+
+- **Use Case**: Force/torque control, custom behaviors
+- **Interfaces**: effort command
+- **Range**: Motor-specific PWM values
+
+```xml
+<joint name="gripper_joint">
+  <param name="motor_id">3</param>
+  <param name="operating_mode">2</param>
+  <command_interface name="effort"/>
+</joint>
 ```
-
-## Performance Tips
-
-### For Motor Chains (Multiple Motors)
-
-1. **Enable SyncWrite** (default: enabled)
-   ```xml
-   <param name="use_sync_write">true</param>
-   ```
-
-2. **Use high baud rate**
-   ```xml
-   <param name="baud_rate">1000000</param>
-   ```
-
-3. **Group motors on same serial port**
-   - All motors on same chain use same `serial_port`
-   - Motors automatically use SyncWrite
-
-### Expected Performance
-
-| Motors | Configuration | Control Loop Speed |
-|--------|--------------|-------------------|
-| 1 | Single mode | 200 Hz |
-| 3 | Same mode, SyncWrite | 150 Hz |
-| 3 | Mixed modes, SyncWrite | 120-150 Hz |
-| 3 | SyncWrite disabled | 50 Hz |
-| 10 | Same mode, SyncWrite | 100 Hz |
-| 10 | Mixed modes, SyncWrite | 80-100 Hz |
-
-**Mixed-Mode Note**: When using motors with different operating modes, the interface automatically groups motors by mode and sends separate SyncWrite commands for each group. This is slightly slower than single-mode operation but still much faster than individual writes.
 
 ## Advanced Features
 
 ### Multi-Turn Tracking
 
-**What It Does:** Tracks continuous position beyond ±180° for applications requiring multi-revolution tracking (e.g., mobile robot wheels, continuous rotation joints).
-
-**The Problem:** STS servo motors internally report position as 0-4095 steps, which wraps around at ±π radians (±180°). Without multi-turn tracking, a motor rotating 3 full revolutions forward would report the same position as 1 revolution forward.
-
-**The Solution:** When enabled, the hardware interface detects position wrap-around and maintains a revolution counter, providing true continuous position tracking.
-
-**Enable Multi-Turn Tracking:**
+Enable unlimited rotation in position mode:
 
 ```xml
-<param name="enable_multi_turn">true</param>
+<hardware>
+  <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+  <param name="enable_multi_turn">true</param>
+</hardware>
 ```
 
-**Use Cases:**
+### Mock Mode (Simulation)
 
-- **Mobile Robot Wheels** - Accurate odometry requires tracking total wheel rotation beyond ±180°
-- **Multi-Revolution Joints** - Arms or gimbals that rotate more than one full revolution
-- **Continuous Rotation** - Applications where position accumulates over time
-
-**Impact:**
-
-- **Code Cost:** 37 lines, negligible (~10 CPU instructions per read cycle)
-- **Memory:** 16 bytes per joint (revolution counter + last position)
-- **Performance:** No measurable impact on control loop frequency
-
-**When to Disable:** Only disable if all joints are limited to ±180° range and never need position accumulation (saves ~16 bytes per joint).
-
-### Emergency Stop
-
-**Broadcast Emergency Stop (NEW!)** - Stop ALL motors at once:
-
-```bash
-# Stop ALL motors immediately
-ros2 topic pub /hardware_name/broadcast_emergency_stop std_msgs/msg/Float64 "{data: 1.0}"
-
-# Release (allow motion again)
-ros2 topic pub /hardware_name/broadcast_emergency_stop std_msgs/msg/Float64 "{data: 0.0}"
-```
-
-This uses the STS broadcast ID (254/0xFE) to send a single stop command to all motors on the bus, regardless of their operating mode.
-
-**Per-motor emergency stop:**
-
-```bash
-# Stop individual motor/joint
-ros2 topic pub /joint_name/emergency_stop std_msgs/msg/Float64 "{data: 1.0}"
-
-# Release
-ros2 topic pub /joint_name/emergency_stop std_msgs/msg/Float64 "{data: 0.0}"
-```
-
-### Hardware Limits
-
-Protect motors from exceeding safe ranges:
+Test without hardware:
 
 ```xml
-<joint name="arm_joint">
-  <param name="motor_id">1</param>
-  <param name="min_position">-1.57</param>  <!-- -π/2 rad -->
-  <param name="max_position">1.57</param>   <!-- +π/2 rad -->
-  <param name="max_velocity">10.0</param>   <!-- 10 rad/s -->
-  <param name="max_effort">0.8</param>      <!-- 80% max -->
-</joint>
+<hardware>
+  <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+  <param name="enable_mock_mode">true</param>
+</hardware>
 ```
 
-Commands will be automatically clamped to these limits.
+### SyncWrite Optimization
+
+For multiple motors, enable efficient batch writes:
+
+```xml
+<hardware>
+  <param name="use_sync_write">true</param>  <!-- default -->
+</hardware>
+```
+
+## Common Issues
+
+### Motor Not Responding
+
+1. **Check serial port**:
+   ```bash
+   ls -l /dev/ttyUSB0
+   # Should show readable/writable permissions
+   ```
+
+2. **Add user to dialout group** (Linux):
+   ```bash
+   sudo usermod -a -G dialout $USER
+   # Log out and back in
+   ```
+
+3. **Verify motor ID**:
+   - Use vendor software to confirm motor ID matches URDF
+   - Check baud rate is consistent
+
+### Position Jumps or Drift
+
+- **Enable multi-turn tracking** if joints rotate beyond ±π
+- **Check mechanical connection**: loose coupling can cause position errors
+- **Verify position feedback**: echo `/joint_states` to see raw readings
+
+### Communication Errors
+
+- **Lower baud rate**: Try 115200 instead of 1000000
+- **Check cable quality**: Use shielded USB cable
+- **Reduce bus load**: Decrease update_rate in controller config
+
+### Emergency Stop Not Working
+
+- Emergency stop is broadcast (stops all motors), send to system:
+  ```bash
+  ros2 topic pub /motor_system/emergency_stop std_msgs/msg/Bool "data: true"
+  ```
+  (Replace `/motor_system` with your ros2_control system name)
 
 ## Next Steps
 
-1. **Read the full README** for detailed parameter descriptions
-2. **Check IMPLEMENTATION_SUMMARY.md** for architecture details
-3. **Review IMPROVEMENTS.md** for safety features
-4. **Join the community** (if applicable - add your discussion forum/discord)
+- See [architecture.md](architecture.md) for system design details
+- Review CI/CD documentation for testing and quality assurance
+- Integrate with your robot's controller stack
+- Tune velocity/acceleration limits for your application
 
-## Support
+## Additional Resources
 
-**Issues:** Report bugs at [GitHub Issues](your-repo-url/issues)
-
-**Documentation:** See [README.md](README.md) for complete reference
-
-**Examples:** Check the `examples/` directory (if you create one)
-
----
-
-**Happy controlling! 🤖**
+- [ros2_control documentation](https://control.ros.org/)
+- [Feetech STS3215 manual](http://www.feetechrc.com)
+- [SCServo protocol documentation](https://github.com/feetech-rc/SCServo_Linux)

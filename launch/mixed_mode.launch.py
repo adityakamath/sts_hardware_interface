@@ -1,4 +1,36 @@
-"""Launch file for mixed-mode motor chain (wheel + arm + gripper)"""
+#!/usr/bin/env python3
+# Copyright 2025 Aditya Kamath
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Launch file for mixed-mode motor chain (wheel + arm + gripper).
+
+This launch file demonstrates advanced usage of the STS Hardware Interface with multiple
+motors operating in different control modes on the same serial bus:
+- Wheel joint in velocity (Mode 1) for continuous rotation
+- Arm joint in position/servo (Mode 0) for precise positioning
+- Gripper joint in PWM/effort (Mode 2) for force control
+
+The configuration showcases:
+- Mixed-mode operation: Different motors in different operating modes
+- Multi-motor coordination: SyncWrite for efficient bus communication
+- Multiple controller types: Position, velocity, and effort controllers
+- Complex robot configurations: Combining different actuator types
+
+Example usage:
+    ros2 launch sts_hardware_interface mixed_mode.launch.py serial_port:=/dev/ttyACM0
+    ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true
+"""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler
@@ -10,6 +42,11 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    """Generate launch description for mixed-mode motor chain demonstration.
+
+    Returns:
+        LaunchDescription: Complete launch configuration with all nodes and parameters
+    """
     # Declare arguments
     declared_arguments = []
 
