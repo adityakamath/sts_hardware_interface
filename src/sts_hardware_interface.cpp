@@ -449,27 +449,31 @@ hardware_interface::return_type STSHardwareInterface::read(
     double dt = period.seconds();
 
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      // Always simulate position and velocity for control logic
       double prev_position = hw_state_position_[i];
 
-      if (operating_modes_[i] == MODE_SERVO) {
-        // Simulate position control with first-order response
-        double position_error = hw_cmd_position_[i] - hw_state_position_[i];
-        double max_step = hw_cmd_velocity_[i] * dt;
-        if (std::abs(position_error) > max_step && max_step > 0) {
-          hw_state_position_[i] += (position_error > 0 ? max_step : -max_step);
-        } else {
-          hw_state_position_[i] = hw_cmd_position_[i];
+      switch (operating_modes_[i]) {
+        case MODE_SERVO: {
+          // Simulate position control with first-order response
+          double position_error = hw_cmd_position_[i] - hw_state_position_[i];
+          double max_step = hw_cmd_velocity_[i] * dt;
+          if (std::abs(position_error) > max_step && max_step > 0) {
+            hw_state_position_[i] += (position_error > 0 ? max_step : -max_step);
+          } else {
+            hw_state_position_[i] = hw_cmd_position_[i];
+          }
+          hw_state_velocity_[i] = (hw_state_position_[i] - prev_position) / (dt > 0 ? dt : 0.001);
+          break;
         }
-        hw_state_velocity_[i] = (hw_state_position_[i] - prev_position) / (dt > 0 ? dt : 0.001);
-      } else if (operating_modes_[i] == MODE_VELOCITY) {
-        // Simulate velocity control
-        hw_state_velocity_[i] = hw_cmd_velocity_[i];
-        hw_state_position_[i] += hw_state_velocity_[i] * dt;
-      } else {  // MODE_PWM
-        // Simulate PWM as torque control
-        hw_state_velocity_[i] = hw_cmd_effort_[i] * 10.0;
-        hw_state_position_[i] += hw_state_velocity_[i] * dt;
+        case MODE_VELOCITY:
+          // Simulate velocity control
+          hw_state_velocity_[i] = hw_cmd_velocity_[i];
+          hw_state_position_[i] += hw_state_velocity_[i] * dt;
+          break;
+        case MODE_PWM:
+          // Simulate PWM as torque control
+          hw_state_velocity_[i] = hw_cmd_effort_[i] * 10.0;
+          hw_state_position_[i] += hw_state_velocity_[i] * dt;
+          break;
       }
 
       // Simulate load based on velocity
@@ -614,13 +618,11 @@ hardware_interface::return_type STSHardwareInterface::write(
       std::vector<u8> accelerations;
 
       for (size_t idx : servo_motors) {
-        // Apply position and velocity limits
-        double target_position = has_position_limits_[idx]
-          ? std::clamp(hw_cmd_position_[idx], position_min_[idx], position_max_[idx])
-          : hw_cmd_position_[idx];
-        double max_speed = has_velocity_limits_[idx]
-          ? std::min(hw_cmd_velocity_[idx], velocity_max_[idx])
-          : hw_cmd_velocity_[idx];
+        double target_position = apply_limit(hw_cmd_position_[idx], position_max_[idx], has_position_limits_[idx], false);
+        if (has_position_limits_[idx]) {
+          target_position = std::max(target_position, position_min_[idx]);
+        }
+        double max_speed = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], false);
 
         ids.push_back(motor_ids_[idx]);
         positions.push_back(radians_to_raw_position(target_position));
@@ -640,12 +642,11 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single servo motor or when SyncWrite disabled
       for (size_t idx : servo_motors) {
-        double target_position = has_position_limits_[idx]
-          ? std::clamp(hw_cmd_position_[idx], position_min_[idx], position_max_[idx])
-          : hw_cmd_position_[idx];
-        double max_speed = has_velocity_limits_[idx]
-          ? std::min(hw_cmd_velocity_[idx], velocity_max_[idx])
-          : hw_cmd_velocity_[idx];
+        double target_position = apply_limit(hw_cmd_position_[idx], position_max_[idx], has_position_limits_[idx], false);
+        if (has_position_limits_[idx]) {
+          target_position = std::max(target_position, position_min_[idx]);
+        }
+        double max_speed = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], false);
 
         int raw_position = radians_to_raw_position(target_position);
         int raw_max_speed = std::clamp(
@@ -655,19 +656,7 @@ hardware_interface::return_type STSHardwareInterface::write(
 
         int result = servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration);
 
-        if (result != 1) {
-          consecutive_write_errors_++;
-          int servo_error = servo_->getErr();
-          RCLCPP_WARN_THROTTLE(
-            logger_,
-            *rclcpp::Clock::make_shared(), 1000,
-            "Failed to write position to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
-            motor_ids_[idx], joint_names_[idx].c_str(),
-            consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
-
-          if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
-            consecutive_write_errors_ = 0;
-          }
+        if (handle_write_error(result, idx, "position")) {
           return hardware_interface::return_type::ERROR;
         }
       }
@@ -683,10 +672,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       std::vector<u8> accelerations;
 
       for (size_t idx : velocity_motors) {
-        double target_velocity = has_velocity_limits_[idx]
-          ? std::clamp(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx])
-          : hw_cmd_velocity_[idx];
-
+        double target_velocity = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], true);
         ids.push_back(motor_ids_[idx]);
         velocities.push_back(rad_s_to_raw_velocity(target_velocity));
         accelerations.push_back(static_cast<u8>(std::clamp(
@@ -703,29 +689,14 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single velocity motor or when SyncWrite disabled
       for (size_t idx : velocity_motors) {
-        double target_velocity = has_velocity_limits_[idx]
-          ? std::clamp(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx])
-          : hw_cmd_velocity_[idx];
-
+        double target_velocity = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], true);
         int raw_velocity = rad_s_to_raw_velocity(target_velocity);
         int acceleration = static_cast<int>(std::clamp(
           hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION)));
 
         int result = servo_->WriteSpe(motor_ids_[idx], raw_velocity, acceleration);
 
-        if (result != 1) {
-          consecutive_write_errors_++;
-          int servo_error = servo_->getErr();
-          RCLCPP_WARN_THROTTLE(
-            logger_,
-            *rclcpp::Clock::make_shared(), 1000,
-            "Failed to write velocity to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
-            motor_ids_[idx], joint_names_[idx].c_str(),
-            consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
-
-          if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
-            consecutive_write_errors_ = 0;
-          }
+        if (handle_write_error(result, idx, "velocity")) {
           return hardware_interface::return_type::ERROR;
         }
       }
@@ -740,10 +711,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       std::vector<s16> pwm_values;
 
       for (size_t idx : pwm_motors) {
-        double target_effort = has_effort_limits_[idx]
-          ? std::clamp(hw_cmd_effort_[idx], -effort_max_[idx], effort_max_[idx])
-          : hw_cmd_effort_[idx];
-
+        double target_effort = apply_limit(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx], true);
         ids.push_back(motor_ids_[idx]);
         pwm_values.push_back(effort_to_raw_pwm(target_effort));
       }
@@ -754,26 +722,11 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single PWM motor or when SyncWrite disabled
       for (size_t idx : pwm_motors) {
-        double target_effort = has_effort_limits_[idx]
-          ? std::clamp(hw_cmd_effort_[idx], -effort_max_[idx], effort_max_[idx])
-          : hw_cmd_effort_[idx];
-
+        double target_effort = apply_limit(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx], true);
         int raw_pwm = effort_to_raw_pwm(target_effort);
         int result = servo_->WritePwm(motor_ids_[idx], raw_pwm);
 
-        if (result != 1) {
-          consecutive_write_errors_++;
-          int servo_error = servo_->getErr();
-          RCLCPP_WARN_THROTTLE(
-            logger_,
-            *rclcpp::Clock::make_shared(), 1000,
-            "Failed to write PWM to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
-            motor_ids_[idx], joint_names_[idx].c_str(),
-            consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
-
-          if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
-            consecutive_write_errors_ = 0;
-          }
+        if (handle_write_error(result, idx, "PWM")) {
           return hardware_interface::return_type::ERROR;
         }
       }
@@ -807,27 +760,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
 
   // Stop all motors based on current operating mode
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    int result = -1;
-    switch (operating_modes_[i]) {
-      case MODE_SERVO: {
-        int current_pos = servo_->ReadPos(motor_ids_[i]);
-        if (current_pos != -1) {
-          result = servo_->WritePosEx(motor_ids_[i], current_pos, 0, 0);
-        }
-        break;
-      }
-      case MODE_VELOCITY:
-        result = servo_->WriteSpe(motor_ids_[i], 0, 0);
-        break;
-      case MODE_PWM:
-        result = servo_->WritePwm(motor_ids_[i], 0);
-        break;
-    }
-
+    int result = stop_motor(i, 0);
     if (result != 1) {
-      RCLCPP_WARN(
-        logger_,
-        "Failed to stop motor %d (joint '%s') during deactivation (mode: %d)",
+      RCLCPP_WARN(logger_, "Failed to stop motor %d (joint '%s') during deactivation (mode: %d)",
         motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i]);
     }
 
@@ -872,29 +807,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
   // Ensure all motors are stopped and torque disabled
   if (servo_) {
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      // Stop motor based on current operating mode
-      switch (operating_modes_[i]) {
-        case MODE_SERVO: {
-          int current_pos = servo_->ReadPos(motor_ids_[i]);
-          if (current_pos != -1) {
-            servo_->WritePosEx(motor_ids_[i], current_pos, 0, 0);
-          }
-          break;
-        }
-        case MODE_VELOCITY:
-          servo_->WriteSpe(motor_ids_[i], 0, 0);
-          break;
-        case MODE_PWM:
-          servo_->WritePwm(motor_ids_[i], 0);
-          break;
-      }
-
-      // Disable torque for safety
+      stop_motor(i, 0);
       servo_->EnableTorque(motor_ids_[i], 0);
-
-      RCLCPP_INFO(
-        logger_,
-        "Motor %d (joint '%s') shutdown complete",
+      RCLCPP_INFO(logger_, "Motor %d (joint '%s') shutdown complete",
         motor_ids_[i], joint_names_[i].c_str());
     }
 
@@ -921,23 +836,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
 
   // Emergency stop: set all motors to safe state
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    int result = -1;
-    switch (operating_modes_[i]) {
-      case MODE_SERVO: {
-        int current_pos = servo_->ReadPos(motor_ids_[i]);
-        if (current_pos != -1) {
-          result = servo_->WritePosEx(motor_ids_[i], current_pos, 0, 0);
-        }
-        break;
-      }
-      case MODE_VELOCITY:
-        result = servo_->WriteSpe(motor_ids_[i], 0, 254);  // Max deceleration
-        break;
-      case MODE_PWM:
-        result = servo_->WritePwm(motor_ids_[i], 0);
-        break;
-    }
-
+    int result = stop_motor(i, 254);  // Max deceleration for velocity mode
     if (result != 1) {
       RCLCPP_ERROR(logger_, "Failed to send emergency stop command to motor %d (joint '%s')",
         motor_ids_[i], joint_names_[i].c_str());
@@ -1002,6 +901,47 @@ int STSHardwareInterface::effort_to_raw_pwm(double effort) const
   // Effort is normalized [-1.0, 1.0] -> raw PWM [-1000, 1000]
   double clamped = std::clamp(effort, -1.0, 1.0);
   return static_cast<int>(clamped * STS_MAX_PWM);
+}
+
+/** @brief Handle write operation errors with logging and recovery */
+bool STSHardwareInterface::handle_write_error(int result, size_t idx, const char* operation)
+{
+  if (result != 1) {
+    consecutive_write_errors_++;
+    int servo_error = servo_->getErr();
+    RCLCPP_WARN_THROTTLE(
+      logger_,
+      *rclcpp::Clock::make_shared(), 1000,
+      "Failed to write %s to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
+      operation, motor_ids_[idx], joint_names_[idx].c_str(),
+      consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
+
+    if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
+      consecutive_write_errors_ = 0;
+    }
+    return true;  // Error occurred
+  }
+  return false;  // No error
+}
+
+/** @brief Stop a motor based on its operating mode */
+int STSHardwareInterface::stop_motor(size_t idx, int acceleration)
+{
+  switch (operating_modes_[idx]) {
+    case MODE_SERVO: {
+      int current_pos = servo_->ReadPos(motor_ids_[idx]);
+      if (current_pos != -1) {
+        return servo_->WritePosEx(motor_ids_[idx], current_pos, 0, acceleration);
+      }
+      return -1;
+    }
+    case MODE_VELOCITY:
+      return servo_->WriteSpe(motor_ids_[idx], 0, acceleration);
+    case MODE_PWM:
+      return servo_->WritePwm(motor_ids_[idx], 0);
+    default:
+      return -1;
+  }
 }
 
 /** @brief Attempt to recover from communication errors by pinging motors */

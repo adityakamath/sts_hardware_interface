@@ -267,6 +267,19 @@ private:
 
   /** @brief Attempt to recover from communication errors by pinging motors */
   bool attempt_error_recovery();
+
+  /** @brief Stop a motor based on its operating mode */
+  int stop_motor(size_t idx, int acceleration = 0);
+
+  /** @brief Handle write operation errors with logging and recovery */
+  bool handle_write_error(int result, size_t idx, const char* operation);
+
+  /** @brief Apply limit to a value if limit is enabled */
+  template<typename T>
+  T apply_limit(T value, T limit, bool has_limit, bool symmetric = false) const {
+    if (!has_limit) return value;
+    return symmetric ? std::clamp(value, -limit, limit) : std::min(value, limit);
+  }
 };
 
 }  // namespace sts_hardware_interface
