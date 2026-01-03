@@ -1,336 +1,195 @@
 # STS Hardware Interface Architecture
 
-System design and implementation details for the Feetech STS servo motor hardware interface.
+System design and configuration guide for the Feetech STS servo motor hardware interface.
 
 ## Overview
 
-The STS Hardware Interface is a `ros2_control` SystemInterface plugin that bridges ROS 2 control systems with
-Feetech STS series servo motors. It provides a unified interface for position, velocity, and effort control modes.
+The STS Hardware Interface is a `ros2_control` SystemInterface plugin that connects ROS 2 controllers to Feetech STS series servo motors. It provides position, velocity, and effort control modes with configurable parameters.
 
-## Architecture Diagram
+## System Architecture
 
 ```mermaid
 flowchart TB
-    subgraph ROS2["ROS 2 Control System"]
-        CM[Controller Manager]
+    subgraph ROS2["ROS 2 Controllers"]
         C1[Position Controller]
         C2[Velocity Controller]
         C3[Effort Controller]
     end
 
     subgraph HWI["STS Hardware Interface"]
-        SI[SystemInterface]
-        UC[Unit Conversion]
-        ES[Emergency Stop]
-    end
-
-    subgraph Protocol["SCServo Protocol"]
-        SCSL[SCServo Linux Library]
-        Serial[Serial Communication]
+        SI[SystemInterface Plugin]
     end
 
     subgraph Hardware["Physical Motors"]
-        M1[Motor 1]
-        M2[Motor 2]
-        M3[Motor N]
+        M1[Motor 1 - Position Mode]
+        M2[Motor 2 - Velocity Mode]
+        M3[Motor 3 - PWM Mode]
     end
 
-    CM --> SI
-    C1 --> CM
-    C2 --> CM
-    C3 --> CM
-    SI --> UC
-    SI --> ES
-    UC --> SCSL
-    ES --> SCSL
-    SCSL --> Serial
-    Serial <--> M1
-    Serial <--> M2
-    Serial <--> M3
+    C1 --> SI
+    C2 --> SI
+    C3 --> SI
+    SI <--> M1
+    SI <--> M2
+    SI <--> M3
 ```
 
-## Component Responsibilities
+## Operating Modes
 
-### SystemInterface Plugin
+| Mode | Use Case | Command Interfaces | Position Limits |
+|------|----------|-------------------|-----------------|
+| **0: Position** | Arm joints, precise positioning | position, velocity†, acceleration† | 0 to 2π radians (configurable) |
+| **1: Velocity** | Wheels, continuous rotation | velocity, acceleration† | Unlimited |
+| **2: PWM/Effort** | Force control, grippers | effort (-1.0 to +1.0) | N/A |
 
-**File**: [sts_hardware_interface.cpp](../src/sts_hardware_interface.cpp)
+† Optional interfaces
 
-Core `hardware_interface::SystemInterface` implementation:
+**Example configuration:**
 
-- **on_init()**: Parse URDF parameters and validate configuration
-- **on_configure()**: Initialize serial communication and verify motors
-- **on_activate()**: Set operating modes, enable torque, and read initial states
-- **on_deactivate()**: Disable motor torque and stop all motion
-- **on_cleanup()**: Close serial port and cleanup resources
-- **on_shutdown()**: Emergency shutdown and resource cleanup
-- **on_error()**: Handle error state with recovery attempts
-- **read()**: Read motor states from hardware
-- **write()**: Write motor commands to hardware
+```xml
+<!-- Mode 0: Position -->
+<joint name="arm_joint">
+  <param name="motor_id">1</param>
+  <param name="operating_mode">0</param>
+  <param name="min_position">0.0</param>
+  <param name="max_position">6.283</param>
+</joint>
 
-### Unit Conversion Layer
+<!-- Mode 1: Velocity -->
+<joint name="wheel_joint">
+  <param name="motor_id">2</param>
+  <param name="operating_mode">1</param>
+  <param name="max_velocity">15.0</param>
+</joint>
 
-Converts between motor-native units and SI units:
-
-| Function | Conversion |
-|----------|-----------|
-| `raw_position_to_radians()` | Motor steps (0-4095) → radians (0-2π) |
-| `raw_velocity_to_rad_s()` | Motor velocity units → rad/s |
-| `rad_s_to_raw_velocity()` | rad/s → motor velocity units |
-| `radians_to_raw_position()` | radians → motor steps (0-4095) |
-
-**Key Implementation**: Position inversion for direction control:
-
-```cpp
-// Invert motor direction by computing complement
-int inverted_raw = STS_MAX_POSITION - raw_position;
-return static_cast<double>(inverted_raw) * STEPS_TO_RAD;
+<!-- Mode 2: PWM -->
+<joint name="gripper_joint">
+  <param name="motor_id">3</param>
+  <param name="operating_mode">2</param>
+</joint>
 ```
 
-### Emergency Stop System
+## State Interfaces
 
-Broadcast safety mechanism:
-
-- **Broadcast Emergency Stop**:
-  - Single `emergency_stop` command interface stops all motors simultaneously
-  - Uses SCServo broadcast ID (0xFE) for hardware-level safety override
-  - Stops all motors regardless of operating mode
-  - Available at system level (not per-joint)
-
-### Operating Mode Management
-
-#### Mode 0: Position (Servo)
-
-- Motor in servo mode (limited rotation)
-- Accepts position, velocity (profile), acceleration commands
-- Returns position, velocity, load feedback
-
-#### Mode 1: Velocity (Wheel)
-
-- Motor in wheel mode (continuous rotation)
-- Accepts velocity, acceleration commands
-- Returns position (odometry), velocity feedback
-- No position limits
-
-#### Mode 2: PWM (Effort)
-
-- Direct PWM control
-- Accepts effort (PWM value) commands
-- Returns load (current) feedback
-- For force/torque control applications
-
-## Communication Protocol
-
-### Serial Communication
-
-- **Library**: SCServo Linux SDK (submodule)
-- **Protocol**: Feetech STS/SCServo packet format
-- **Baud Rate**: Configurable (default: 1000000)
-- **Bus Topology**: Half-duplex RS485 or TTL serial
-
-### Packet Types
-
-| Operation | Packet Type | Use Case |
-|-----------|------------|----------|
-| Read | Single Read | Get individual motor state |
-| Write | Single Write | Command individual motor |
-| SyncWrite | Batch Write | Command multiple motors efficiently |
-| Broadcast | Broadcast Write | Emergency stop all motors |
-
-### SyncWrite Optimization
-
-For multi-motor systems:
-
-- Batches commands into single packet
-- Reduces bus overhead
-- Improves control loop timing
-- Enabled by default (`use_sync_write: true`)
-
-## State and Command Interfaces
-
-### State Interfaces (Read from Hardware)
+All modes provide the following optional state interfaces. Configure only what you need:
 
 | Interface | Unit | Description |
 |-----------|------|-------------|
-| position | rad | Current joint angle |
-| velocity | rad/s | Current angular velocity |
-| load | % | Motor load (0-100%) |
-| voltage | V | Supply voltage |
-| temperature | °C | Motor temperature |
-| current | mA | Motor current draw |
+| `position` | radians | Current joint angle |
+| `velocity` | rad/s | Current angular velocity |
+| `load` | -100 to +100% | Motor load/torque |
+| `voltage` | volts | Supply voltage |
+| `temperature` | °C | Motor temperature |
+| `current` | amperes | Motor current draw |
+| `is_moving` | 0.0 or 1.0 | Motion status |
 
-### Command Interfaces (Write to Hardware)
+### Accessing State Interfaces
 
-**Position Mode**:
+The `joint_state_broadcaster` publishes motor state to two topics:
 
-- `position` (rad): Target angle
-- `velocity` (rad/s): Profile velocity (optional)
-- `acceleration` (rad/s²): Profile acceleration (optional)
+**Standard state (`/joint_states`):**
 
-**Velocity Mode**:
+- Published as `sensor_msgs/JointState`
+- Contains `position`, `velocity`, and `effort` fields
+- Always available
 
-- `velocity` (rad/s): Target speed
-- `acceleration` (rad/s²): Ramp rate (optional)
+**Additional state (`/dynamic_joint_states`):**
 
-**PWM Mode**:
+- Published as `control_msgs/DynamicJointState`
+- Contains all other state interfaces (load, voltage, temperature, current, is_moving)
+- Requires configuration in controller YAML:
 
-- `effort` (PWM units): Direct torque control
+```yaml
+joint_state_broadcaster:
+  ros__parameters:
+    extra_joints:
+      - wheel_joint
+      - arm_joint
+```
 
-**System-Level**:
+See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for a complete example.
 
-- `emergency_stop` (bool): Broadcast emergency stop (stops ALL motors)
+## Hardware Parameters
 
-## Safety Features
+Configure these at the system level in your URDF:
 
-### Hardware Limits
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `serial_port` | string | *required* | Serial port path (e.g., `/dev/ttyACM0`) |
+| `baud_rate` | int | 1000000 | Communication baud rate (9600-1000000) |
+| `communication_timeout_ms` | int | 100 | Serial timeout (1-1000 ms) |
+| `use_sync_write` | bool | true | Batch commands for multiple motors |
+| `enable_mock_mode` | bool | false | Simulation mode (no hardware required) |
 
-Enforced at hardware interface level:
+## Joint Parameters
 
-- `min_position` / `max_position`: Soft position limits
-- `max_velocity`: Velocity limiting
-- Motor firmware provides hard torque limits
+Configure these per joint:
 
-### Error Recovery
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `motor_id` | int | *required* | Motor ID on serial bus (1-253) |
+| `operating_mode` | int | 1 | 0=Position, 1=Velocity, 2=PWM |
+| `min_position` | double | 0.0 | Min position limit (Mode 0 only) |
+| `max_position` | double | 6.283 | Max position limit (2π radians, Mode 0 only) |
+| `max_velocity` | double | 5.216 | Max velocity (3400 steps/s × 2π/4096 ≈ 5.216 rad/s) |
+| `max_effort` | double | 1.0 | Max PWM duty cycle (Mode 2 only) |
 
-- Serial communication timeout detection
-- Automatic reconnection attempts
-- Graceful degradation on partial failures
-- State validation before commanding
+## Unit Conversions
+
+The STS motors use step-based units internally (4096 steps per revolution). The hardware interface converts between motor units and ROS 2 standard units (radians, rad/s):
+
+- **Position:** 4096 steps = 2π radians (one full revolution)
+  - Conversion: `radians = steps × (2π / 4096)`
+- **Velocity:** Maximum 3400 steps/s = 5.216 rad/s
+  - Conversion: `rad/s = steps/s × (2π / 4096)`
+- **Default max_velocity:** 3400 steps/s × (2π / 4096) ≈ 5.216 rad/s
+
+## Communication
+
+- **Protocol:** Feetech STS/SCServo packet format
+- **Bus type:** Half-duplex RS485 or TTL serial
+- **Topology:** Daisy-chain (all motors on one bus, unique IDs 1-253)
+- **SyncWrite:** Batches commands to multiple motors (enabled by default, improves timing)
+
+## Additional Features
+
+### Emergency Stop
+
+Broadcast command that stops all motors simultaneously:
+
+```bash
+ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: true"   # activate
+ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"  # release
+```
 
 ### Mock Mode
 
-Simulation support for testing without hardware:
+Test without hardware by setting `enable_mock_mode: true` in hardware configuration.
 
-- Enables `enable_mock_mode: true` parameter
-- Simulates motor responses
-- Useful for CI/CD and development
+## ROS 2 Controller Compatibility
 
-## Data Flow
+| Controller | Use Case | Compatible Modes |
+|------------|----------|------------------|
+| `JointTrajectoryController` | Arm manipulation | Mode 0 |
+| `JointGroupVelocityController` | Wheels, continuous motion | Mode 1 |
+| `JointGroupEffortController` | Force control, grippers | Mode 2 |
+| `DiffDriveController` | Differential drive | Mode 1 |
+| `ForwardCommandController` | Direct control, testing | All modes |
 
-### Read Cycle (Hardware → ROS 2)
+## Example Configurations
 
-1. Controller Manager calls `read()`
-2. Hardware interface queries motors via serial
-3. Raw motor data fetched (position, velocity, load, etc.)
-4. Unit conversion: motor units → SI units
-5. State interfaces populated
-6. Controllers receive updated state
+See [config/single_motor.urdf.xacro](../config/single_motor.urdf.xacro) and [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro) for complete examples.
 
-### Write Cycle (ROS 2 → Hardware)
+## Troubleshooting
 
-1. Controllers write to command interfaces
-2. Controller Manager calls `write()`
-3. Hardware interface validates commands
-4. Commands converted: SI units → motor units
-5. Operating mode determines command type
-6. SyncWrite batches commands (if multi-motor)
-7. Serial packet transmitted to motors
-
-## Performance Characteristics
-
-- **Update Rate**: Typically 50-100 Hz (controller-dependent)
-- **Communication Latency**: ~5-10 ms (serial + protocol overhead)
-- **Position Resolution**: 4096 steps/revolution (0.09° per step)
-- **Multi-Motor Overhead**: ~2 ms per additional motor (SyncWrite reduces this)
-
-## Design Decisions
-
-### Why ros2_control?
-
-- **Standard**: Proven framework used across ROS 2 ecosystem
-- **Composable**: Works with existing controllers (diff_drive, joint_trajectory, etc.)
-- **Hardware Agnostic**: Controllers don't know about motor specifics
-- **Well Tested**: Production-ready with extensive community usage
-
-### Why Position Inversion?
-
-Original design used per-joint `invert_direction` flag. Switched to global inversion:
-
-- **Simplicity**: Single conversion function, no per-joint logic
-- **Correctness**: Proper handling of 0-2π range
-- **Performance**: Fewer conditional branches in hot path
-
-### Why Mixed-Mode Operation?
-
-Different motors on same bus can use different modes:
-
-- **Flexibility**: One robot with servo arms + continuous wheels
-- **Efficiency**: Single serial bus, single hardware interface
-- **Simplicity**: One URDF, one controller manager instance
-
-## Integration with ROS 2 Ecosystem
-
-### Standard Controllers
-
-Works with any `ros2_controllers` package controller:
-
-- `joint_trajectory_controller` (arms, manipulators)
-- `diff_drive_controller` (differential drive robots)
-- `omni_wheel_drive_controller` (omnidirectional platforms)
-- `forward_command_controller` (testing, direct control)
-
-### Navigation Stack
-
-Provides required interfaces for nav2:
-
-- Velocity commands via controller
-- Odometry via state interfaces
-- TF transforms via robot description
-
-### Diagnostics
-
-State interfaces provide rich diagnostic data:
-
-- Motor health (voltage, temperature, current)
-- Load monitoring (detect stalls, jams)
-- Performance metrics (velocity tracking accuracy)
-
-## Extension Points
-
-### Adding New Operating Modes
-
-1. Define mode in URDF parameter
-2. Add mode-specific command handling in `write()`
-3. Implement motor configuration in `on_activate()`
-
-### Custom State Interfaces
-
-Add motor-specific state (e.g., internal errors):
-
-1. Declare interface in `export_state_interfaces()`
-2. Read motor data in `read()`
-3. Populate interface value
-
-### Custom Command Interfaces
-
-Add motor-specific commands (e.g., PID tuning):
-
-1. Declare interface in `export_command_interfaces()`
-2. Handle command in `write()`
-3. Send appropriate motor packet
-
-## File Organization
-
-```text
-sts_hardware_interface/
-├── include/sts_hardware_interface/
-│   └── sts_hardware_interface.hpp      # Main interface class
-├── src/
-│   └── sts_hardware_interface.cpp      # Implementation
-├── external/SCServo_Linux/             # Communication library (submodule)
-├── config/                             # URDF and controller configs
-├── launch/                             # Launch files
-└── CMakeLists.txt                      # Build configuration
-```
-
-## Dependencies
-
-- **ROS 2**: Controller interfaces, lifecycle management
-- **ros2_control**: SystemInterface base class
-- **SCServo Linux**: Feetech protocol implementation (submodule)
-- **Standard C++17**: Core language features
+| Issue | Solutions |
+|-------|-----------|
+| **Motors not responding** | • Verify `serial_port` path and permissions<br>• Confirm `motor_id` matches physical motor<br>• Check `baud_rate` matches motor config<br>• Test with `enable_mock_mode: true` |
+| **Position drift/jumps** | • Verify `min_position`/`max_position` range (default: 0 to 2π)<br>• Check position limits match mechanism |
+| **Communication errors** | • Decrease controller `update_rate`<br>• Reduce number of state interfaces<br>• Test with single motor first<br>• Check cable quality and bus termination |
 
 ## Further Reading
 
-- [ros2_control Architecture](https://control.ros.org/master/doc/getting_started/getting_started.html)
-- [SystemInterface API](https://control.ros.org/master/doc/api/hardware_interface/html/classhardware__interface_1_1SystemInterface.html)
-- [Feetech STS Protocol](http://www.feetechrc.com/en/download.html)
+- [Quick Start Guide](quick-start.md) - Setup and usage examples
+- [ros2_control Documentation](https://control.ros.org/)
+- [Feetech STS3215 Documentation](https://www.feetechrc.com/2020-05-13_56655.html)

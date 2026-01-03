@@ -25,7 +25,7 @@
     <child link="arm_link"/>
     <origin xyz="0 0 0.1" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="5.0"/>
+    <limit lower="0.0" upper="6.283" effort="1.0" velocity="5.0"/>
   </joint>
 
   <joint name="gripper_joint" type="revolute">
@@ -68,8 +68,8 @@
     <joint name="arm_joint">
       <param name="motor_id">2</param>
       <param name="operating_mode">0</param>  <!-- Servo mode -->
-      <param name="min_position">-1.57</param>  <!-- -π/2 rad -->
-      <param name="max_position">1.57</param>   <!-- +π/2 rad -->
+      <param name="min_position">0.0</param>    <!-- 0 rad -->
+      <param name="max_position">6.283</param>  <!-- 2π rad -->
       <param name="max_velocity">5.0</param>    <!-- rad/s -->
 
       <command_interface name="position"/>

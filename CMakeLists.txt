@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.10)
-project(sts_hardware_interface)
+cmake_minimum_required(VERSION 3.16)
+project(sts_hardware_interface VERSION 0.3.0)
 
 # Suppress FindBoost policy warning
 if(POLICY CMP0167)
@@ -9,8 +9,10 @@ endif()
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 
+# Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -29,20 +31,15 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 
-# Find Python for SCServo_Linux bindings
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-
-# Build SCServo_Linux as a subdirectory
-# This will compile the C++ library and Python bindings
+# Build SCServo_Linux library (C++)
 add_subdirectory(external/SCServo_Linux)
 
-# Make SCServo library available
+# SCServo library configuration
 set(SCSERVO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SCServo_Linux/src)
 set(SCSERVO_LIBRARY SCServo)
 
@@ -110,27 +107,31 @@ install(
   RUNTIME DESTINATION bin
 )
 
-# Install SCServo headers
+# Install SCServo headers for downstream packages
 install(
   DIRECTORY ${SCSERVO_INCLUDE_DIR}/
   DESTINATION include/${PROJECT_NAME}/scservo
   FILES_MATCHING PATTERN "*.h"
 )
 
-# Install SCServo Python bindings to site-packages (optional)
-install(
-  FILES ${CMAKE_CURRENT_BINARY_DIR}/external/SCServo_Linux/scservo_python.cpython-312-aarch64-linux-gnu.so
-  DESTINATION ${Python3_SITELIB}
-  OPTIONAL
-)
-
+# Testing
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+
+  # Skip copyright and cpplint checks (optional linters)
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
+
+  # Run automatic linters
   ament_lint_auto_find_test_dependencies()
+
+  # TODO: Add unit tests for conversion functions and mock mode
+  # find_package(ament_cmake_gtest REQUIRED)
+  # ament_add_gtest(test_conversions test/test_conversions.cpp)
+  # target_link_libraries(test_conversions ${PROJECT_NAME})
 endif()
 
+# Export package information for downstream packages
 ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_dependencies(
@@ -139,5 +140,8 @@ ament_export_dependencies(
   hardware_interface
   pluginlib
 )
+
+# Export targets for modern CMake usage
+ament_export_targets(${PROJECT_NAME}Targets HAS_LIBRARY_TARGET)
 
 ament_package()

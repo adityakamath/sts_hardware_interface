@@ -3,9 +3,21 @@
 <package format="3">
   <name>sts_hardware_interface</name>
   <version>0.3.0</version>
-  <description>ROS 2 hardware interface for Feetech STS series servo motors</description>
-  <maintainer email="adityakamath@live.com">adityakamath</maintainer>
+  <description>
+    ros2_control hardware interface for Feetech STS series servo motors.
+    Supports multiple operating modes (position, velocity, PWM), multi-motor coordination
+    with SyncWrite, emergency stop, hardware limits, automatic error recovery, and mock mode
+    for simulation. Compatible with ROS 2 Humble and later.
+  </description>
+
+  <author email="adityakamath@live.com">Aditya Kamath</author>
+  <maintainer email="adityakamath@live.com">Aditya Kamath</maintainer>
+
   <license>Apache-2.0</license>
+
+  <url type="website">https://github.com/adityakamath/sts_hardware_interface</url>
+  <url type="repository">https://github.com/adityakamath/sts_hardware_interface</url>
+  <url type="bugtracker">https://github.com/adityakamath/sts_hardware_interface/issues</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
@@ -15,11 +27,6 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
-
-  <!-- SCServo motor control SDK -->
-  <!-- Note: SCServo_Linux is included as a git submodule in external/ and built automatically -->
-  <build_depend>python3-dev</build_depend>
-  <buildtool_depend>python3-nanobind</buildtool_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

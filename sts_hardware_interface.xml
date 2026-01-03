@@ -5,12 +5,10 @@
     type="sts_hardware_interface::STSHardwareInterface"
     base_class_type="hardware_interface::SystemInterface">
     <description>
-      Hardware interface for Feetech STS series servo motors (single or chain).
-      Supports controlling single motors or chains of motors on the same serial bus.
-      Provides complete diagnostics including position, velocity, load,
-      voltage, temperature, current, and motion status for each motor.
-      Supports all three operating modes: servo (position), velocity, and PWM.
-      Uses SyncWrite for efficient multi-motor control.
+      ros2_control hardware interface for Feetech STS series servo motors.
+      Supports multiple operating modes (position, velocity, PWM), multi-motor coordination
+      with SyncWrite, emergency stop, hardware limits, automatic error recovery, and mock mode
+      for simulation. Compatible with ROS 2 Humble and later.
     </description>
   </class>
 </library>
