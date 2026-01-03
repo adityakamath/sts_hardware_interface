@@ -1,10 +1,9 @@
 name: Build & Test
 
-# DISABLED FOR PRIVATE REPO - Enable when repo becomes public (uncomment lines below)
 on:
-  # pull_request:
-  # push:
-  #   branches: [main, develop]
+  pull_request:
+  push:
+    branches: [main, develop]
   workflow_dispatch:
 
 jobs:
@@ -49,9 +48,7 @@ jobs:
             ros-${{ matrix.ros_distro }}-hardware-interface \
             ros-${{ matrix.ros_distro }}-pluginlib \
             ros-${{ matrix.ros_distro }}-rclcpp \
-            ros-${{ matrix.ros_distro }}-rclcpp-lifecycle \
-            python3-nanobind \
-            python3-dev
+            ros-${{ matrix.ros_distro }}-rclcpp-lifecycle
 
       - name: Build package
         run: |

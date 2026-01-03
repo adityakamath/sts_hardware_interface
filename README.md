@@ -7,7 +7,7 @@
 [![clang-tidy](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/clang-tidy.yml/badge.svg)](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/clang-tidy.yml)
 ![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/kamathsblog)
 
-> `ros2_control` SystemInterface for Feetech STS series servo motors (STS3215 and compatible).
+> `ros2_control` SystemInterface for Feetech STS series servo motors.
 
 **⚠️ Status:** Only **Mode 1 (Velocity)** has been tested. Modes 0 (Position) and 2 (PWM) are experimental.
 

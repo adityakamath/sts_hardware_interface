@@ -1,24 +1,23 @@
 name: clang-tidy
 
-# DISABLED FOR PRIVATE REPO - Enable when repo becomes public (uncomment lines below)
 on:
-  # pull_request:
-  #   paths:
-  #     - '**.cpp'
-  #     - '**.hpp'
-  #     - '**.h'
-  #     - 'CMakeLists.txt'
-  #     - '.clang-tidy'
-  # push:
-  #   branches:
-  #     - main
-  #     - develop
-  #   paths:
-  #     - '**.cpp'
-  #     - '**.hpp'
-  #     - '**.h'
-  #     - 'CMakeLists.txt'
-  #     - '.clang-tidy'
+  pull_request:
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'CMakeLists.txt'
+      - '.clang-tidy'
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'CMakeLists.txt'
+      - '.clang-tidy'
   workflow_dispatch:
 
 jobs:
@@ -49,9 +48,7 @@ jobs:
             ros-jazzy-hardware-interface \
             ros-jazzy-pluginlib \
             ros-jazzy-rclcpp \
-            ros-jazzy-rclcpp-lifecycle \
-            python3-nanobind \
-            python3-dev
+            ros-jazzy-rclcpp-lifecycle
 
       - name: Create workspace
         run: |
