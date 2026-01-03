@@ -1,13 +1,11 @@
 # STS Hardware Interface
 
-[![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
-[![ROS 2](https://img.shields.io/badge/ROS_2-Humble%20%7C%20Iron%20%7C%20Jazzy%20%7C%20Kilted%20%7C%20Rolling-blue)](https://docs.ros.org)
+[![ROS 2](https://img.shields.io/badge/ROS_2_|_ros2__control-SystemInterface-blue)](https://control.ros.org/)
 ![GitHub License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface)
-[![Build & Test](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/build-test.yml/badge.svg)](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/build-test.yml)
-[![clang-tidy](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/clang-tidy.yml/badge.svg)](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/clang-tidy.yml)
+[![Website](https://img.shields.io/badge/Website-kamathrobotics.com-blue)](https://kamathrobotics.com)
 ![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/kamathsblog)
 
-> `ros2_control` SystemInterface for Feetech STS series servo motors.
+> `ros2_control` SystemInterface for Feetech STS series servo motors (STS3215 and compatible).
 
 **⚠️ Status:** Only **Mode 1 (Velocity)** has been tested. Modes 0 (Position) and 2 (PWM) are experimental.
 
