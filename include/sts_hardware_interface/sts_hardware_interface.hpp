@@ -198,7 +198,7 @@ private:
   // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
   std::vector<double> hw_state_position_;
   std::vector<double> hw_state_velocity_;
-  std::vector<double> hw_state_load_;
+  std::vector<double> hw_state_effort_;
   std::vector<double> hw_state_voltage_;
   std::vector<double> hw_state_temperature_;
   std::vector<double> hw_state_current_;

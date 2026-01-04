@@ -93,7 +93,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   hw_state_position_.resize(num_joints, 0.0);
   hw_state_velocity_.resize(num_joints, 0.0);
-  hw_state_load_.resize(num_joints, 0.0);
+  hw_state_effort_.resize(num_joints, 0.0);
   hw_state_voltage_.resize(num_joints, 0.0);
   hw_state_temperature_.resize(num_joints, 0.0);
   hw_state_current_.resize(num_joints, 0.0);
@@ -167,24 +167,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       return hardware_interface::CallbackReturn::ERROR;
     }
 
-    if (joint.parameters.count("max_velocity")) {
-      velocity_max_[i] = std::stod(joint.parameters.at("max_velocity"));
-      if (velocity_max_[i] <= 0.0) {
-        RCLCPP_ERROR(logger_, "Joint '%s': max_velocity must be positive (got %.3f rad/s)",
-          joint.name.c_str(), velocity_max_[i]);
-        return hardware_interface::CallbackReturn::ERROR;
-      }
-      if (velocity_max_[i] > (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD)) {
-        RCLCPP_WARN(logger_, "Joint '%s': max_velocity (%.3f rad/s) exceeds hardware maximum (~%.3f rad/s)",
-          joint.name.c_str(), velocity_max_[i], STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD);
-      }
-      has_velocity_limits_[i] = true;
-    }
-
     if (joint.parameters.count("max_effort")) {
       effort_max_[i] = std::stod(joint.parameters.at("max_effort"));
-      if (operating_modes_[i] == MODE_PWM && (effort_max_[i] <= 0.0 || effort_max_[i] > 1.0)) {
-        RCLCPP_ERROR(logger_, "Joint '%s': max_effort must be between 0 and 1 for PWM mode (got %.3f)",
+      if (effort_max_[i] <= 0.0) {
+        RCLCPP_ERROR(logger_, "Joint '%s': max_effort must be greater than 0 (got %.3f)",
           joint.name.c_str(), effort_max_[i]);
         return hardware_interface::CallbackReturn::ERROR;
       }
@@ -361,7 +347,7 @@ STSHardwareInterface::export_state_interfaces()
 
     state_interfaces.emplace_back(
       hardware_interface::StateInterface(
-        joint_name, "load", &hw_state_load_[i]));
+        joint_name, hardware_interface::HW_IF_EFFORT, &hw_state_effort_[i]));
 
     state_interfaces.emplace_back(
       hardware_interface::StateInterface(
@@ -476,9 +462,10 @@ hardware_interface::return_type STSHardwareInterface::read(
           break;
       }
 
-      // Simulate load based on velocity
-      hw_state_load_[i] = hw_state_velocity_[i] / (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD) * 100.0;
-      hw_state_load_[i] = std::clamp(hw_state_load_[i], -100.0, 100.0);
+      // Simulate load based on velocity (convert simulated load percentage to effort units)
+      double simulated_load_percentage = hw_state_velocity_[i] / (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD) * 100.0;
+      simulated_load_percentage = std::clamp(simulated_load_percentage, -100.0, 100.0);
+      hw_state_effort_[i] = (simulated_load_percentage / 100.0) * effort_max_[i];
 
       // Update is_moving state
       hw_state_is_moving_[i] = (std::abs(hw_state_velocity_[i]) > 0.01) ? 1.0 : 0.0;
@@ -532,7 +519,9 @@ hardware_interface::return_type STSHardwareInterface::read(
     hw_state_velocity_[i] = raw_velocity_to_rad_s(raw_velocity);
 
     int raw_load = servo_->ReadLoad(-1);
-    hw_state_load_[i] = static_cast<double>(raw_load) * LOAD_SCALE;
+    // Convert load percentage to effort: (-100% to 100%) -> (-effort_max_[i] to effort_max_[i])
+    double load_percentage = raw_load * LOAD_SCALE;  // 0.1 units per percent
+    hw_state_effort_[i] = (load_percentage / 100.0) * effort_max_[i];
 
     int raw_voltage = servo_->ReadVoltage(-1);
     hw_state_voltage_[i] = static_cast<double>(raw_voltage) * VOLTAGE_SCALE;
@@ -712,8 +701,11 @@ hardware_interface::return_type STSHardwareInterface::write(
 
       for (size_t idx : pwm_motors) {
         double target_effort = apply_limit(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx], true);
+        // Scale from [-max_effort, max_effort] to [-1.0, 1.0] for PWM conversion
+        double normalized_effort = (has_effort_limits_[idx] && effort_max_[idx] > 0.0) ? 
+          (target_effort / effort_max_[idx]) : target_effort;
         ids.push_back(motor_ids_[idx]);
-        pwm_values.push_back(effort_to_raw_pwm(target_effort));
+        pwm_values.push_back(effort_to_raw_pwm(normalized_effort));
       }
 
       // SyncWrite to all PWM mode motors
@@ -723,7 +715,10 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Individual writes for single PWM motor or when SyncWrite disabled
       for (size_t idx : pwm_motors) {
         double target_effort = apply_limit(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx], true);
-        int raw_pwm = effort_to_raw_pwm(target_effort);
+        // Scale from [-max_effort, max_effort] to [-1.0, 1.0] for PWM conversion
+        double normalized_effort = (has_effort_limits_[idx] && effort_max_[idx] > 0.0) ? 
+          (target_effort / effort_max_[idx]) : target_effort;
+        int raw_pwm = effort_to_raw_pwm(normalized_effort);
         int result = servo_->WritePwm(motor_ids_[idx], raw_pwm);
 
         if (handle_write_error(result, idx, "PWM")) {
@@ -750,7 +745,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
   if (enable_mock_mode_) {
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
       hw_state_velocity_[i] = 0.0;
-      hw_state_load_[i] = 0.0;
+      hw_state_effort_[i] = 0.0;
     }
     RCLCPP_INFO(
       logger_,
