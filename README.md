@@ -1,6 +1,7 @@
 # STS Hardware Interface
 
-[![ROS 2](https://img.shields.io/badge/ROS_2_|_ros2__control-SystemInterface-blue?logo=ros)](https://control.ros.org/)
+[![ROS 2 Humble+](https://img.shields.io/badge/ROS_2-Humble+-blue?logo=ros)](https://docs.ros.org/)
+[![ros2_control SystemInterface](https://img.shields.io/badge/ros2__control-SystemInterface-blue)](https://control.ros.org/)
 ![GitHub License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface)
 [![Website](https://img.shields.io/badge/Website-kamathrobotics.com-blue)](https://kamathrobotics.com)
 ![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/kamathsblog)
