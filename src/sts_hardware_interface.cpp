@@ -1,17 +1,3 @@
-// Copyright 2025 Aditya Kamath
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 /** @file sts_hardware_interface.cpp
  * @brief ros2_control hardware interface implementation for Feetech STS servo motors */
 
@@ -257,8 +243,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  RCLCPP_INFO(logger_, "Opened serial port %s at baud rate %d",
-    serial_port_.c_str(), baud_rate_);
+  // Set communication timeout
+  servo_->IOTimeOut = communication_timeout_ms_;
+
+  RCLCPP_INFO(logger_, "Opened serial port %s at baud rate %d with %d ms timeout",
+    serial_port_.c_str(), baud_rate_, communication_timeout_ms_);
 
   // Verify communication with all motors
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
@@ -955,6 +944,9 @@ bool STSHardwareInterface::attempt_error_recovery()
     RCLCPP_ERROR(logger_, "Failed to reopen serial port %s during recovery", serial_port_.c_str());
     return false;
   }
+
+  // Restore communication timeout
+  servo_->IOTimeOut = communication_timeout_ms_;
 
   // Verify and reinitialize all motors
   for (size_t i = 0; i < motor_ids_.size(); ++i) {

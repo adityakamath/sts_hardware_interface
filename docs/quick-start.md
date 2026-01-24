@@ -168,7 +168,7 @@ ros2 topic echo /joint_states  # position, velocity, effort
 **Additional state** (`/dynamic_joint_states`):
 
 ```bash
-ros2 topic echo /dynamic_joint_states  # load, voltage, temperature, current, is_moving
+ros2 topic echo /dynamic_joint_states  # voltage, temperature, current, is_moving
 ```
 
 To enable `/dynamic_joint_states`, add to your controller YAML:

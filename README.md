@@ -1,10 +1,9 @@
 # STS Hardware Interface
 
-[![ROS 2 Humble+](https://img.shields.io/badge/ROS_2-Humble+-blue?logo=ros)](https://docs.ros.org/)
+[![ROS 2 Kilted](https://img.shields.io/badge/ROS_2-Kilted-blue?logo=ros)](https://docs.ros.org/)
 [![ros2_control SystemInterface](https://img.shields.io/badge/ros2__control-SystemInterface-blue)](https://control.ros.org/)
 ![GitHub License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface)
 [![Website](https://img.shields.io/badge/Website-kamathrobotics.com-blue)](https://kamathrobotics.com)
-![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/kamathsblog)
 
 > `ros2_control` SystemInterface for Feetech STS series servo motors (STS3215 and compatible).
 
@@ -38,17 +37,17 @@
 
 ## State Interfaces
 
-The hardware can provide up to 7 state interfaces per joint. Configure only the ones you need in your URDF:
+The hardware always exports all 7 state interfaces for every joint:
 
 - `position` - Current position (radians)
 - `velocity` - Current velocity (rad/s)
-- `load` - Motor load/torque (-100.0 to +100.0%)
+- `effort` - Motor load percentage (-100.0 to +100.0%)
 - `voltage` - Supply voltage (volts)
 - `temperature` - Internal temperature (°C)
 - `current` - Motor current draw (amperes)
 - `is_moving` - Motion status (1.0 = moving, 0.0 = stopped)
 
-All state interfaces are optional. Only declare the interfaces your controllers need in the URDF to reduce overhead.
+Note: All state interfaces are always exported regardless of URDF configuration. URDF state interface declarations are optional but recommended for documentation purposes.
 
 ## Quick Start
 
@@ -77,15 +76,14 @@ See the **[Quick Start Guide](docs/quick-start.md)** for detailed instructions o
   <joint name="wheel_joint">
     <param name="motor_id">1</param>
     <param name="operating_mode">1</param>
-    <param name="max_velocity">15.0</param>
 
     <command_interface name="velocity"/>
     <command_interface name="acceleration"/>
 
-    <!-- Declare only the state interfaces you need -->
+    <!-- State interfaces (optional declarations for documentation) -->
     <state_interface name="position"/>
     <state_interface name="velocity"/>
-    <!-- Optional: Add temperature monitoring for safety -->
+    <state_interface name="effort"/>
     <state_interface name="temperature"/>
     <!-- Optional: All 7 state interfaces can be enabled if needed -->
   </joint>
@@ -103,7 +101,7 @@ See the **[Quick Start Guide](docs/quick-start.md)** for detailed instructions o
 |-----------|------|---------|-------------|
 | `serial_port` | string | *required* | Serial port path (e.g., `/dev/ttyACM0`) |
 | `baud_rate` | int | 1000000 | Baud rate: 9600-1000000 |
-| `communication_timeout_ms` | int | 100 | Timeout: 1-1000 ms |
+| `communication_timeout_ms` | int | 100 | Serial timeout: 1-1000 ms |
 | `use_sync_write` | bool | true | Enable SyncWrite for multi-motor setups |
 | `enable_mock_mode` | bool | false | Simulation mode (no hardware) |
 
@@ -115,15 +113,13 @@ See the **[Quick Start Guide](docs/quick-start.md)** for detailed instructions o
 | `operating_mode` | int | 1 | 0=Position, 1=Velocity, 2=PWM |
 | `min_position` | double | 0.0 | Min position limit (radians, Mode 0 only) |
 | `max_position` | double | 6.283 | Max position limit (2π radians, Mode 0 only) |
-| `max_velocity` | double | 5.216 | Max velocity (3400 steps/s × 2π/4096 ≈ 5.216 rad/s) |
 | `max_effort` | double | 1.0 | Max PWM duty cycle (0.0-1.0, Mode 2 only) |
 
 ## Dependencies
 
-- ROS 2: Humble and later
-- `ros2_control`
-- `ros2_controllers`
-- SCServo_Linux (included as git submodule)
+- **[ROS 2](https://docs.ros.org/en/kilted/)**: Tested with Kilted
+- **[ros2_control](https://control.ros.org/)** and **[ros2_controllers](https://control.ros.org/)**
+- **[SCServo_Linux](https://github.com/adityakamath/SCServo_Linux)** (included as git submodule)
 
 ## License
 

@@ -50,14 +50,13 @@
     <joint name="wheel_joint">
       <param name="motor_id">1</param>
       <param name="operating_mode">1</param>  <!-- Velocity mode -->
-      <param name="max_velocity">15.0</param>  <!-- rad/s -->
 
       <command_interface name="velocity"/>
       <command_interface name="acceleration"/>
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>
-      <state_interface name="load"/>
+      <state_interface name="effort"/>
       <state_interface name="voltage"/>
       <state_interface name="temperature"/>
       <state_interface name="current"/>
@@ -70,7 +69,6 @@
       <param name="operating_mode">0</param>  <!-- Servo mode -->
       <param name="min_position">0.0</param>    <!-- 0 rad -->
       <param name="max_position">6.283</param>  <!-- 2π rad -->
-      <param name="max_velocity">5.0</param>    <!-- rad/s -->
 
       <command_interface name="position"/>
       <command_interface name="velocity"/>
@@ -78,7 +76,7 @@
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>
-      <state_interface name="load"/>
+      <state_interface name="effort"/>
       <state_interface name="voltage"/>
       <state_interface name="temperature"/>
       <state_interface name="current"/>
@@ -95,7 +93,7 @@
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>
-      <state_interface name="load"/>
+      <state_interface name="effort"/>
       <state_interface name="voltage"/>
       <state_interface name="temperature"/>
       <state_interface name="current"/>

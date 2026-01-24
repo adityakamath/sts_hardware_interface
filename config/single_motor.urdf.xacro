@@ -32,7 +32,6 @@
     <joint name="wheel_joint">
       <param name="motor_id">$(arg motor_id)</param>
       <param name="operating_mode">1</param>  <!-- Velocity mode -->
-      <param name="max_velocity">15.0</param>  <!-- rad/s -->
       <param name="max_effort">1.0</param>
 
       <command_interface name="velocity"/>
@@ -40,7 +39,7 @@
 
       <state_interface name="position"/>
       <state_interface name="velocity"/>
-      <state_interface name="load"/>
+      <state_interface name="effort"/>
       <state_interface name="voltage"/>
       <state_interface name="temperature"/>
       <state_interface name="current"/>

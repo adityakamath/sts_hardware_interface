@@ -1,17 +1,3 @@
-// Copyright 2025 Aditya Kamath
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 #ifndef STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 #define STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 
@@ -63,7 +49,7 @@ namespace sts_hardware_interface
  * HARDWARE PARAMETERS (from ros2_control URDF):
  * - serial_port: Serial port path (e.g., "/dev/ttyACM0") [required]
  * - baud_rate: Communication baud rate, 9600-1000000 (default: 1000000)
- * - communication_timeout_ms: Communication timeout, 1-1000 ms (default: 100)
+ * - communication_timeout_ms: Serial communication timeout, 1-1000 ms (default: 100)
  * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
  * - enable_mock_mode: Enable simulation mode without hardware (default: false)
  *
