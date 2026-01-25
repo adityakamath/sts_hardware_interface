@@ -1,0 +1,11 @@
+# Install Mermaid CLI (mmdc)
+npm install -g @mermaid-js/mermaid-cli
+
+# Generate SVGs with a white background (default)
+for f in *.mmd; do mmdc -i "$f" -o "../img/${f%.mmd}_white.svg" --backgroundColor white; done
+
+# Generate SVGs with a transparent background
+for f in *.mmd; do mmdc -i "$f" -o "../img/${f%.mmd}_transparent.svg" --backgroundColor transparent; done
+
+# Run these commands from the akros2/docs/assets/mermaid directory.
+# The generated SVGs will be saved in akros2/docs/assets/img/.

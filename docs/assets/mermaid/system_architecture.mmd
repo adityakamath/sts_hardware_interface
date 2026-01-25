@@ -1,0 +1,23 @@
+flowchart TB
+    subgraph ROS2["ROS 2 Controllers"]
+        C1[Position Controller]
+        C2[Velocity Controller]
+        C3[Effort Controller]
+    end
+
+    subgraph HWI["STS Hardware Interface"]
+        SI[SystemInterface Plugin]
+    end
+
+    subgraph Hardware["Physical Motors"]
+        M1[Motor 1 - Position Mode]
+        M2[Motor 2 - Velocity Mode]
+        M3[Motor 3 - PWM Mode]
+    end
+
+    C1 --> SI
+    C2 --> SI
+    C3 --> SI
+    SI <--> M1
+    SI <--> M2
+    SI <--> M3

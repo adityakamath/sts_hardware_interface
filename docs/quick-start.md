@@ -2,6 +2,8 @@
 
 Complete setup and usage instructions for the STS Hardware Interface.
 
+---
+
 ## Installation
 
 ### 1. Clone the Repository
@@ -21,17 +23,20 @@ colcon build --packages-select sts_hardware_interface
 source install/setup.bash
 ```
 
+---
+
 ## Hardware Setup
 
 ### 1. Connect Motors
 
-- Connect Feetech STS servos to USB-to-serial adapter
+- Connect Feetech STS servos to USB-to-serial adapter (RS485 or TTL)
 - Default baud rate: 1000000
 - Ensure each motor has a unique ID (1-253)
 
 ### 2. Configure Motor IDs
 
 Use the Feetech debugging software or vendor tools to:
+
 - Assign unique IDs to each motor
 - Set appropriate baud rate
 - Verify motors respond to commands
@@ -45,6 +50,18 @@ ls /dev/tty*
 # Common ports: /dev/ttyUSB0, /dev/ttyACM0
 ```
 
+### 4. Set Serial Port Permissions
+
+```bash
+# Give user access to serial port
+sudo chmod 666 /dev/ttyACM0
+
+# Or add user to dialout group (permanent solution, requires logout)
+sudo usermod -aG dialout $USER
+```
+
+---
+
 ## Running the Examples
 
 This package provides ready-to-use example launch files that demonstrate different use cases.
@@ -54,6 +71,7 @@ This package provides ready-to-use example launch files that demonstrate differe
 The simplest example with one motor in velocity mode.
 
 **What it includes:**
+
 - URDF: [config/single_motor.urdf.xacro](../config/single_motor.urdf.xacro)
 - Controllers: [config/velocity_controller.yaml](../config/velocity_controller.yaml)
 - Launch file: [launch/single_motor.launch.py](../launch/single_motor.launch.py)
@@ -69,9 +87,13 @@ ros2 launch sts_hardware_interface single_motor.launch.py serial_port:=/dev/ttyA
 
 # In mock mode (no hardware required)
 ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
+
+# With GUI for manual control
+ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true gui:=true
 ```
 
 **What it does:**
+
 1. Loads robot description with one continuous joint (`wheel_joint`)
 2. Starts `ros2_control` node with velocity controller
 3. Spawns `joint_state_broadcaster` and `velocity_controller`
@@ -84,6 +106,9 @@ ros2 topic pub /velocity_controller/commands std_msgs/msg/Float64MultiArray "dat
 
 # Monitor joint state
 ros2 topic echo /joint_states
+
+# Monitor additional state (voltage, temperature, current, is_moving)
+ros2 topic echo /dynamic_joint_states
 ```
 
 ### Example 2: Mixed Mode (Multiple Motors)
@@ -91,11 +116,13 @@ ros2 topic echo /joint_states
 Demonstrates three motors in different operating modes on the same serial bus.
 
 **What it includes:**
+
 - URDF: [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro)
 - Controllers: [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml)
 - Launch file: [launch/mixed_mode.launch.py](../launch/mixed_mode.launch.py)
 
 **Motors configured:**
+
 - Motor 1 (`wheel_joint`): **Mode 1** - Velocity control
 - Motor 2 (`arm_joint`): **Mode 0** - Position/servo control
 - Motor 3 (`gripper_joint`): **Mode 2** - PWM/effort control
@@ -111,6 +138,7 @@ ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true
 ```
 
 **What it does:**
+
 1. Loads robot description with three joints in different modes
 2. Starts `ros2_control` node with SyncWrite enabled for efficiency
 3. Spawns multiple controllers:
@@ -138,16 +166,21 @@ ros2 action send_goal /arm_controller/follow_joint_trajectory \
 ros2 topic pub /gripper_controller/commands std_msgs/msg/Float64MultiArray "data: [0.5]"
 ```
 
-### Launch File Arguments
+---
 
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `serial_port` | string | `/dev/ttyACM0` | Serial port path |
-| `baud_rate` | int | `1000000` | Communication baud rate |
-| `use_mock` | bool | `false` | Enable mock mode (no hardware) |
-| `motor_id` | int | `1` | Motor ID on serial bus (single_motor.launch.py only) |
+## Launch File Arguments
 
-## Testing
+| Argument | Type | Default | Available In | Description |
+|----------|------|---------|--------------|-------------|
+| `serial_port` | string | `/dev/ttyACM0` | Both | Serial port path |
+| `baud_rate` | int | `1000000` | Both | Communication baud rate |
+| `use_mock` | bool | `false` | Both | Enable mock mode (no hardware) |
+| `motor_id` | int | `1` | single_motor only | Motor ID on serial bus |
+| `gui` | bool | `false` | single_motor only | Launch joint_state_publisher_gui for manual control |
+
+---
+
+## Testing and Monitoring
 
 ### 1. Verify Hardware Connection
 
@@ -176,14 +209,191 @@ To enable `/dynamic_joint_states`, add to your controller YAML:
 ```yaml
 joint_state_broadcaster:
   ros__parameters:
-    extra_joints: [wheel_joint, arm_joint]
+    extra_joints:
+      - wheel_joint
+      - arm_joint
 ```
 
 See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for complete example.
 
-## Configuration
+### 3. Check Controller Status
 
-For detailed configuration options, operating modes, parameters, and advanced features, see the [Architecture Guide](ARCHITECTURE.md).
+```bash
+# List all controllers
+ros2 control list_controllers
+
+# Check specific controller state
+ros2 control list_hardware_components
+```
+
+### 4. Emergency Stop Testing
+
+```bash
+# Activate emergency stop (stops ALL motors)
+ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: true"
+
+# Release emergency stop
+ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
+```
+
+---
+
+## Troubleshooting
+
+### Motors Not Responding
+
+**Problem:** Motors don't move or hardware interface fails to start.
+
+**Solutions:**
+
+1. **Check serial port permissions:**
+   ```bash
+   sudo chmod 666 /dev/ttyACM0
+   ```
+
+2. **Verify motor IDs match configuration:**
+   - Use vendor tools to check actual motor IDs
+   - Ensure URDF `motor_id` parameters match physical motors
+
+3. **Test baud rate:**
+   - Try different baud rates: `baud_rate:=115200`
+   - Verify motor baud rate matches configuration
+
+4. **Test in mock mode:**
+   ```bash
+   ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
+   ```
+   If mock mode works, issue is hardware/communication related.
+
+### Communication Errors
+
+**Problem:** Frequent "Failed to read feedback" or "Failed to write command" errors.
+
+**Solutions:**
+
+1. **Check cable quality and connections:**
+   - Ensure solid connections at both ends
+   - Try a different USB-to-serial adapter
+   - Check for loose daisy-chain connections
+
+2. **Reduce controller update rate:**
+   ```yaml
+   controller_manager:
+     ros__parameters:
+       update_rate: 50  # Reduce from 100 Hz
+   ```
+
+3. **Enable SyncWrite for multi-motor setups:**
+   ```xml
+   <param name="use_sync_write">true</param>
+   ```
+
+4. **Test with single motor first:**
+   - Isolate communication issues by testing one motor
+   - Add motors incrementally
+
+### Position Jumps or Drift
+
+**Problem:** Motor position jumps unexpectedly or drifts over time.
+
+**Solutions:**
+
+1. **Verify position limits:**
+   ```xml
+   <param name="min_position">0.0</param>
+   <param name="max_position">6.283</param>  <!-- 2π radians -->
+   ```
+
+2. **Check for position wrapping:**
+   - STS motors wrap at 2π radians (4096 steps)
+   - Ensure mechanism doesn't require >2π range
+
+3. **Monitor encoder values:**
+   ```bash
+   ros2 topic echo /joint_states
+   ```
+
+### Emergency Stop Stuck
+
+**Problem:** Motors won't accept commands after emergency stop.
+
+**Solutions:**
+
+1. **Release emergency stop:**
+   ```bash
+   ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
+   ```
+
+2. **Restart controller manager:**
+   ```bash
+   ros2 control reload_controller_libraries
+   ```
+
+3. **Check motor error states:**
+   ```bash
+   ros2 topic echo /dynamic_joint_states
+   ```
+
+### Mock Mode Not Working
+
+**Problem:** Mock mode fails to start or behave correctly.
+
+**Solutions:**
+
+1. **Verify mock mode is enabled:**
+   ```bash
+   ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
+   ```
+
+2. **Check for conflicting hardware:**
+   - Ensure real hardware is disconnected
+   - Serial port should not be in use
+
+3. **Monitor simulated state:**
+   ```bash
+   ros2 topic echo /joint_states
+   ```
+   Mock mode simulates realistic velocity integration.
+
+---
+
+## Next Steps
+
+### For Basic Users
+
+- Modify `motor_id` values to match your hardware
+- Adjust `baud_rate` if using different motor configuration
+- Test emergency stop behavior for safety validation
+
+### For Advanced Users
+
+- Create custom URDF configurations for your robot
+- Implement custom controllers using ros2_control framework
+- Configure mixed-mode operation for complex mechanisms
+- See [Architecture Guide](architecture.md) for detailed implementation information
+
+### For Developers
+
+- Enable mock mode for hardware-free development
+- Study example configurations in `config/` directory
+- Review [Architecture Guide](architecture.md) for system design details
+- Contribute improvements via GitHub pull requests
+
+---
+
+## Configuration Reference
+
+For detailed information on:
+
+- Operating modes and their differences
+- Hardware and joint parameters
+- Communication protocol details
+- Unit conversions
+- Controller compatibility
+
+See the **[Architecture Guide](architecture.md)**.
+
+---
 
 ## Additional Resources
 

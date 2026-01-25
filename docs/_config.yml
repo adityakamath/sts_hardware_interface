@@ -1,0 +1,28 @@
+# Site settings
+title: STS Hardware Interface
+description: ros2_control SystemInterface for Feetech STS series servo motors
+author: Aditya Kamath
+
+# Beautiful Jekyll theme
+remote_theme: daattali/beautiful-jekyll@6.0.1
+
+# Social network links
+social-network-links:
+  website: https://kamathrobotics.com
+  email: adityakamath@live.com
+  github: adityakamath
+  twitter: kamathsblog
+  linkedin: adityakamath
+  youtube: AdityaKamath2405
+
+# URL configuration
+url: "https://adityakamath.github.io"
+baseurl: "/sts_hardware_interface"
+
+# Markdown and syntax highlighting
+markdown: kramdown
+kramdown:
+  input: GFM
+
+plugins:
+  - jekyll-sitemap
