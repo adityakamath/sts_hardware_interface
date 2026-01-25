@@ -21,6 +21,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 ![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
 ![ROS 2 Control](https://img.shields.io/badge/ros2__control-SystemInterface-blue?style=flat&logo=ros&logoSize=auto)
 ![Repository](https://img.shields.io/badge/Repository-adityakamath%2Fsts__hardware__interface-blue?style=flat&logo=github&logoSize=auto)
+![Repository](https://img.shields.io/badge/Dependency-adityakamath%2FSCServo__Linux-blue?style=flat&logo=github&logoSize=auto)
 ![License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface?label=License)
 
 </div>
@@ -35,12 +36,15 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 <div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
 <div style="display: flex; flex-wrap: wrap; gap: 0.6em; margin: 2em 0; align-items: stretch;">
+  <!-- Combined container for Scalable Multi-Motor Support and Multi-Motor Coordination -->
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
     <span style="font-size: 1.8em;">🚀</span>
     <div style="flex: 1;">
-      <strong>Scalable Multi-Motor Support</strong>
+      <strong>Scalable Multi-Motor Coordination</strong>
       <br/><br/>
-      <span style="font-size: 0.95em;">Control <strong>1 to 253 motors</strong> on a single serial bus with daisy-chain topology.</span>
+      <span style="font-size: 0.95em;">
+        Control an entire bus simultaneously and synchronize multiple motors with a single command.
+      </span>
     </div>
   </div>
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
@@ -48,7 +52,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     <div style="flex: 1;">
       <strong>Three Operating Modes</strong>
       <br/><br/>
-      <span style="font-size: 0.95em;">Position (servo), Velocity, and PWM (effort) control per motor.</span>
+      <span style="font-size: 0.95em;">Supports Position (Mode 0), Velocity (Mode 1), and PWM (Mode 2) control modes for each motor.</span>
     </div>
   </div>
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
@@ -56,15 +60,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     <div style="flex: 1;">
       <strong>Mixed-Mode Operation</strong>
       <br/><br/>
-      <span style="font-size: 0.95em;">Different motors in different modes on the same serial bus.</span>
-    </div>
-  </div>
-  <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
-    <span style="font-size: 1.8em;">⚡</span>
-    <div style="flex: 1;">
-      <strong>Multi-Motor Coordination</strong>
-      <br/><br/>
-      <span style="font-size: 0.95em;">Efficient SyncWrite for chains of motors with reduced latency.</span>
+      <span style="font-size: 0.95em;">Control different motors in different modes on the same serial bus.</span>
     </div>
   </div>
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
@@ -72,7 +68,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     <div style="flex: 1;">
       <strong>Safety Features</strong>
       <br/><br/>
-      <span style="font-size: 0.95em;">Broadcast emergency stop, hardware limits, automatic error recovery.</span>
+      <span style="font-size: 0.95em;">Broadcast emergency stop, enable hardware limits, automatic error recovery.</span>
     </div>
   </div>
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
@@ -80,7 +76,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     <div style="flex: 1;">
       <strong>Full State Feedback</strong>
       <br/><br/>
-      <span style="font-size: 0.95em;">Position, velocity, load, voltage, temperature, current, motion status.</span>
+      <span style="font-size: 0.95em;">Measure position, velocity, load, voltage, temperature, current, motion status.</span>
     </div>
   </div>
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
@@ -88,7 +84,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     <div style="flex: 1;">
       <strong>Mock Mode</strong>
       <br/><br/>
-      <span style="font-size: 0.95em;">Hardware-free simulation for development and testing.</span>
+      <span style="font-size: 0.95em;">Control mock interfaces without any hardware for development and testing.</span>
     </div>
   </div>
 </div>
@@ -96,38 +92,105 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 ---
 
-## Command Interfaces
+## Interfaces
 
-### Mode 0 (Position/Servo)
-- `position` - Target position (radians)
-- `velocity` - Maximum speed (rad/s)
-- `acceleration` - Acceleration (0-254)
+<table class="param-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+      <table class="param-table" style="width: auto; min-width: 340px; max-width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+    <tr>
+      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🎮 Command Interfaces</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Interface</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Range</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Modes</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>position</code></td>
+        <td style="padding: 0.6em; border: none;">0 to 2π radians</td>
+        <td style="padding: 0.6em; border: none;">0</td>
+        <td style="padding: 0.6em; border: none;">Target joint position (wraps at 2π)</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>velocity</code></td>
+      <td style="padding: 0.6em; border: none;">-5.22 to +5.22 rad/s (±3400 Steps/s)</td>
+        <td style="padding: 0.6em; border: none;">0, 1</td>
+      <td style="padding: 0.6em; border: none;">Max speed in Mode 0, Target velocity in Mode 1</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>acceleration</code></td>
+      <td style="padding: 0.6em; border: none;">0-254 (unitless)</td>
+        <td style="padding: 0.6em; border: none;">0, 1</td>
+      <td style="padding: 0.6em; border: none;">Acceleration limit</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>effort</code></td>
+      <td style="padding: 0.6em; border: none;">-1.0 to +1.0</td>
+        <td style="padding: 0.6em; border: none;">2</td>
+      <td style="padding: 0.6em; border: none;">PWM duty cycle</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>emergency_stop</code></td>
+      <td style="padding: 0.6em; border: none;">bool</td>
+      <td style="padding: 0.6em; border: none;">All</td>
+      <td style="padding: 0.6em; border: none;">Stops all motors immediately (broadcast)</td>
+    </tr>
+  </tbody>
+</table>
 
-### Mode 1 (Velocity)
-- `velocity` - Target velocity (rad/s)
-- `acceleration` - Acceleration (0-254)
-
-### Mode 2 (PWM/Effort)
-- `effort` - PWM duty cycle (-1.0 to +1.0)
-
-### Broadcast (all modes)
-- `emergency_stop` - Stops all motors immediately
-
----
-
-## State Interfaces
-
-The hardware always exports **all 7 state interfaces** for every joint:
-
-- `position` - Current position (radians)
-- `velocity` - Current velocity (rad/s)
-- `effort` - Motor load percentage (-100.0 to +100.0%)
-- `voltage` - Supply voltage (volts)
-- `temperature` - Internal temperature (°C)
-- `current` - Motor current draw (amperes)
-- `is_moving` - Motion status (1.0 = moving, 0.0 = stopped)
-
-**Note:** All state interfaces are always exported regardless of URDF configuration. URDF state interface declarations are optional but recommended for documentation purposes.
+<table class="param-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+      <table class="param-table" style="width: auto; min-width: 340px; max-width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+    <tr>
+      <th colspan="3" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🧩 State Interfaces</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Interface</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Unit</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>position</code></td>
+      <td style="padding: 0.6em; border: none;">radians</td>
+      <td style="padding: 0.6em; border: none;">Current joint position</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>velocity</code></td>
+      <td style="padding: 0.6em; border: none;">rad/s</td>
+      <td style="padding: 0.6em; border: none;">Current joint velocity</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>effort</code></td>
+      <td style="padding: 0.6em; border: none;">%</td>
+      <td style="padding: 0.6em; border: none;">Motor load percentage (-100.0 to +100.0)</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>voltage</code></td>
+      <td style="padding: 0.6em; border: none;">volts</td>
+      <td style="padding: 0.6em; border: none;">Supply voltage</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>temperature</code></td>
+      <td style="padding: 0.6em; border: none;">°C</td>
+      <td style="padding: 0.6em; border: none;">Internal temperature</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>current</code></td>
+      <td style="padding: 0.6em; border: none;">amperes</td>
+      <td style="padding: 0.6em; border: none;">Motor current draw</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>is_moving</code></td>
+      <td style="padding: 0.6em; border: none;">1.0/0.0</td>
+      <td style="padding: 0.6em; border: none;">Motion status (1.0 = moving, 0.0 = stopped)</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -190,6 +253,10 @@ colcon build --packages-select sts_hardware_interface
   </a>
 </div>
 
+---
+
+## Parameters
+
 <div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
 
 <style>
@@ -244,7 +311,7 @@ colcon build --packages-select sts_hardware_interface
       <td style="padding: 0.6em; border: none;"><code>enable_mock_mode</code></td>
       <td style="padding: 0.6em; border: none;">bool</td>
       <td style="padding: 0.6em; border: none;">false</td>
-      <td style="padding: 0.6em; border: none;">Simulation mode (no hardware)</td>
+      <td style="padding: 0.6em; border: none;">Hardware-free simulation mode</td>
     </tr>
   </tbody>
 </table>
@@ -277,14 +344,14 @@ colcon build --packages-select sts_hardware_interface
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>min_position</code></td>
       <td style="padding: 0.6em; border: none;">double</td>
-      <td style="padding: 0.6em; border: none;">0.0</td>
-      <td style="padding: 0.6em; border: none;">Min position limit (radians, Mode 0 only)</td>
+      <td style="padding: 0.6em; border: none;">0 radians</td>
+      <td style="padding: 0.6em; border: none;">Min position limit (Mode 0 only)</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>max_position</code></td>
       <td style="padding: 0.6em; border: none;">double</td>
-      <td style="padding: 0.6em; border: none;">6.283</td>
-      <td style="padding: 0.6em; border: none;">Max position limit (2π radians, Mode 0 only)</td>
+      <td style="padding: 0.6em; border: none;">2π radians</td>
+      <td style="padding: 0.6em; border: none;">Max position limit (Mode 0 only)</td>
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>max_effort</code></td>
@@ -296,25 +363,3 @@ colcon build --packages-select sts_hardware_interface
 </table>
 
 </div>
-
----
-
-## Dependencies
-
-- **[ROS 2](https://docs.ros.org/en/kilted/)**: Tested with Kilted (Ubuntu 24.04)
-- **[ros2_control](https://control.ros.org/)** and **[ros2_controllers](https://control.ros.org/)**
-- **[SCServo_Linux](https://github.com/adityakamath/SCServo_Linux)** (included as git submodule)
-
----
-
-## License
-
-Apache License 2.0 - See [LICENSE](https://github.com/adityakamath/sts_hardware_interface/blob/main/LICENSE) file.
-
----
-
-## Contact
-
-- **Website:** [kamathrobotics.com](https://kamathrobotics.com)
-- **Twitter:** [@kamathsblog](https://twitter.com/kamathsblog)
-- **GitHub:** [adityakamath](https://github.com/adityakamath)
