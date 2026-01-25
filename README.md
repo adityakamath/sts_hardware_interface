@@ -7,7 +7,7 @@
 [![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
 ![License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface?label=License)
 
-> `ros2_control` SystemInterface for Feetech STS series servo motors (STS3215 and compatible).
+> `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 
 **⚠️ Status:** Only **Mode 1 (Velocity)** has been tested. Modes 0 (Position) and 2 (PWM) are experimental.
 
@@ -63,7 +63,7 @@ cd ~/ros2_ws
 colcon build --packages-select sts_hardware_interface
 ```
 
-See the **[Quick Start Guide](docs/quick-start.md)** for detailed instructions on running the example launch files and configuring your hardware.
+See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions on running the example launch files and configuring your hardware.
 
 ## Configuration Example
 
@@ -95,8 +95,8 @@ See the **[Quick Start Guide](docs/quick-start.md)** for detailed instructions o
 
 ## Documentation
 
-- **[Quick Start Guide](docs/quick-start.md)** - Detailed setup and usage instructions
-- **[Architecture](docs/architecture.md)** - Implementation details and design decisions
+- **[Quick Start guide](docs/quick-start.md)** - Detailed setup and usage instructions
+- **[Design documentation](docs/design.md)** - Implementation details and design decisions
 
 ## Hardware Parameters
 
