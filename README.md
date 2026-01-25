@@ -1,9 +1,11 @@
 # STS Hardware Interface
 
-[![ROS 2 Kilted](https://img.shields.io/badge/ROS_2-Kilted-blue?logo=ros)](https://docs.ros.org/)
-[![ros2_control SystemInterface](https://img.shields.io/badge/ros2__control-SystemInterface-blue)](https://control.ros.org/)
-![GitHub License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface)
-[![Website](https://img.shields.io/badge/Website-kamathrobotics.com-blue)](https://kamathrobotics.com)
+![Project Status](https://img.shields.io/badge/Status-WIP-yellow)
+![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
+![ROS 2 Control](https://img.shields.io/badge/ros2__control-SystemInterface-blue?style=flat&logo=ros&logoSize=auto)
+![Website](https://img.shields.io/badge/Website-kamathrobotics.com-darkorange?style=flat&logo=hashnode&logoSize=auto&link=https%3A%2F%2Fkamathrobotics.com&link=https%3A%2F%2Fkamathrobotics.com)
+[![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
+![License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface?label=License)
 
 > `ros2_control` SystemInterface for Feetech STS series servo motors (STS3215 and compatible).
 
