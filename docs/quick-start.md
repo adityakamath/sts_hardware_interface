@@ -30,6 +30,8 @@ source install/setup.bash
 ### 1. Connect Motors
 
 - Connect Feetech STS servos to USB-to-serial adapter (RS485 or TTL)
+- Use daisy-chain topology to connect multiple motors on a single bus
+- This hardware interface supports **1 to 253 motors** on a single serial bus
 - Default baud rate: 1000000
 - Ensure each motor has a unique ID (1-253)
 
@@ -170,13 +172,68 @@ ros2 topic pub /gripper_controller/commands std_msgs/msg/Float64MultiArray "data
 
 ## Launch File Arguments
 
-| Argument | Type | Default | Available In | Description |
-|----------|------|---------|--------------|-------------|
-| `serial_port` | string | `/dev/ttyACM0` | Both | Serial port path |
-| `baud_rate` | int | `1000000` | Both | Communication baud rate |
-| `use_mock` | bool | `false` | Both | Enable mock mode (no hardware) |
-| `motor_id` | int | `1` | single_motor only | Motor ID on serial bus |
-| `gui` | bool | `false` | single_motor only | Launch joint_state_publisher_gui for manual control |
+<style>
+  .args-table {
+    transition: all 0.2s ease;
+  }
+
+  .args-table:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25) !important;
+  }
+</style>
+
+<table class="args-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+    <tr>
+      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🚀  Launch File Arguments</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Argument</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Type</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Default</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Available In</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>serial_port</code></td>
+      <td style="padding: 0.6em; border: none;">string</td>
+      <td style="padding: 0.6em; border: none;"><code>/dev/ttyACM0</code></td>
+      <td style="padding: 0.6em; border: none;">Both</td>
+      <td style="padding: 0.6em; border: none;">Serial port path</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>baud_rate</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;"><code>1000000</code></td>
+      <td style="padding: 0.6em; border: none;">Both</td>
+      <td style="padding: 0.6em; border: none;">Communication baud rate</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>use_mock</code></td>
+      <td style="padding: 0.6em; border: none;">bool</td>
+      <td style="padding: 0.6em; border: none;"><code>false</code></td>
+      <td style="padding: 0.6em; border: none;">Both</td>
+      <td style="padding: 0.6em; border: none;">Enable mock mode (no hardware)</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>motor_id</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;"><code>1</code></td>
+      <td style="padding: 0.6em; border: none;">single_motor only</td>
+      <td style="padding: 0.6em; border: none;">Motor ID on serial bus</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>gui</code></td>
+      <td style="padding: 0.6em; border: none;">bool</td>
+      <td style="padding: 0.6em; border: none;"><code>false</code></td>
+      <td style="padding: 0.6em; border: none;">single_motor only</td>
+      <td style="padding: 0.6em; border: none;">Launch joint_state_publisher_gui for manual control</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 

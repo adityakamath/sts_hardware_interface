@@ -13,6 +13,7 @@
 
 ## Features
 
+- **Scalable Multi-Motor Support**: Control 1 to 253 motors on a single serial bus
 - **Three Operating Modes**: Position (servo), Velocity, and PWM (effort) control per motor
 - **Mixed-Mode Operation**: Different motors in different modes on the same serial bus
 - **Multi-Motor Coordination**: Efficient SyncWrite for chains of motors

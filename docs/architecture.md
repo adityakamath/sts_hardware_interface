@@ -10,6 +10,8 @@ System design and implementation guide for the Feetech STS servo motor hardware 
 The STS Hardware Interface is a `ros2_control` SystemInterface plugin that connects ROS 2 controllers to Feetech STS series servo motors (STS3215 and compatible). It provides position, velocity, and effort control modes with full state feedback, safety features, and hardware-free simulation.
 
 **Key Features:**
+
+- **Scalable multi-motor support:** Control 1 to 253 motors on a single serial bus
 - Three operating modes per motor (Position/Servo, Velocity, PWM/Effort)
 - Mixed-mode operation on the same serial bus
 - Efficient multi-motor coordination with SyncWrite
@@ -38,11 +40,54 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 
 Each motor can be configured independently in one of three modes:
 
-| Mode | Use Case | Command Interfaces | Position Limits | Velocity Semantics |
-|------|----------|-------------------|-----------------|-------------------|
-| **0: Position** | Arm joints, precise positioning | position, velocity†, acceleration† | 0 to 2π radians (configurable) | Maximum speed during position move |
-| **1: Velocity** | Wheels, continuous rotation | velocity, acceleration† | Unlimited | Target velocity for continuous rotation |
-| **2: PWM/Effort** | Force control, grippers | effort (-1.0 to +1.0) | N/A | N/A |
+<style>
+  .modes-table {
+    transition: all 0.2s ease;
+  }
+
+  .modes-table:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25) !important;
+  }
+</style>
+
+<table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+    <tr>
+      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🎛️  Operating Modes</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Mode</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Use Case</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Command Interfaces</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Position Limits</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Velocity Semantics</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><strong>0: Position</strong></td>
+      <td style="padding: 0.6em; border: none;">Arm joints, precise positioning</td>
+      <td style="padding: 0.6em; border: none;">position, velocity†, acceleration†</td>
+      <td style="padding: 0.6em; border: none;">0 to 2π radians (configurable)</td>
+      <td style="padding: 0.6em; border: none;">Maximum speed during position move</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><strong>1: Velocity</strong></td>
+      <td style="padding: 0.6em; border: none;">Wheels, continuous rotation</td>
+      <td style="padding: 0.6em; border: none;">velocity, acceleration†</td>
+      <td style="padding: 0.6em; border: none;">Unlimited</td>
+      <td style="padding: 0.6em; border: none;">Target velocity for continuous rotation</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><strong>2: PWM/Effort</strong></td>
+      <td style="padding: 0.6em; border: none;">Force control, grippers</td>
+      <td style="padding: 0.6em; border: none;">effort (-1.0 to +1.0)</td>
+      <td style="padding: 0.6em; border: none;">N/A</td>
+      <td style="padding: 0.6em; border: none;">N/A</td>
+    </tr>
+  </tbody>
+</table>
 
 † Optional interfaces
 
@@ -81,15 +126,63 @@ Each motor can be configured independently in one of three modes:
 
 All modes always export the following state interfaces for every joint:
 
-| Interface | Unit | Description | Scaling Factor |
-|-----------|------|-------------|----------------|
-| `position` | radians | Current joint angle | 4096 steps = 2π rad |
-| `velocity` | rad/s | Current angular velocity | 3400 steps/s max ≈ 5.22 rad/s |
-| `effort` | -100 to +100% | Motor load percentage | 0.1% per unit |
-| `voltage` | volts | Supply voltage | 0.1V per unit |
-| `temperature` | °C | Motor temperature | Direct celsius |
-| `current` | amperes | Motor current draw | 6.5mA per unit |
-| `is_moving` | 0.0 or 1.0 | Motion status (1.0=moving) | Boolean |
+<table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+    <tr>
+      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">📊  State Interfaces</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Interface</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Unit</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Scaling Factor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>position</code></td>
+      <td style="padding: 0.6em; border: none;">radians</td>
+      <td style="padding: 0.6em; border: none;">Current joint angle</td>
+      <td style="padding: 0.6em; border: none;">4096 steps = 2π rad</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>velocity</code></td>
+      <td style="padding: 0.6em; border: none;">rad/s</td>
+      <td style="padding: 0.6em; border: none;">Current angular velocity</td>
+      <td style="padding: 0.6em; border: none;">3400 steps/s max ≈ 5.22 rad/s</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>effort</code></td>
+      <td style="padding: 0.6em; border: none;">-100 to +100%</td>
+      <td style="padding: 0.6em; border: none;">Motor load percentage</td>
+      <td style="padding: 0.6em; border: none;">0.1% per unit</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>voltage</code></td>
+      <td style="padding: 0.6em; border: none;">volts</td>
+      <td style="padding: 0.6em; border: none;">Supply voltage</td>
+      <td style="padding: 0.6em; border: none;">0.1V per unit</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>temperature</code></td>
+      <td style="padding: 0.6em; border: none;">°C</td>
+      <td style="padding: 0.6em; border: none;">Motor temperature</td>
+      <td style="padding: 0.6em; border: none;">Direct celsius</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>current</code></td>
+      <td style="padding: 0.6em; border: none;">amperes</td>
+      <td style="padding: 0.6em; border: none;">Motor current draw</td>
+      <td style="padding: 0.6em; border: none;">6.5mA per unit</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>is_moving</code></td>
+      <td style="padding: 0.6em; border: none;">0.0 or 1.0</td>
+      <td style="padding: 0.6em; border: none;">Motion status (1.0=moving)</td>
+      <td style="padding: 0.6em; border: none;">Boolean</td>
+    </tr>
+  </tbody>
+</table>
 
 **Note:** All state interfaces are always exported regardless of URDF configuration. URDF state interface declarations are optional but recommended for documentation purposes.
 
@@ -125,26 +218,120 @@ See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) 
 
 Configure these at the `<hardware>` level in your URDF:
 
-| Parameter | Type | Default | Range/Options | Description |
-|-----------|------|---------|---------------|-------------|
-| `serial_port` | string | *required* | Valid path | Serial port path (e.g., `/dev/ttyACM0`) |
-| `baud_rate` | int | 1000000 | 9600, 19200, 38400, 57600, 115200, 500000, 1000000 | Communication baud rate |
-| `communication_timeout_ms` | int | 100 | 1-1000 | Serial communication timeout (ms) |
-| `use_sync_write` | bool | true | true/false | Batch commands for multiple motors |
-| `enable_mock_mode` | bool | false | true/false | Simulation mode (no hardware required) |
+<table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+    <tr>
+      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">⚙️  Hardware Parameters</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Parameter</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Type</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Default</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Range/Options</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>serial_port</code></td>
+      <td style="padding: 0.6em; border: none;">string</td>
+      <td style="padding: 0.6em; border: none;"><em>required</em></td>
+      <td style="padding: 0.6em; border: none;">Valid path</td>
+      <td style="padding: 0.6em; border: none;">Serial port path (e.g., <code>/dev/ttyACM0</code>)</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>baud_rate</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;">1000000</td>
+      <td style="padding: 0.6em; border: none;">9600, 19200, 38400, 57600, 115200, 500000, 1000000</td>
+      <td style="padding: 0.6em; border: none;">Communication baud rate</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>communication_timeout_ms</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;">100</td>
+      <td style="padding: 0.6em; border: none;">1-1000</td>
+      <td style="padding: 0.6em; border: none;">Serial communication timeout (ms)</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>use_sync_write</code></td>
+      <td style="padding: 0.6em; border: none;">bool</td>
+      <td style="padding: 0.6em; border: none;">true</td>
+      <td style="padding: 0.6em; border: none;">true/false</td>
+      <td style="padding: 0.6em; border: none;">Batch commands for multiple motors</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>enable_mock_mode</code></td>
+      <td style="padding: 0.6em; border: none;">bool</td>
+      <td style="padding: 0.6em; border: none;">false</td>
+      <td style="padding: 0.6em; border: none;">true/false</td>
+      <td style="padding: 0.6em; border: none;">Simulation mode (no hardware required)</td>
+    </tr>
+  </tbody>
+</table>
 
 ### Joint Parameters
 
 Configure these per `<joint>` in your URDF:
 
-| Parameter | Type | Default | Range | Description |
-|-----------|------|---------|-------|-------------|
-| `motor_id` | int | *required* | 1-253 | Motor ID on serial bus |
-| `operating_mode` | int | 1 | 0, 1, 2 | 0=Position, 1=Velocity, 2=PWM |
-| `min_position` | double | 0.0 | any | Min position limit (radians, Mode 0 only) |
-| `max_position` | double | 6.283 | any | Max position limit (radians, Mode 0 only) |
-| `max_velocity` | double | 5.22 | any | Max velocity limit (rad/s, currently unused) |
-| `max_effort` | double | 1.0 | 0.0-1.0 | Max PWM duty cycle (Mode 2 only) |
+<table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+    <tr>
+      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🔧  Joint Parameters</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Parameter</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Type</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Default</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Range</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>motor_id</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;"><em>required</em></td>
+      <td style="padding: 0.6em; border: none;">1-253</td>
+      <td style="padding: 0.6em; border: none;">Motor ID on serial bus</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>operating_mode</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;">1</td>
+      <td style="padding: 0.6em; border: none;">0, 1, 2</td>
+      <td style="padding: 0.6em; border: none;">0=Position, 1=Velocity, 2=PWM</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>min_position</code></td>
+      <td style="padding: 0.6em; border: none;">double</td>
+      <td style="padding: 0.6em; border: none;">0.0</td>
+      <td style="padding: 0.6em; border: none;">any</td>
+      <td style="padding: 0.6em; border: none;">Min position limit (radians, Mode 0 only)</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>max_position</code></td>
+      <td style="padding: 0.6em; border: none;">double</td>
+      <td style="padding: 0.6em; border: none;">6.283</td>
+      <td style="padding: 0.6em; border: none;">any</td>
+      <td style="padding: 0.6em; border: none;">Max position limit (radians, Mode 0 only)</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>max_velocity</code></td>
+      <td style="padding: 0.6em; border: none;">double</td>
+      <td style="padding: 0.6em; border: none;">5.22</td>
+      <td style="padding: 0.6em; border: none;">any</td>
+      <td style="padding: 0.6em; border: none;">Max velocity limit (rad/s, currently unused)</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>max_effort</code></td>
+      <td style="padding: 0.6em; border: none;">double</td>
+      <td style="padding: 0.6em; border: none;">1.0</td>
+      <td style="padding: 0.6em; border: none;">0.0-1.0</td>
+      <td style="padding: 0.6em; border: none;">Max PWM duty cycle (Mode 2 only)</td>
+    </tr>
+  </tbody>
+</table>
 
 **Note:** `max_velocity` parameter is defined in the code but not currently parsed from URDF. The hardware uses a fixed maximum of 3400 steps/s (≈ 5.22 rad/s).
 
@@ -156,9 +343,12 @@ Configure these per `<joint>` in your URDF:
 
 - **Protocol:** Feetech STS/SCServo packet format
 - **Bus type:** Half-duplex RS485 or TTL serial
-- **Topology:** Daisy-chain (all motors on one bus, unique IDs 1-253)
-- **Broadcast ID:** 254 (0xFE) - Reserved for emergency stop commands
+- **Topology:** Daisy-chain (all motors on one bus)
+- **Motor addressing:** Unique IDs from 1-253 (up to 253 motors per bus)
+- **Broadcast ID:** 254 (0xFE) - Reserved for emergency stop commands affecting all motors
 - **Baud rates:** 9600, 19200, 38400, 57600, 115200, 500000, 1000000 (default: 1000000)
+
+**Scalability:** The hardware interface can manage an entire serial bus of motors, from a single motor to the maximum capacity of 253 motors. Each motor requires a unique ID (1-253), while ID 254 is reserved for broadcast commands that simultaneously affect all motors on the bus.
 
 ### SyncWrite Benefits and Tradeoffs
 
@@ -276,13 +466,67 @@ The STS motors use step-based units internally. The hardware interface converts 
 
 ## ROS 2 Controller Compatibility
 
-| Controller | Package | Use Case | Compatible Modes |
-|------------|---------|----------|------------------|
-| `JointTrajectoryController` | joint_trajectory_controller | Arm manipulation, precise positioning | Mode 0 |
-| `JointGroupVelocityController` | velocity_controllers | Wheels, continuous motion | Mode 1 |
-| `JointGroupEffortController` | effort_controllers | Force control, grippers | Mode 2 |
-| `DiffDriveController` | diff_drive_controller | Differential drive robots | Mode 1 |
-| `ForwardCommandController` | forward_command_controller | Direct control, testing | All modes |
+This hardware interface is compatible with any ros2_control controller that uses the standard command and state interfaces. Below are common examples (non-exhaustive list):
+
+<table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+    <tr>
+      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🎮  ROS 2 Controller Compatibility</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Controller</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Package</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Use Case</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Compatible Modes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>JointTrajectoryController</code></td>
+      <td style="padding: 0.6em; border: none;">joint_trajectory_controller</td>
+      <td style="padding: 0.6em; border: none;">Arm manipulation, precise positioning</td>
+      <td style="padding: 0.6em; border: none;">Mode 0</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>JointGroupVelocityController</code></td>
+      <td style="padding: 0.6em; border: none;">velocity_controllers</td>
+      <td style="padding: 0.6em; border: none;">Wheels, continuous motion</td>
+      <td style="padding: 0.6em; border: none;">Mode 1</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>JointGroupEffortController</code></td>
+      <td style="padding: 0.6em; border: none;">effort_controllers</td>
+      <td style="padding: 0.6em; border: none;">Force control, grippers</td>
+      <td style="padding: 0.6em; border: none;">Mode 2</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>DiffDriveController</code></td>
+      <td style="padding: 0.6em; border: none;">diff_drive_controller</td>
+      <td style="padding: 0.6em; border: none;">Differential drive robots</td>
+      <td style="padding: 0.6em; border: none;">Mode 1</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>MecanumDriveController</code></td>
+      <td style="padding: 0.6em; border: none;">mecanum_drive_controller</td>
+      <td style="padding: 0.6em; border: none;">Mecanum wheel robots</td>
+      <td style="padding: 0.6em; border: none;">Mode 1</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>OmniDriveController</code></td>
+      <td style="padding: 0.6em; border: none;">admittance_controller</td>
+      <td style="padding: 0.6em; border: none;">Omni-directional robots</td>
+      <td style="padding: 0.6em; border: none;">Mode 1</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>ForwardCommandController</code></td>
+      <td style="padding: 0.6em; border: none;">forward_command_controller</td>
+      <td style="padding: 0.6em; border: none;">Direct control, testing</td>
+      <td style="padding: 0.6em; border: none;">All modes</td>
+    </tr>
+  </tbody>
+</table>
+
+**Note:** This interface is also compatible with custom controllers that follow the ros2_control standards.
 
 **Controller Configuration Requirements:**
 - All controllers require `joint_state_broadcaster` to be running
@@ -312,13 +556,45 @@ See [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro):
 
 ## Troubleshooting
 
-| Issue | Possible Causes | Solutions |
-|-------|----------------|-----------|
-| **Motors not responding** | • Serial port permissions<br>• Wrong motor ID<br>• Baud rate mismatch<br>• Communication wiring | • `sudo chmod 666 /dev/ttyACM0`<br>• Verify motor IDs with vendor tools<br>• Check `baud_rate` matches motor config<br>• Test with `enable_mock_mode: true` |
-| **Position drift/jumps** | • Incorrect position limits<br>• Position wrapping at 2π<br>• Encoder issues | • Verify `min_position`/`max_position` range<br>• Check position limits match mechanism<br>• Monitor raw encoder values |
-| **Communication errors** | • Controller update rate too high<br>• Too many motors on bus<br>• Cable quality issues | • Decrease controller `update_rate`<br>• Enable `use_sync_write: true`<br>• Reduce number of state interfaces<br>• Test with single motor first |
-| **Emergency stop stuck** | • Emergency stop not released<br>• Hardware error state | • Publish `data: false` to emergency_stop topic<br>• Restart controller_manager<br>• Check motor error states |
-| **Consecutive errors** | • Loose connections<br>• Power supply issues<br>• Motor firmware errors | • Check serial cable connections<br>• Verify motor power supply (6-12V)<br>• Monitor error recovery attempts |
+<table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
+  <thead>
+    <tr>
+      <th colspan="3" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🔧  Troubleshooting</th>
+    </tr>
+    <tr>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Issue</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Possible Causes</th>
+      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Solutions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><strong>Motors not responding</strong></td>
+      <td style="padding: 0.6em; border: none;">• Serial port permissions<br>• Wrong motor ID<br>• Baud rate mismatch<br>• Communication wiring</td>
+      <td style="padding: 0.6em; border: none;">• <code>sudo chmod 666 /dev/ttyACM0</code><br>• Verify motor IDs with vendor tools<br>• Check <code>baud_rate</code> matches motor config<br>• Test with <code>enable_mock_mode: true</code></td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><strong>Position drift/jumps</strong></td>
+      <td style="padding: 0.6em; border: none;">• Incorrect position limits<br>• Position wrapping at 2π<br>• Encoder issues</td>
+      <td style="padding: 0.6em; border: none;">• Verify <code>min_position</code>/<code>max_position</code> range<br>• Check position limits match mechanism<br>• Monitor raw encoder values</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><strong>Communication errors</strong></td>
+      <td style="padding: 0.6em; border: none;">• Controller update rate too high<br>• Too many motors on bus<br>• Cable quality issues</td>
+      <td style="padding: 0.6em; border: none;">• Decrease controller <code>update_rate</code><br>• Enable <code>use_sync_write: true</code><br>• Reduce number of state interfaces<br>• Test with single motor first</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><strong>Emergency stop stuck</strong></td>
+      <td style="padding: 0.6em; border: none;">• Emergency stop not released<br>• Hardware error state</td>
+      <td style="padding: 0.6em; border: none;">• Publish <code>data: false</code> to emergency_stop topic<br>• Restart controller_manager<br>• Check motor error states</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><strong>Consecutive errors</strong></td>
+      <td style="padding: 0.6em; border: none;">• Loose connections<br>• Power supply issues<br>• Motor firmware errors</td>
+      <td style="padding: 0.6em; border: none;">• Check serial cable connections<br>• Verify motor power supply (6-12V)<br>• Monitor error recovery attempts</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
