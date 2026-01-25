@@ -54,7 +54,7 @@ Each motor can be configured independently in one of three modes:
 <table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
     <tr>
-      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🎛️  Operating Modes</th>
+      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">Operating Modes</th>
     </tr>
     <tr>
       <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Mode</th>
@@ -80,7 +80,7 @@ Each motor can be configured independently in one of three modes:
       <td style="padding: 0.6em; border: none;">Target velocity for continuous rotation</td>
     </tr>
     <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><strong>2: PWM/Effort</strong></td>
+      <td style="padding: 0.6em; border: none;"><strong>2: Effort</strong></td>
       <td style="padding: 0.6em; border: none;">Force control, grippers</td>
       <td style="padding: 0.6em; border: none;">effort (-1.0 to +1.0)</td>
       <td style="padding: 0.6em; border: none;">N/A</td>
@@ -129,7 +129,7 @@ All modes always export the following state interfaces for every joint:
 <table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
     <tr>
-      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">📊  State Interfaces</th>
+      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">State Interfaces</th>
     </tr>
     <tr>
       <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Interface</th>
@@ -221,7 +221,7 @@ Configure these at the `<hardware>` level in your URDF:
 <table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
     <tr>
-      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">⚙️  Hardware Parameters</th>
+      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">Hardware Parameters</th>
     </tr>
     <tr>
       <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Parameter</th>
@@ -277,7 +277,7 @@ Configure these per `<joint>` in your URDF:
 <table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
     <tr>
-      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🔧  Joint Parameters</th>
+      <th colspan="5" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">Joint Parameters</th>
     </tr>
     <tr>
       <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Parameter</th>
@@ -471,7 +471,7 @@ This hardware interface is compatible with any ros2_control controller that uses
 <table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
     <tr>
-      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🎮  ROS 2 Controller Compatibility</th>
+      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">ROS 2 Controller Compatibility</th>
     </tr>
     <tr>
       <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Controller</th>
@@ -559,7 +559,7 @@ See [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro):
 <table class="modes-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
     <tr>
-      <th colspan="3" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🔧  Troubleshooting</th>
+      <th colspan="3" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">Troubleshooting</th>
     </tr>
     <tr>
       <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Issue</th>
@@ -598,9 +598,11 @@ See [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro):
 
 ---
 
-## Further Reading
+## Additional Resources
 
-- [Quick Start Guide](quick-start.md) - Setup and usage examples
-- [ros2_control Documentation](https://control.ros.org/)
-- [Feetech STS3215 Documentation](https://www.feetechrc.com/2020-05-13_56655.html)
-- [SCServo_Linux Library](https://github.com/adityakamath/SCServo_Linux)
+- [sts_hardware_interface README](https://github.com/adityakamath/sts_hardware_interface/blob/main/README.md)
+- [Quick Start guide](quick-start.md)
+- [ros2_control documentation](https://control.ros.org/)
+- [Feetech STS3215 documentation](https://www.feetechrc.com/2020-05-13_56655.html)
+- [Original FTServo_Linux SDK](https://github.com/ftservo/FTServo_Linux)
+- [SCServo_Linux SDK](https://github.com/adityakamath/SCServo_Linux)

@@ -427,34 +427,22 @@ ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
 - Create custom URDF configurations for your robot
 - Implement custom controllers using ros2_control framework
 - Configure mixed-mode operation for complex mechanisms
-- See [Architecture Guide](architecture.md) for detailed implementation information
+- See the [Design document](design.md) for detailed implementation information
 
 ### For Developers
 
 - Enable mock mode for hardware-free development
 - Study example configurations in `config/` directory
-- Review [Architecture Guide](architecture.md) for system design details
+- Review the [Design document](design.md) for system design details
 - Contribute improvements via GitHub pull requests
-
----
-
-## Configuration Reference
-
-For detailed information on:
-
-- Operating modes and their differences
-- Hardware and joint parameters
-- Communication protocol details
-- Unit conversions
-- Controller compatibility
-
-See the **[Architecture Guide](architecture.md)**.
 
 ---
 
 ## Additional Resources
 
+- [sts_hardware_interface README](https://github.com/adityakamath/sts_hardware_interface/blob/main/README.md)
+- [Design documentation](design.md)
 - [ros2_control documentation](https://control.ros.org/)
 - [Feetech STS3215 documentation](https://www.feetechrc.com/2020-05-13_56655.html)
-- [Original FTServo_Linux repository](https://github.com/ftservo/FTServo_Linux)
-- [My SCServo_Linux fork](https://github.com/adityakamath/SCServo_Linux)
+- [Original FTServo_Linux SDK](https://github.com/ftservo/FTServo_Linux)
+- [SCServo_Linux SDK](https://github.com/adityakamath/SCServo_Linux)
