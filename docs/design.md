@@ -1,6 +1,6 @@
 ---
 layout: page
-title: STS Hardware Interface Design
+title: System Design
 ---
 
 System design and implementation guide for the Feetech STS servo motor hardware interface.

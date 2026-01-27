@@ -28,7 +28,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 <div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;" markdown="1">
 
-> `ros2_control` SystemInterface for Feetech STS series servo motors (STS3215 and compatible).
+> `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 >
 > **⚠️ Status:** Only **Mode 1 (Velocity)** has been tested. Modes 0 (Position) and 2 (PWM) are experimental.
 
@@ -87,6 +87,23 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     </div>
   </div>
 </div>
+</div>
+
+---
+
+## Documentation
+
+<div style="display: flex; gap: 1em; margin: 2em 0;">
+  <a href="quick-start" style="flex: 1; text-decoration: none;">
+    <div style="background: #0366d6; color: white; padding: 1.5em; border-radius: 8px; text-align: center;">
+      <h3 style="margin: 0; color: white;">📚 Quick Start Guide</h3>
+    </div>
+  </a>
+  <a href="architecture" style="flex: 1; text-decoration: none;">
+    <div style="background: #28a745; color: white; padding: 1.5em; border-radius: 8px; text-align: center;">
+      <h3 style="margin: 0; color: white;">🏗️ System Design</h3>
+    </div>
+  </a>
 </div>
 
 ---
@@ -202,67 +219,6 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
   </tbody>
 </table>
 
-</div>
-
----
-
-## Quick Start
-
-### Installation
-
-```bash
-cd ~/ros2_ws/src
-git clone https://github.com/adityakamath/sts_hardware_interface.git
-cd sts_hardware_interface
-git submodule update --init --recursive
-cd ~/ros2_ws
-colcon build --packages-select sts_hardware_interface
-```
-
-### Basic Configuration
-
-```xml
-<ros2_control name="sts_system" type="system">
-  <hardware>
-    <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
-    <param name="serial_port">/dev/ttyACM0</param>
-    <param name="baud_rate">1000000</param>
-    <param name="use_sync_write">true</param>
-  </hardware>
-
-  <joint name="wheel_joint">
-    <param name="motor_id">1</param>
-    <param name="operating_mode">1</param>
-
-    <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
-
-    <!-- State interfaces (optional declarations for documentation) -->
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-    <state_interface name="effort"/>
-    <state_interface name="temperature"/>
-  </joint>
-</ros2_control>
-```
-
----
-
-## Documentation
-
-<div style="display: flex; gap: 1em; margin: 2em 0;">
-  <a href="quick-start" style="flex: 1; text-decoration: none;">
-    <div style="background: #0366d6; color: white; padding: 1.5em; border-radius: 8px; text-align: center;">
-      <h3 style="margin: 0; color: white;">📚 Quick Start Guide</h3>
-      <p style="margin: 0.5em 0 0 0; opacity: 0.9;">Setup and usage instructions</p>
-    </div>
-  </a>
-  <a href="architecture" style="flex: 1; text-decoration: none;">
-    <div style="background: #28a745; color: white; padding: 1.5em; border-radius: 8px; text-align: center;">
-      <h3 style="margin: 0; color: white;">🏗️ Architecture</h3>
-      <p style="margin: 0.5em 0 0 0; opacity: 0.9;">Implementation details and design</p>
-    </div>
-  </a>
 </div>
 
 ---
