@@ -108,8 +108,6 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 ---
 
-## Interfaces
-
 <div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
 
 <style>
@@ -215,117 +213,6 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
       <td style="padding: 0.6em; border: none;"><code>is_moving</code></td>
       <td style="padding: 0.6em; border: none;">1.0/0.0</td>
       <td style="padding: 0.6em; border: none;">Motion status (1.0 = moving, 0.0 = stopped)</td>
-    </tr>
-  </tbody>
-</table>
-
-</div>
-
----
-
-## Parameters
-
-<div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
-
-<style>
-  .param-table {
-    transition: all 0.2s ease;
-  }
-
-  .param-table:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.25) !important;
-  }
-</style>
-
-<table class="param-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
-  <thead>
-    <tr>
-      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">⚙️  Hardware Parameters</th>
-    </tr>
-    <tr>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Parameter</th>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Type</th>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Default</th>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>serial_port</code></td>
-      <td style="padding: 0.6em; border: none;">string</td>
-      <td style="padding: 0.6em; border: none;"><em>required</em></td>
-      <td style="padding: 0.6em; border: none;">Serial port path (e.g., <code>/dev/ttyACM0</code>)</td>
-    </tr>
-    <tr style="background: #f0f0f0;">
-      <td style="padding: 0.6em; border: none;"><code>baud_rate</code></td>
-      <td style="padding: 0.6em; border: none;">int</td>
-      <td style="padding: 0.6em; border: none;">1000000</td>
-      <td style="padding: 0.6em; border: none;">Baud rate: 9600-1000000</td>
-    </tr>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>communication_timeout_ms</code></td>
-      <td style="padding: 0.6em; border: none;">int</td>
-      <td style="padding: 0.6em; border: none;">100</td>
-      <td style="padding: 0.6em; border: none;">Serial timeout: 1-1000 ms</td>
-    </tr>
-    <tr style="background: #f0f0f0;">
-      <td style="padding: 0.6em; border: none;"><code>use_sync_write</code></td>
-      <td style="padding: 0.6em; border: none;">bool</td>
-      <td style="padding: 0.6em; border: none;">true</td>
-      <td style="padding: 0.6em; border: none;">Enable SyncWrite for multi-motor setups</td>
-    </tr>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>enable_mock_mode</code></td>
-      <td style="padding: 0.6em; border: none;">bool</td>
-      <td style="padding: 0.6em; border: none;">false</td>
-      <td style="padding: 0.6em; border: none;">Hardware-free simulation mode</td>
-    </tr>
-  </tbody>
-</table>
-
-<table class="param-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
-  <thead>
-    <tr>
-      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🔧  Joint Parameters</th>
-    </tr>
-    <tr>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Parameter</th>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Type</th>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Default</th>
-      <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>motor_id</code></td>
-      <td style="padding: 0.6em; border: none;">int</td>
-      <td style="padding: 0.6em; border: none;"><em>required</em></td>
-      <td style="padding: 0.6em; border: none;">Motor ID on serial bus (1-253)</td>
-    </tr>
-    <tr style="background: #f0f0f0;">
-      <td style="padding: 0.6em; border: none;"><code>operating_mode</code></td>
-      <td style="padding: 0.6em; border: none;">int</td>
-      <td style="padding: 0.6em; border: none;">1</td>
-      <td style="padding: 0.6em; border: none;">0=Position, 1=Velocity, 2=PWM</td>
-    </tr>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>min_position</code></td>
-      <td style="padding: 0.6em; border: none;">double</td>
-      <td style="padding: 0.6em; border: none;">0 radians</td>
-      <td style="padding: 0.6em; border: none;">Min position limit (Mode 0 only)</td>
-    </tr>
-    <tr style="background: #f0f0f0;">
-      <td style="padding: 0.6em; border: none;"><code>max_position</code></td>
-      <td style="padding: 0.6em; border: none;">double</td>
-      <td style="padding: 0.6em; border: none;">2π radians</td>
-      <td style="padding: 0.6em; border: none;">Max position limit (Mode 0 only)</td>
-    </tr>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>max_effort</code></td>
-      <td style="padding: 0.6em; border: none;">double</td>
-      <td style="padding: 0.6em; border: none;">1.0</td>
-      <td style="padding: 0.6em; border: none;">Max PWM duty cycle (0.0-1.0, Mode 2 only)</td>
     </tr>
   </tbody>
 </table>
