@@ -14,7 +14,7 @@
 ## Features
 
 - **Scalable Multi-Motor Support**: Control 1 to 253 motors on a single serial bus
-- **Three Operating Modes**: Position (servo), Velocity, and PWM (effort) control per motor
+- **Three Operating Modes**: Position (servo, closed-loop), Velocity (wheel, closed-loop), and PWM (effort, open-loop) control per motor
 - **Mixed-Mode Operation**: Different motors in different modes on the same serial bus
 - **Multi-Motor Coordination**: Efficient SyncWrite for chains of motors
 - **Safety Features**: Broadcast emergency stop, hardware limits, automatic error recovery
@@ -26,14 +26,14 @@
 **Mode 0 (Position/Servo):**
 - `position` - Target position (radians)
 - `velocity` - Maximum speed (rad/s)
-- `acceleration` - Acceleration (0-254)
+- `acceleration` - Acceleration value in Mode 0 (0-254)
 
 **Mode 1 (Velocity):**
 - `velocity` - Target velocity (rad/s)
-- `acceleration` - Acceleration (0-254)
+- `acceleration` - Acceleration value in Mode 1 (0-254)
 
 **Mode 2 (PWM/Effort):**
-- `effort` - PWM duty cycle (-1.0 to +1.0)
+- `effort` - PWM duty cycle (-1.0 to +1.0, open-loop control)
 
 **Broadcast (all modes):**
 - `emergency_stop` - Stops all motors immediately
@@ -113,7 +113,7 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `motor_id` | int | *required* | Motor ID on serial bus (1-253) |
-| `operating_mode` | int | 1 | 0=Position, 1=Velocity, 2=PWM |
+| `operating_mode` | int | 1 | 0=Position (closed-loop), 1=Velocity (closed-loop), 2=PWM (open-loop) |
 | `min_position` | double | 0.0 | Min position limit (radians, Mode 0 only) |
 | `max_position` | double | 6.283 | Max position limit (2π radians, Mode 0 only) |
 | `max_effort` | double | 1.0 | Max PWM duty cycle (0.0-1.0, Mode 2 only) |

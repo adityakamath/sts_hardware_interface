@@ -26,11 +26,11 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 </div>
 
-<div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
+<div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;" markdown="1">
 
 > `ros2_control` SystemInterface for Feetech STS series servo motors (STS3215 and compatible).
-
-**⚠️ Status:** Only **Mode 1 (Velocity)** has been tested. Modes 0 (Position) and 2 (PWM) are experimental.
+>
+> **⚠️ Status:** Only **Mode 1 (Velocity)** has been tested. Modes 0 (Position) and 2 (PWM) are experimental.
 
 </div>
 
@@ -135,13 +135,13 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
       <td style="padding: 0.6em; border: none;"><code>acceleration</code></td>
       <td style="padding: 0.6em; border: none;">0-254 (unitless)</td>
         <td style="padding: 0.6em; border: none;">0, 1</td>
-      <td style="padding: 0.6em; border: none;">Acceleration limit</td>
+      <td style="padding: 0.6em; border: none;">Acceleration value in Mode 0 and 1</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>effort</code></td>
       <td style="padding: 0.6em; border: none;">-1.0 to +1.0</td>
         <td style="padding: 0.6em; border: none;">2</td>
-      <td style="padding: 0.6em; border: none;">PWM duty cycle</td>
+      <td style="padding: 0.6em; border: none;">PWM duty cycle (open-loop, no velocity/acceleration)</td>
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>emergency_stop</code></td>

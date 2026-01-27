@@ -125,9 +125,9 @@ Demonstrates three motors in different operating modes on the same serial bus.
 
 **Motors configured:**
 
-- Motor 1 (`wheel_joint`): **Mode 1** - Velocity control
-- Motor 2 (`arm_joint`): **Mode 0** - Position/servo control
-- Motor 3 (`gripper_joint`): **Mode 2** - PWM/effort control
+- Motor 1 (`wheel_joint`): **Mode 1** - Velocity control (closed-loop)
+- Motor 2 (`arm_joint`): **Mode 0** - Position/servo control (closed-loop)
+- Motor 3 (`gripper_joint`): **Mode 2** - PWM/effort control (open-loop)
 
 **How to run:**
 

@@ -80,20 +80,24 @@ Each motor can be configured independently in one of three modes:
       <td style="padding: 0.6em; border: none;">Target velocity for continuous rotation</td>
     </tr>
     <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><strong>2: Effort</strong></td>
-      <td style="padding: 0.6em; border: none;">Force control, grippers</td>
+      <td style="padding: 0.6em; border: none;"><strong>2: PWM/Effort</strong></td>
+      <td style="padding: 0.6em; border: none;">Force control, grippers, open-loop</td>
       <td style="padding: 0.6em; border: none;">effort (-1.0 to +1.0)</td>
       <td style="padding: 0.6em; border: none;">N/A</td>
-      <td style="padding: 0.6em; border: none;">N/A</td>
+      <td style="padding: 0.6em; border: none;">N/A (open-loop, no feedback control)</td>
     </tr>
   </tbody>
 </table>
 
 † Optional interfaces
 
-**Important:** The `velocity` command interface has different semantics depending on operating mode:
-- **Mode 0 (Position)**: Sets the maximum speed when moving to the commanded position
-- **Mode 1 (Velocity)**: Sets the target continuous rotation speed
+**Important Notes:**
+
+- **Velocity semantics**: The `velocity` command interface has different meanings in different modes:
+  - **Mode 0 (Position)**: Sets the maximum speed when moving to the commanded position
+  - **Mode 1 (Velocity)**: Sets the target continuous rotation speed
+
+- **Mode 2 (PWM/Effort)**: This is open-loop control with NO velocity or acceleration parameters. It directly controls motor power via PWM duty cycle, bypassing all position and velocity feedback loops.
 
 **Configuration Example:**
 
