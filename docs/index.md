@@ -36,7 +36,6 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 <div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
 <div style="display: flex; flex-wrap: wrap; gap: 0.6em; margin: 2em 0; align-items: stretch;">
-  <!-- Combined container for Scalable Multi-Motor Support and Multi-Motor Coordination -->
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
     <span style="font-size: 1.8em;">🚀</span>
     <div style="flex: 1;">
@@ -94,9 +93,21 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 ## Interfaces
 
+<div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
+
+<style>
+  .param-table {
+    transition: all 0.2s ease;
+  }
+
+  .param-table:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25) !important;
+  }
+</style>
+
 <table class="param-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
-      <table class="param-table" style="width: auto; min-width: 340px; max-width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
     <tr>
       <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🎮 Command Interfaces</th>
     </tr>
@@ -143,9 +154,8 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 <table class="param-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
   <thead>
-      <table class="param-table" style="width: auto; min-width: 340px; max-width: 100%; border-collapse: separate; border-spacing: 0; margin: 2em auto; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: none;">
     <tr>
-      <th colspan="3" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🧩 State Interfaces</th>
+      <th colspan="4" style="text-align: center; padding: 0.6em; background: #f8f9fa; border: none;">🧩 State Interfaces</th>
     </tr>
     <tr>
       <th style="text-align: left; padding: 0.6em; background: #e9ecef; border: none;">Interface</th>
@@ -191,6 +201,8 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     </tr>
   </tbody>
 </table>
+
+</div>
 
 ---
 
