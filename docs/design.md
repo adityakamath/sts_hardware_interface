@@ -157,9 +157,9 @@ All modes always export the following state interfaces for every joint:
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>effort</code></td>
-      <td style="padding: 0.6em; border: none;">-100 to +100%</td>
-      <td style="padding: 0.6em; border: none;">Motor load percentage</td>
-      <td style="padding: 0.6em; border: none;">0.1% per unit</td>
+      <td style="padding: 0.6em; border: none;">-1.0 to +1.0</td>
+      <td style="padding: 0.6em; border: none;">Normalized motor load (scaled by effort_max)</td>
+      <td style="padding: 0.6em; border: none;">raw × 0.001 × effort_max</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>voltage</code></td>
@@ -324,8 +324,8 @@ Configure these per `<joint>` in your URDF:
       <td style="padding: 0.6em; border: none;"><code>max_velocity</code></td>
       <td style="padding: 0.6em; border: none;">double</td>
       <td style="padding: 0.6em; border: none;">5.22</td>
-      <td style="padding: 0.6em; border: none;">any</td>
-      <td style="padding: 0.6em; border: none;">Max velocity limit (rad/s, currently unused)</td>
+      <td style="padding: 0.6em; border: none;">&gt; 0.0</td>
+      <td style="padding: 0.6em; border: none;">Max velocity limit (rad/s, Modes 0 and 1)</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>max_effort</code></td>
@@ -336,8 +336,6 @@ Configure these per `<joint>` in your URDF:
     </tr>
   </tbody>
 </table>
-
-**Note:** `max_velocity` parameter is defined in the code but not currently parsed from URDF. The hardware uses a fixed maximum of 3400 steps/s (≈ 5.22 rad/s).
 
 ---
 
@@ -367,6 +365,9 @@ Configure these per `<joint>` in your URDF:
 - ⚠️ **Tradeoff:** Higher latency (~5ms per motor)
 - **Best for:** Single motor setups, debugging communication failures
 
+**Performance Optimization:**
+The hardware interface pre-computes motor groupings by operating mode during initialization and pre-allocates all SyncWrite communication buffers. This eliminates per-cycle heap allocations, reducing latency and ensuring deterministic performance at high controller update rates (100+ Hz).
+
 ---
 
 ## Safety Features
@@ -381,10 +382,11 @@ ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: true"
 ```
 
 **Behavior:**
-1. Broadcasts stop command to ALL motors (ID 0xFE)
-2. Uses maximum deceleration (acceleration=254)
-3. Blocks all subsequent write commands until released
-4. Emergency stop state persists until explicit release
+1. Broadcasts a velocity-zero command (`WriteSpe`) to ALL motors (ID 0xFE) with maximum deceleration (acceleration=254)
+2. Blocks all subsequent write commands until released
+3. Emergency stop state persists until explicit release
+
+**Note:** The broadcast uses a velocity-zero command, which the STS protocol applies regardless of the motor's configured operating mode. The error handler (`on_error`) uses per-motor mode-specific stop commands instead.
 
 **Release:**
 ```bash
@@ -399,6 +401,7 @@ The hardware interface automatically recovers from communication failures:
 
 **Recovery Trigger:**
 - Activates after 5 consecutive read or write errors
+- Error messages identify the specific failing motor by ID and joint name for easier diagnostics
 
 **Recovery Process:**
 1. Close serial port
@@ -435,7 +438,12 @@ Test controllers without hardware by setting `enable_mock_mode: true` in hardwar
 **Additional Simulations:**
 - **Load:** Based on velocity percentage (higher speed = higher load percentage)
 - **Motion detection:** `is_moving` threshold at 0.01 rad/s
-- **State variables:** Voltage, temperature, current remain at zero (not simulated)
+- **Voltage:** Physics-based simulation (nominal 12V with load-dependent drop of up to 0.5V)
+- **Temperature:** Thermal model (ambient 25°C + heating from velocity and load, typically 25-40°C range)
+- **Current:** Proportional to effort (up to ~1A at maximum load)
+
+**Emergency Stop Behavior:**
+Mock mode emergency stop clears all command interfaces (velocity, position, effort, acceleration) to match real hardware behavior, ensuring consistent controller behavior when switching between mock and real hardware.
 
 Mock mode provides realistic command/state behavior for controller development without hardware.
 

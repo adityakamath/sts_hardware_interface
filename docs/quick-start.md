@@ -100,6 +100,15 @@ ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true gui:=tr
 2. Starts `ros2_control` node with velocity controller
 3. Spawns `joint_state_broadcaster` and `velocity_controller`
 
+**Mock Mode Behavior:**
+
+When running in mock mode (`use_mock:=true`), the hardware interface simulates realistic sensor feedback:
+
+- **Voltage:** ~12V with load-dependent voltage drop (10-12V range)
+- **Temperature:** Ambient 25°C + thermal heating from velocity/load (typically 25-40°C)
+- **Current:** Proportional to motor effort (up to ~1A at max load)
+- **Emergency stop:** Clears all command interfaces to match real hardware behavior
+
 **Test the motor:**
 
 ```bash
@@ -355,10 +364,11 @@ ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
 
 **Solutions:**
 
-1. **Verify position limits:**
+1. **Verify position and velocity limits:**
    ```xml
    <param name="min_position">0.0</param>
    <param name="max_position">6.283</param>  <!-- 2π radians -->
+   <param name="max_velocity">5.22</param>   <!-- rad/s, optional -->
    ```
 
 2. **Check for position wrapping:**
@@ -409,8 +419,9 @@ ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
 3. **Monitor simulated state:**
    ```bash
    ros2 topic echo /joint_states
+   ros2 topic echo /dynamic_joint_states  # Check voltage, temperature, current
    ```
-   Mock mode simulates realistic velocity integration.
+   Mock mode simulates realistic velocity integration and sensor feedback (voltage ~12V, temperature 25-40°C, current proportional to load).
 
 ---
 

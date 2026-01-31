@@ -36,9 +36,15 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   // Parse and validate baud_rate (default: 1000000)
   // Supported baud rates: 9600, 19200, 38400, 57600, 115200, 500000, 1000000
   static const std::vector<int> valid_baud_rates = {9600, 19200, 38400, 57600, 115200, 500000, 1000000};
-  baud_rate_ = std::stoi(
-    info_.hardware_parameters.count("baud_rate") ?
-    info_.hardware_parameters.at("baud_rate") : "1000000");
+  try {
+    baud_rate_ = std::stoi(
+      info_.hardware_parameters.count("baud_rate") ?
+      info_.hardware_parameters.at("baud_rate") : "1000000");
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid baud_rate value: '%s' (must be a valid integer)",
+      info_.hardware_parameters.at("baud_rate").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   if (std::find(valid_baud_rates.begin(), valid_baud_rates.end(), baud_rate_) == valid_baud_rates.end()) {
     RCLCPP_ERROR(logger_, "Invalid baud_rate: %d. Supported rates: 9600, 19200, 38400, 57600, 115200, 500000, 1000000", baud_rate_);
@@ -46,9 +52,15 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   }
 
   // Parse and validate communication_timeout_ms (default: 100, range: 1-1000)
-  communication_timeout_ms_ = std::stoi(
-    info_.hardware_parameters.count("communication_timeout_ms") ?
-    info_.hardware_parameters.at("communication_timeout_ms") : "100");
+  try {
+    communication_timeout_ms_ = std::stoi(
+      info_.hardware_parameters.count("communication_timeout_ms") ?
+      info_.hardware_parameters.at("communication_timeout_ms") : "100");
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid communication_timeout_ms value: '%s' (must be a valid integer)",
+      info_.hardware_parameters.at("communication_timeout_ms").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   if (communication_timeout_ms_ < 1 || communication_timeout_ms_ > 1000) {
     RCLCPP_ERROR(logger_, "Invalid communication_timeout_ms: %d. Must be between 1 and 1000 ms", communication_timeout_ms_);
@@ -56,11 +68,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   }
 
   // Parse boolean parameters
-  enable_mock_mode_ = (info_.hardware_parameters.count("enable_mock_mode") &&
-                       info_.hardware_parameters.at("enable_mock_mode") == "true");
-
-  use_sync_write_ = (info_.hardware_parameters.count("use_sync_write") &&
-                     info_.hardware_parameters.at("use_sync_write") == "false") ? false : true;
+  enable_mock_mode_ = parse_bool_param("enable_mock_mode", false);
+  use_sync_write_ = parse_bool_param("use_sync_write", true);
 
   // ===== Parse joint-level parameters =====
   size_t num_joints = info_.joints.size();
@@ -109,10 +118,15 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     joint_name_to_index_[joint.name] = i;
 
     // Parse motor_id (required per joint)
+    if (!joint.parameters.count("motor_id")) {
+      RCLCPP_ERROR(logger_, "Joint '%s': Missing required parameter 'motor_id'", joint.name.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
     try {
       motor_ids_[i] = std::stoi(joint.parameters.at("motor_id"));
-    } catch (const std::out_of_range &) {
-      RCLCPP_ERROR(logger_, "Joint '%s': Missing required parameter 'motor_id'", joint.name.c_str());
+    } catch (const std::exception &) {
+      RCLCPP_ERROR(logger_, "Joint '%s': Invalid motor_id value: '%s' (must be a valid integer)",
+        joint.name.c_str(), joint.parameters.at("motor_id").c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
 
@@ -125,7 +139,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
     // Parse operating_mode (per joint)
     if (joint.parameters.count("operating_mode")) {
-      operating_modes_[i] = std::stoi(joint.parameters.at("operating_mode"));
+      try {
+        operating_modes_[i] = std::stoi(joint.parameters.at("operating_mode"));
+      } catch (const std::exception &) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid operating_mode value: '%s' (must be 0, 1, or 2)",
+          joint.name.c_str(), joint.parameters.at("operating_mode").c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
     } else {
       // Default to velocity mode if not specified
       operating_modes_[i] = MODE_VELOCITY;
@@ -140,11 +160,23 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
     // Parse and validate optional joint limits
     if (joint.parameters.count("min_position")) {
-      position_min_[i] = std::stod(joint.parameters.at("min_position"));
+      try {
+        position_min_[i] = std::stod(joint.parameters.at("min_position"));
+      } catch (const std::exception &) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid min_position value: '%s' (must be a valid number)",
+          joint.name.c_str(), joint.parameters.at("min_position").c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
       has_position_limits_[i] = true;
     }
     if (joint.parameters.count("max_position")) {
-      position_max_[i] = std::stod(joint.parameters.at("max_position"));
+      try {
+        position_max_[i] = std::stod(joint.parameters.at("max_position"));
+      } catch (const std::exception &) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid max_position value: '%s' (must be a valid number)",
+          joint.name.c_str(), joint.parameters.at("max_position").c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
       has_position_limits_[i] = true;
     }
     if (has_position_limits_[i] && position_min_[i] >= position_max_[i]) {
@@ -153,8 +185,30 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       return hardware_interface::CallbackReturn::ERROR;
     }
 
+    if (joint.parameters.count("max_velocity")) {
+      try {
+        velocity_max_[i] = std::stod(joint.parameters.at("max_velocity"));
+      } catch (const std::exception &) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid max_velocity value: '%s' (must be a valid number)",
+          joint.name.c_str(), joint.parameters.at("max_velocity").c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      if (velocity_max_[i] <= 0.0) {
+        RCLCPP_ERROR(logger_, "Joint '%s': max_velocity must be greater than 0 (got %.3f)",
+          joint.name.c_str(), velocity_max_[i]);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      has_velocity_limits_[i] = true;
+    }
+
     if (joint.parameters.count("max_effort")) {
-      effort_max_[i] = std::stod(joint.parameters.at("max_effort"));
+      try {
+        effort_max_[i] = std::stod(joint.parameters.at("max_effort"));
+      } catch (const std::exception &) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid max_effort value: '%s' (must be a valid number)",
+          joint.name.c_str(), joint.parameters.at("max_effort").c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
       if (effort_max_[i] <= 0.0) {
         RCLCPP_ERROR(logger_, "Joint '%s': max_effort must be greater than 0 (got %.3f)",
           joint.name.c_str(), effort_max_[i]);
@@ -209,6 +263,34 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       }
     }
   }
+
+  // Pre-compute motor groupings by operating mode (static after init)
+  for (size_t i = 0; i < num_joints; ++i) {
+    switch (operating_modes_[i]) {
+      case MODE_SERVO:
+        servo_motor_indices_.push_back(i);
+        servo_sync_ids_.push_back(static_cast<u8>(motor_ids_[i]));
+        break;
+      case MODE_VELOCITY:
+        velocity_motor_indices_.push_back(i);
+        velocity_sync_ids_.push_back(static_cast<u8>(motor_ids_[i]));
+        break;
+      case MODE_PWM:
+        pwm_motor_indices_.push_back(i);
+        pwm_sync_ids_.push_back(static_cast<u8>(motor_ids_[i]));
+        break;
+    }
+  }
+  // Pre-allocate SyncWrite data buffers (IDs are fixed, data overwritten each cycle)
+  servo_sync_positions_.resize(servo_motor_indices_.size());
+  servo_sync_speeds_.resize(servo_motor_indices_.size());
+  servo_sync_accelerations_.resize(servo_motor_indices_.size());
+  velocity_sync_velocities_.resize(velocity_motor_indices_.size());
+  velocity_sync_accelerations_.resize(velocity_motor_indices_.size());
+  pwm_sync_pwm_values_.resize(pwm_motor_indices_.size());
+
+  RCLCPP_INFO(logger_, "Motor groupings: %zu servo, %zu velocity, %zu PWM",
+    servo_motor_indices_.size(), velocity_motor_indices_.size(), pwm_motor_indices_.size());
 
   // Initialize error tracking
   consecutive_read_errors_ = 0;
@@ -456,6 +538,17 @@ hardware_interface::return_type STSHardwareInterface::read(
       simulated_load_percentage = std::clamp(simulated_load_percentage, -100.0, 100.0);
       hw_state_effort_[i] = (simulated_load_percentage / 100.0) * effort_max_[i];
 
+      // Simulate voltage (STS3215 nominal: 12V, range: 10-14V under load)
+      double voltage_drop = std::abs(hw_state_effort_[i]) * 0.5;  // Up to 0.5V drop at max load
+      hw_state_voltage_[i] = 12.0 - voltage_drop;
+
+      // Simulate temperature (ambient ~25°C + heating from load/velocity)
+      double thermal_load = std::abs(hw_state_velocity_[i]) * 2.0 + std::abs(hw_state_effort_[i]) * 5.0;
+      hw_state_temperature_[i] = 25.0 + thermal_load;
+
+      // Simulate current (proportional to effort: ~0-1000mA at full load)
+      hw_state_current_[i] = std::abs(hw_state_effort_[i]) * 1.0;  // ~1A at max effort
+
       // Update is_moving state
       hw_state_is_moving_[i] = (std::abs(hw_state_velocity_[i]) > 0.01) ? 1.0 : 0.0;
     }
@@ -471,7 +564,7 @@ hardware_interface::return_type STSHardwareInterface::read(
       int servo_error = servo_->getErr();
       RCLCPP_WARN_THROTTLE(
         logger_,
-        *rclcpp::Clock::make_shared(), 1000,
+        throttle_clock_, 1000,
         "Failed to read feedback from motor %d (joint '%s') - error count: %d/%d, servo error: %d",
         motor_ids_[i], joint_names_[i].c_str(),
         consecutive_read_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
@@ -479,8 +572,8 @@ hardware_interface::return_type STSHardwareInterface::read(
       if (consecutive_read_errors_ >= MAX_CONSECUTIVE_ERRORS) {
         RCLCPP_ERROR(
           logger_,
-          "Too many consecutive read errors (%d), attempting recovery...",
-          consecutive_read_errors_);
+          "Too many consecutive read errors (%d) - last failure on motor %d (joint '%s'), attempting recovery...",
+          consecutive_read_errors_, motor_ids_[i], joint_names_[i].c_str());
 
         if (attempt_error_recovery()) {
           RCLCPP_INFO(
@@ -538,6 +631,11 @@ hardware_interface::return_type STSHardwareInterface::write(
     if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
       for (size_t i = 0; i < motor_ids_.size(); ++i) {
         hw_state_velocity_[i] = 0.0;
+        // Clear command interfaces for consistency with real hardware behavior
+        hw_cmd_velocity_[i] = 0.0;
+        hw_cmd_position_[i] = hw_state_position_[i];  // Hold current position
+        hw_cmd_effort_[i] = 0.0;
+        hw_cmd_acceleration_[i] = 0.0;
       }
       emergency_stop_active_ = true;
       RCLCPP_WARN(logger_, "Emergency stop activated - ALL motors stopped");
@@ -567,70 +665,35 @@ hardware_interface::return_type STSHardwareInterface::write(
     return hardware_interface::return_type::OK;
   }
 
-  // Group motors by operating mode for efficient SyncWrite
-  std::vector<size_t> servo_motors;     // MODE_SERVO (position control)
-  std::vector<size_t> velocity_motors;  // MODE_VELOCITY
-  std::vector<size_t> pwm_motors;       // MODE_PWM
-
-  for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    switch (operating_modes_[i]) {
-      case MODE_SERVO:
-        servo_motors.push_back(i);
-        break;
-      case MODE_VELOCITY:
-        velocity_motors.push_back(i);
-        break;
-      case MODE_PWM:
-        pwm_motors.push_back(i);
-        break;
-    }
-  }
-
   // ===== WRITE COMMANDS FOR SERVO MODE MOTORS =====
-  if (!servo_motors.empty()) {
-    if (use_sync_write_ && servo_motors.size() > 1) {
-      // Use SyncWrite for multiple servo motors
-      std::vector<u8> ids;
-      std::vector<s16> positions;
-      std::vector<u16> speeds;
-      std::vector<u8> accelerations;
+  if (!servo_motor_indices_.empty()) {
+    if (use_sync_write_ && servo_motor_indices_.size() > 1) {
+      // Update pre-allocated SyncWrite buffers
+      for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
+        size_t idx = servo_motor_indices_[j];
+        double target_position = apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
+        double max_speed = apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
 
-      for (size_t idx : servo_motors) {
-        double target_position = apply_limit(hw_cmd_position_[idx], position_max_[idx], has_position_limits_[idx], false);
-        if (has_position_limits_[idx]) {
-          target_position = std::max(target_position, position_min_[idx]);
-        }
-        double max_speed = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], false);
-
-        ids.push_back(motor_ids_[idx]);
-        positions.push_back(radians_to_raw_position(target_position));
-        speeds.push_back(static_cast<u16>(std::clamp(
-          rad_s_to_raw_velocity(max_speed), 0, STS_MAX_VELOCITY_STEPS)));
-        accelerations.push_back(static_cast<u8>(std::clamp(
-          hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION))));
+        servo_sync_positions_[j] = radians_to_raw_position(target_position);
+        servo_sync_speeds_[j] = static_cast<u16>(std::clamp(
+          rad_s_to_raw_velocity(max_speed), 0, STS_MAX_VELOCITY_STEPS));
+        servo_sync_accelerations_[j] = static_cast<u8>(clamp_acceleration(idx));
       }
 
-      // SyncWrite to all servo mode motors
       servo_->SyncWritePosEx(
-        ids.data(), ids.size(),
-        positions.data(), speeds.data(), accelerations.data());
-
-      // No result to check for SyncWritePosEx (void return)
+        servo_sync_ids_.data(), servo_sync_ids_.size(),
+        servo_sync_positions_.data(), servo_sync_speeds_.data(), servo_sync_accelerations_.data());
 
     } else {
       // Individual writes for single servo motor or when SyncWrite disabled
-      for (size_t idx : servo_motors) {
-        double target_position = apply_limit(hw_cmd_position_[idx], position_max_[idx], has_position_limits_[idx], false);
-        if (has_position_limits_[idx]) {
-          target_position = std::max(target_position, position_min_[idx]);
-        }
-        double max_speed = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], false);
+      for (size_t idx : servo_motor_indices_) {
+        double target_position = apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
+        double max_speed = apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
 
         int raw_position = radians_to_raw_position(target_position);
         int raw_max_speed = std::clamp(
           rad_s_to_raw_velocity(max_speed), 0, STS_MAX_VELOCITY_STEPS);
-        int acceleration = static_cast<int>(std::clamp(
-          hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION)));
+        int acceleration = clamp_acceleration(idx);
 
         int result = servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration);
 
@@ -642,35 +705,26 @@ hardware_interface::return_type STSHardwareInterface::write(
   }
 
   // ===== WRITE COMMANDS FOR VELOCITY MODE MOTORS =====
-  if (!velocity_motors.empty()) {
-    if (use_sync_write_ && velocity_motors.size() > 1) {
-      // Use SyncWrite for multiple velocity motors
-      std::vector<u8> ids;
-      std::vector<s16> velocities;
-      std::vector<u8> accelerations;
-
-      for (size_t idx : velocity_motors) {
-        double target_velocity = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], true);
-        ids.push_back(motor_ids_[idx]);
-        velocities.push_back(rad_s_to_raw_velocity(target_velocity));
-        accelerations.push_back(static_cast<u8>(std::clamp(
-          hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION))));
+  if (!velocity_motor_indices_.empty()) {
+    if (use_sync_write_ && velocity_motor_indices_.size() > 1) {
+      // Update pre-allocated SyncWrite buffers
+      for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
+        size_t idx = velocity_motor_indices_[j];
+        double target_velocity = apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
+        velocity_sync_velocities_[j] = rad_s_to_raw_velocity(target_velocity);
+        velocity_sync_accelerations_[j] = static_cast<u8>(clamp_acceleration(idx));
       }
 
-      // SyncWrite to all velocity mode motors
       servo_->SyncWriteSpe(
-        ids.data(), ids.size(),
-        velocities.data(), accelerations.data());
-
-      // No result to check for SyncWriteSpe (void return)
+        velocity_sync_ids_.data(), velocity_sync_ids_.size(),
+        velocity_sync_velocities_.data(), velocity_sync_accelerations_.data());
 
     } else {
       // Individual writes for single velocity motor or when SyncWrite disabled
-      for (size_t idx : velocity_motors) {
-        double target_velocity = apply_limit(hw_cmd_velocity_[idx], velocity_max_[idx], has_velocity_limits_[idx], true);
+      for (size_t idx : velocity_motor_indices_) {
+        double target_velocity = apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
         int raw_velocity = rad_s_to_raw_velocity(target_velocity);
-        int acceleration = static_cast<int>(std::clamp(
-          hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION)));
+        int acceleration = clamp_acceleration(idx);
 
         int result = servo_->WriteSpe(motor_ids_[idx], raw_velocity, acceleration);
 
@@ -682,32 +736,20 @@ hardware_interface::return_type STSHardwareInterface::write(
   }
 
   // ===== WRITE COMMANDS FOR PWM MODE MOTORS =====
-  if (!pwm_motors.empty()) {
-    if (use_sync_write_ && pwm_motors.size() > 1) {
-      // Use SyncWrite for multiple PWM motors
-      std::vector<u8> ids;
-      std::vector<s16> pwm_values;
-
-      for (size_t idx : pwm_motors) {
-        double target_effort = apply_limit(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx], true);
-        // Scale from [-max_effort, max_effort] to [-1.0, 1.0] for PWM conversion
-        double normalized_effort = (has_effort_limits_[idx] && effort_max_[idx] > 0.0) ? 
-          (target_effort / effort_max_[idx]) : target_effort;
-        ids.push_back(motor_ids_[idx]);
-        pwm_values.push_back(effort_to_raw_pwm(normalized_effort));
+  if (!pwm_motor_indices_.empty()) {
+    if (use_sync_write_ && pwm_motor_indices_.size() > 1) {
+      // Update pre-allocated SyncWrite buffers
+      for (size_t j = 0; j < pwm_motor_indices_.size(); ++j) {
+        size_t idx = pwm_motor_indices_[j];
+        pwm_sync_pwm_values_[j] = effort_to_raw_pwm(normalize_effort(idx));
       }
 
-      // SyncWrite to all PWM mode motors
-      servo_->SyncWritePwm(ids.data(), ids.size(), pwm_values.data());
+      servo_->SyncWritePwm(pwm_sync_ids_.data(), pwm_sync_ids_.size(), pwm_sync_pwm_values_.data());
 
     } else {
       // Individual writes for single PWM motor or when SyncWrite disabled
-      for (size_t idx : pwm_motors) {
-        double target_effort = apply_limit(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx], true);
-        // Scale from [-max_effort, max_effort] to [-1.0, 1.0] for PWM conversion
-        double normalized_effort = (has_effort_limits_[idx] && effort_max_[idx] > 0.0) ? 
-          (target_effort / effort_max_[idx]) : target_effort;
-        int raw_pwm = effort_to_raw_pwm(normalized_effort);
+      for (size_t idx : pwm_motor_indices_) {
+        int raw_pwm = effort_to_raw_pwm(normalize_effort(idx));
         int result = servo_->WritePwm(motor_ids_[idx], raw_pwm);
 
         if (handle_write_error(result, idx, "PWM")) {
@@ -887,6 +929,30 @@ int STSHardwareInterface::effort_to_raw_pwm(double effort) const
   return static_cast<int>(clamped * STS_MAX_PWM);
 }
 
+/** @brief Clamp acceleration command to valid range [0, STS_MAX_ACCELERATION] */
+int STSHardwareInterface::clamp_acceleration(size_t idx) const
+{
+  return static_cast<int>(std::clamp(
+    hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION)));
+}
+
+/** @brief Apply effort limit and normalize to [-1.0, 1.0] for PWM conversion */
+double STSHardwareInterface::normalize_effort(size_t idx) const
+{
+  double target_effort = apply_limit(
+    hw_cmd_effort_[idx], -effort_max_[idx], effort_max_[idx], has_effort_limits_[idx]);
+  return (has_effort_limits_[idx] && effort_max_[idx] > 0.0) ?
+    (target_effort / effort_max_[idx]) : target_effort;
+}
+
+/** @brief Parse a boolean hardware parameter with default value */
+bool STSHardwareInterface::parse_bool_param(const std::string& key, bool default_value) const
+{
+  auto it = info_.hardware_parameters.find(key);
+  if (it == info_.hardware_parameters.end()) return default_value;
+  return it->second == "true";
+}
+
 /** @brief Handle write operation errors with logging and recovery */
 bool STSHardwareInterface::handle_write_error(int result, size_t idx, const char* operation)
 {
@@ -895,13 +961,18 @@ bool STSHardwareInterface::handle_write_error(int result, size_t idx, const char
     int servo_error = servo_->getErr();
     RCLCPP_WARN_THROTTLE(
       logger_,
-      *rclcpp::Clock::make_shared(), 1000,
+      throttle_clock_, 1000,
       "Failed to write %s to motor %d (joint '%s') - error count: %d/%d, servo error: %d",
       operation, motor_ids_[idx], joint_names_[idx].c_str(),
       consecutive_write_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
 
-    if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS && attempt_error_recovery()) {
-      consecutive_write_errors_ = 0;
+    if (consecutive_write_errors_ >= MAX_CONSECUTIVE_ERRORS) {
+      RCLCPP_ERROR(logger_,
+        "Too many consecutive write errors (%d) - last failure on motor %d (joint '%s'), attempting recovery...",
+        consecutive_write_errors_, motor_ids_[idx], joint_names_[idx].c_str());
+      if (attempt_error_recovery()) {
+        consecutive_write_errors_ = 0;
+      }
     }
     return true;  // Error occurred
   }

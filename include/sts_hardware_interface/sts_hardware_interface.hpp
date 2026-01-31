@@ -34,7 +34,7 @@ namespace sts_hardware_interface
  * STATE INTERFACES (Read from hardware - all modes, per joint):
  * - position: Current position in radians
  * - velocity: Current velocity in rad/s
- * - load: Motor load/torque as percentage (-100.0 to +100.0)
+ * - effort: Normalized motor load (-1.0 to +1.0, scaled by effort_max)
  * - voltage: Supply voltage in volts
  * - temperature: Internal temperature in degrees Celsius
  * - current: Motor current draw in amperes
@@ -171,6 +171,7 @@ private:
 
   // ===== LOGGING =====
   rclcpp::Logger logger_;
+  rclcpp::Clock throttle_clock_{RCL_SYSTEM_TIME};  // Reusable clock for RCLCPP_*_THROTTLE macros
 
   // ===== HARDWARE COMMUNICATION =====
   std::shared_ptr<SMS_STS> servo_;
@@ -180,6 +181,22 @@ private:
   std::vector<int> motor_ids_;            // Corresponding motor IDs (1-253)
   std::vector<int> operating_modes_;      // Per-joint operating mode (0=servo, 1=velocity, 2=PWM)
   std::map<std::string, size_t> joint_name_to_index_;  // Quick lookup
+
+  // ===== PRE-COMPUTED MOTOR GROUPINGS (set once in on_init) =====
+  std::vector<size_t> servo_motor_indices_;     // MODE_SERVO joint indices
+  std::vector<size_t> velocity_motor_indices_;  // MODE_VELOCITY joint indices
+  std::vector<size_t> pwm_motor_indices_;       // MODE_PWM joint indices
+
+  // ===== PRE-ALLOCATED SYNCWRITE BUFFERS (sized once, values updated each cycle) =====
+  std::vector<u8> servo_sync_ids_;
+  std::vector<s16> servo_sync_positions_;
+  std::vector<u16> servo_sync_speeds_;
+  std::vector<u8> servo_sync_accelerations_;
+  std::vector<u8> velocity_sync_ids_;
+  std::vector<s16> velocity_sync_velocities_;
+  std::vector<u8> velocity_sync_accelerations_;
+  std::vector<u8> pwm_sync_ids_;
+  std::vector<s16> pwm_sync_pwm_values_;
 
   // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
   std::vector<double> hw_state_position_;
@@ -260,12 +277,21 @@ private:
   /** @brief Handle write operation errors with logging and recovery */
   bool handle_write_error(int result, size_t idx, const char* operation);
 
-  /** @brief Apply limit to a value if limit is enabled */
+  /** @brief Clamp a value to [min_val, max_val] if limit is enabled */
   template<typename T>
-  T apply_limit(T value, T limit, bool has_limit, bool symmetric = false) const {
+  T apply_limit(T value, T min_val, T max_val, bool has_limit) const {
     if (!has_limit) return value;
-    return symmetric ? std::clamp(value, -limit, limit) : std::min(value, limit);
+    return std::clamp(value, min_val, max_val);
   }
+
+  /** @brief Clamp acceleration command to valid range [0, STS_MAX_ACCELERATION] */
+  int clamp_acceleration(size_t idx) const;
+
+  /** @brief Apply effort limit and normalize to [-1.0, 1.0] for PWM conversion */
+  double normalize_effort(size_t idx) const;
+
+  /** @brief Parse a boolean hardware parameter with default value */
+  bool parse_bool_param(const std::string& key, bool default_value) const;
 };
 
 }  // namespace sts_hardware_interface
