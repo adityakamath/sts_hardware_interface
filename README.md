@@ -107,6 +107,7 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
 | `communication_timeout_ms` | int | 100 | Serial timeout: 1-1000 ms |
 | `use_sync_write` | bool | true | Enable SyncWrite for multi-motor setups |
 | `enable_mock_mode` | bool | false | Simulation mode (no hardware) |
+| `max_velocity_steps` | int | 3400 | Max motor velocity in steps/s (STS3215: 3400, STS3032: 2900) |
 
 ## Joint Parameters
 
@@ -116,6 +117,7 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
 | `operating_mode` | int | 1 | 0=Position (closed-loop), 1=Velocity (closed-loop), 2=PWM (open-loop) |
 | `min_position` | double | 0.0 | Min position limit (radians, Mode 0 only) |
 | `max_position` | double | 6.283 | Max position limit (2π radians, Mode 0 only) |
+| `max_velocity` | double | 5.22 | Max velocity limit (rad/s, Modes 0 and 1, optional) |
 | `max_effort` | double | 1.0 | Max PWM duty cycle (0.0-1.0, Mode 2 only) |
 
 ## Dependencies

@@ -124,9 +124,9 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>velocity</code></td>
-      <td style="padding: 0.6em; border: none;">-5.22 to +5.22 rad/s (±3400 Steps/s)</td>
+      <td style="padding: 0.6em; border: none;">-5.22 to +5.22 rad/s (±3400 Steps/s for STS3215)</td>
         <td style="padding: 0.6em; border: none;">0, 1</td>
-      <td style="padding: 0.6em; border: none;">Max speed in Mode 0, Target velocity in Mode 1</td>
+      <td style="padding: 0.6em; border: none;">Max speed in Mode 0, Target velocity in Mode 1. Range depends on motor model (configurable via max_velocity_steps)</td>
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>acceleration</code></td>
