@@ -648,10 +648,10 @@ hardware_interface::return_type STSHardwareInterface::write(
     // Handle broadcast emergency stop in mock mode
     if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
       emergency_stop_active_ = true;
-      RCLCPP_WARN(logger_, "Emergency stop activated - ALL motors stopped");
+      RCLCPP_WARN(logger_, "Emergency stop activated - ALL motors stopped, torque disabled (mock mode)");
     } else if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
       emergency_stop_active_ = false;
-      RCLCPP_INFO(logger_, "Emergency stop released");
+      RCLCPP_INFO(logger_, "Emergency stop released - torque enabled (mock mode)");
     }
 
     // Continuously clear all commands while emergency stop is active
@@ -669,14 +669,34 @@ hardware_interface::return_type STSHardwareInterface::write(
 
   // Check for broadcast emergency stop (stops ALL motors)
   if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
-    RCLCPP_WARN(logger_, "Emergency stop activated - stopping ALL motors");
+    RCLCPP_WARN(logger_, "Emergency stop activated - stopping ALL motors and disabling torque");
     servo_->WriteSpe(STS_BROADCAST_ID, 0, STS_MAX_ACCELERATION);
+
+    // Disable torque on all motors (makes them freely movable by hand)
+    for (size_t i = 0; i < motor_ids_.size(); ++i) {
+      int result = servo_->EnableTorque(motor_ids_[i], 0);
+      if (result != 1) {
+        RCLCPP_WARN(logger_, "Failed to disable torque on motor %d (joint '%s') during emergency stop",
+          motor_ids_[i], joint_names_[i].c_str());
+      }
+    }
+
     emergency_stop_active_ = true;
     return hardware_interface::return_type::OK;
   }
 
   if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
-    RCLCPP_INFO(logger_, "Emergency stop released");
+    RCLCPP_INFO(logger_, "Emergency stop released - re-enabling torque");
+
+    // Re-enable torque on all motors
+    for (size_t i = 0; i < motor_ids_.size(); ++i) {
+      int result = servo_->EnableTorque(motor_ids_[i], 1);
+      if (result != 1) {
+        RCLCPP_WARN(logger_, "Failed to enable torque on motor %d (joint '%s') after emergency stop release",
+          motor_ids_[i], joint_names_[i].c_str());
+      }
+    }
+
     emergency_stop_active_ = false;
   }
 
@@ -800,7 +820,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
     }
     RCLCPP_INFO(
       logger_,
-      "Mock mode: All motors stopped (simulated)");
+      "Mock mode: All motors stopped and torque disabled (simulated)");
     return hardware_interface::CallbackReturn::SUCCESS;
   }
 
@@ -833,6 +853,18 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
 {
   RCLCPP_INFO(logger_, "Cleaning up STS hardware interface...");
 
+  // Disable torque on all motors before closing connection (skip in mock mode)
+  if (servo_ && !enable_mock_mode_) {
+    for (size_t i = 0; i < motor_ids_.size(); ++i) {
+      int result = servo_->EnableTorque(motor_ids_[i], 0);
+      if (result != 1) {
+        RCLCPP_WARN(logger_, "Failed to disable torque on motor %d (joint '%s') during cleanup",
+          motor_ids_[i], joint_names_[i].c_str());
+      }
+    }
+    RCLCPP_INFO(logger_, "All motor torques disabled");
+  }
+
   // Close serial connection
   if (servo_) {
     servo_->end();
@@ -855,12 +887,15 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
 {
   RCLCPP_INFO(logger_, "Shutting down STS hardware interface...");
 
-  // Ensure all motors are stopped and torque disabled
-  if (servo_) {
+  // Skip hardware shutdown in mock mode
+  if (enable_mock_mode_) {
+    RCLCPP_INFO(logger_, "Mock mode: Shutdown complete (simulated)");
+  } else if (servo_) {
+    // Real hardware: stop all motors and disable torque
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
       stop_motor(i, 0);
       servo_->EnableTorque(motor_ids_[i], 0);
-      RCLCPP_INFO(logger_, "Motor %d (joint '%s') shutdown complete",
+      RCLCPP_INFO(logger_, "Motor %d (joint '%s') shutdown complete - torque disabled",
         motor_ids_[i], joint_names_[i].c_str());
     }
 
@@ -885,12 +920,18 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
 {
   RCLCPP_ERROR(logger_, "Error state detected, attempting emergency stop...");
 
+  // Skip hardware error handling in mock mode
+  if (enable_mock_mode_) {
+    RCLCPP_ERROR(logger_, "Mock mode: Emergency stop activated (simulated)");
+    return hardware_interface::CallbackReturn::SUCCESS;
+  }
+
   if (!servo_) {
     RCLCPP_ERROR(logger_, "Servo interface not available for emergency stop");
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Emergency stop: set all motors to safe state
+  // Emergency stop: set all motors to safe state and disable torque
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
     int result = stop_motor(i, 254);  // Max deceleration for velocity mode
     if (result != 1) {

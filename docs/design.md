@@ -402,14 +402,24 @@ The hardware interface creates a ROS 2 node and subscriber during `on_configure(
 **Real hardware mode:**
 
 1. Broadcasts a velocity-zero command (`WriteSpe`) to ALL motors (ID 0xFE) with maximum deceleration (acceleration=254)
-2. Blocks all subsequent write commands until released
-3. Emergency stop state persists until explicit release
+2. **Disables torque on all motors** - motors can be freely moved by hand during emergency stop
+3. Blocks all subsequent write commands until released
+4. On release: **Re-enables torque** and resumes normal operation
+5. Emergency stop state persists until explicit release
 
 **Mock mode:**
 
 1. Continuously clears all command interfaces to zero every write cycle while emergency stop is active
 2. Mock simulation in `read()` uses these zero commands, resulting in stopped motors
-3. Emergency stop state persists until explicit release
+3. Torque disable/enable is simulated (logged but no hardware action)
+4. Emergency stop state persists until explicit release
+
+**Torque Management:**
+
+Motor torque is managed as follows:
+- **Enabled during:** Normal operation (after `on_activate()`)
+- **Disabled during:** Emergency stop, deactivation (`on_deactivate()`), cleanup (`on_cleanup()`), shutdown (`on_shutdown()`), and error states (`on_error()`)
+- **Purpose:** Disabling torque makes motors freely movable by hand, enabling safe manual intervention during emergency stops or when the system is not operational
 
 **Note:** The broadcast uses a velocity-zero command, which the STS protocol applies regardless of the motor's configured operating mode. The error handler (`on_error`) uses per-motor mode-specific stop commands instead.
 
