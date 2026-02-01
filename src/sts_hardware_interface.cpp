@@ -346,6 +346,19 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
 
   RCLCPP_INFO(logger_, "Configuration complete");
 
+  // Create ROS 2 node for emergency stop subscriber
+  if (!node_) {
+    node_ = std::make_shared<rclcpp::Node>("sts_hardware_interface_node");
+    RCLCPP_INFO(logger_, "Created ROS 2 node for emergency stop subscriber");
+  }
+
+  // Subscribe to emergency stop topic
+  emergency_stop_subscriber_ = node_->create_subscription<std_msgs::msg::Bool>(
+    "/emergency_stop", 10,
+    std::bind(&STSHardwareInterface::emergency_stop_callback, this, std::placeholders::_1));
+
+  RCLCPP_INFO(logger_, "Subscribed to /emergency_stop topic");
+
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -501,6 +514,11 @@ STSHardwareInterface::export_command_interfaces()
 hardware_interface::return_type STSHardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
+  // Process ROS 2 callbacks (e.g., emergency stop subscriber)
+  if (node_) {
+    rclcpp::spin_some(node_);
+  }
+
   // Mock mode: simulate hardware behavior using state variables directly
   if (enable_mock_mode_) {
     double dt = period.seconds();
@@ -1036,6 +1054,18 @@ bool STSHardwareInterface::attempt_error_recovery()
 
   RCLCPP_INFO(logger_, "Successfully recovered communication with all motors");
   return true;
+}
+
+/** @brief Emergency stop topic callback */
+void STSHardwareInterface::emergency_stop_callback(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  hw_cmd_emergency_stop_ = msg->data ? 1.0 : 0.0;
+
+  if (msg->data) {
+    RCLCPP_WARN(logger_, "Emergency stop command received via /emergency_stop topic");
+  } else {
+    RCLCPP_INFO(logger_, "Emergency stop release command received via /emergency_stop topic");
+  }
 }
 
 }  // namespace sts_hardware_interface

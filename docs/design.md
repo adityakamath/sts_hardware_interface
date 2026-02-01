@@ -201,15 +201,23 @@ The `joint_state_broadcaster` publishes motor state to two topics:
 
 **Additional state (`/dynamic_joint_states`):**
 - Message type: `control_msgs/DynamicJointState`
-- Contains: `voltage`, `temperature`, `current`, `is_moving`
-- Requires configuration in controller YAML:
+- Contains all configured state interfaces including extended diagnostics
+- Requires explicit interface listing in controller YAML:
 
 ```yaml
 joint_state_broadcaster:
   ros__parameters:
-    extra_joints:
+    joints:
       - wheel_joint
       - arm_joint
+    interfaces:
+      - position
+      - velocity
+      - effort
+      - voltage
+      - temperature
+      - current
+      - is_moving
 ```
 
 See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for a complete example.
@@ -376,22 +384,26 @@ The hardware interface pre-computes motor groupings by operating mode during ini
 
 Emergency stop is a **hardware-level broadcast command** that stops all motors simultaneously using broadcast ID 254.
 
-**Activation:**
+**Topic Interface:**
+The hardware interface subscribes to `/emergency_stop` topic (`std_msgs/Bool`):
 ```bash
-ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: true"
+# Activate emergency stop (stops ALL motors)
+ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+
+# Release emergency stop
+ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
 ```
 
+**Implementation:**
+The hardware interface creates a ROS 2 node and subscriber during `on_configure()`. The subscriber callback directly sets the `emergency_stop` command interface value, which is processed in the `write()` cycle. The node is spun in every `read()` cycle using `spin_some()` to process callbacks.
+
 **Behavior:**
+
 1. Broadcasts a velocity-zero command (`WriteSpe`) to ALL motors (ID 0xFE) with maximum deceleration (acceleration=254)
 2. Blocks all subsequent write commands until released
 3. Emergency stop state persists until explicit release
 
 **Note:** The broadcast uses a velocity-zero command, which the STS protocol applies regardless of the motor's configured operating mode. The error handler (`on_error`) uses per-motor mode-specific stop commands instead.
-
-**Release:**
-```bash
-ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
-```
 
 **Important:** Emergency stop is NOT per-joint - it affects all motors on the bus simultaneously.
 

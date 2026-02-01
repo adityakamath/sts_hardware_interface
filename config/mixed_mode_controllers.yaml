@@ -15,15 +15,22 @@ controller_manager:
       type: effort_controllers/JointGroupEffortController
 
 # Joint State Broadcaster configuration
-# Publishes to /joint_states (position, velocity, effort)
-# and /dynamic_joint_states (all other state interfaces)
+# Publishes standard state (position, velocity, effort) to /joint_states
+# Publishes all configured interfaces to /dynamic_joint_states
 joint_state_broadcaster:
   ros__parameters:
-    # Additional state interfaces published to /dynamic_joint_states
-    extra_joints:
+    joints:
       - wheel_joint
       - arm_joint
       - gripper_joint
+    interfaces:
+      - position
+      - velocity
+      - effort
+      - voltage
+      - temperature
+      - current
+      - is_moving
 
 wheel_controller:
   ros__parameters:

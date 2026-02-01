@@ -270,14 +270,22 @@ ros2 topic echo /joint_states  # position, velocity, effort
 ros2 topic echo /dynamic_joint_states  # voltage, temperature, current, is_moving
 ```
 
-To enable `/dynamic_joint_states`, add to your controller YAML:
+To enable `/dynamic_joint_states`, list all desired state interfaces in your controller YAML:
 
 ```yaml
 joint_state_broadcaster:
   ros__parameters:
-    extra_joints:
+    joints:
       - wheel_joint
       - arm_joint
+    interfaces:
+      - position
+      - velocity
+      - effort
+      - voltage
+      - temperature
+      - current
+      - is_moving
 ```
 
 See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for complete example.
@@ -296,10 +304,10 @@ ros2 control list_hardware_components
 
 ```bash
 # Activate emergency stop (stops ALL motors)
-ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: true"
+ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
 
 # Release emergency stop
-ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
+ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
 ```
 
 ---
@@ -388,7 +396,7 @@ ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
 
 1. **Release emergency stop:**
    ```bash
-   ros2 topic pub /sts_system/emergency_stop std_msgs/msg/Bool "data: false"
+   ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
    ```
 
 2. **Restart controller manager:**

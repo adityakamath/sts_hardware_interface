@@ -12,7 +12,9 @@
 #include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/macros.hpp"
+#include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+#include "std_msgs/msg/bool.hpp"
 
 // SCServo SDK
 #include "SMS_STS.h"
@@ -173,6 +175,10 @@ private:
   rclcpp::Logger logger_;
   rclcpp::Clock throttle_clock_{RCL_SYSTEM_TIME};  // Reusable clock for RCLCPP_*_THROTTLE macros
 
+  // ===== ROS 2 NODE AND COMMUNICATION =====
+  std::shared_ptr<rclcpp::Node> node_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_subscriber_;
+
   // ===== HARDWARE COMMUNICATION =====
   std::shared_ptr<SMS_STS> servo_;
 
@@ -292,6 +298,9 @@ private:
 
   /** @brief Parse a boolean hardware parameter with default value */
   bool parse_bool_param(const std::string& key, bool default_value) const;
+
+  /** @brief Emergency stop topic callback */
+  void emergency_stop_callback(const std_msgs::msg::Bool::SharedPtr msg);
 };
 
 }  // namespace sts_hardware_interface
