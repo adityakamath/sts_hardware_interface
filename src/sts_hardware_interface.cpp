@@ -310,6 +310,19 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
 {
   RCLCPP_INFO(logger_, "Configuring STS hardware interface...");
 
+  // Create ROS 2 node for emergency stop subscriber (both mock and real hardware)
+  if (!node_) {
+    node_ = std::make_shared<rclcpp::Node>("sts_hardware_interface_node");
+    RCLCPP_INFO(logger_, "Created ROS 2 node for emergency stop subscriber");
+  }
+
+  // Subscribe to emergency stop topic (both mock and real hardware)
+  emergency_stop_subscriber_ = node_->create_subscription<std_msgs::msg::Bool>(
+    "/emergency_stop", 10,
+    std::bind(&STSHardwareInterface::emergency_stop_callback, this, std::placeholders::_1));
+
+  RCLCPP_INFO(logger_, "Subscribed to /emergency_stop topic");
+
   // Skip serial port initialization in mock mode
   if (enable_mock_mode_) {
     RCLCPP_INFO(logger_, "Mock mode enabled - skipping serial port initialization");
@@ -345,19 +358,6 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
   }
 
   RCLCPP_INFO(logger_, "Configuration complete");
-
-  // Create ROS 2 node for emergency stop subscriber
-  if (!node_) {
-    node_ = std::make_shared<rclcpp::Node>("sts_hardware_interface_node");
-    RCLCPP_INFO(logger_, "Created ROS 2 node for emergency stop subscriber");
-  }
-
-  // Subscribe to emergency stop topic
-  emergency_stop_subscriber_ = node_->create_subscription<std_msgs::msg::Bool>(
-    "/emergency_stop", 10,
-    std::bind(&STSHardwareInterface::emergency_stop_callback, this, std::placeholders::_1));
-
-  RCLCPP_INFO(logger_, "Subscribed to /emergency_stop topic");
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
