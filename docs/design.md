@@ -399,13 +399,21 @@ The hardware interface creates a ROS 2 node and subscriber during `on_configure(
 
 **Behavior:**
 
+**Real hardware mode:**
+
 1. Broadcasts a velocity-zero command (`WriteSpe`) to ALL motors (ID 0xFE) with maximum deceleration (acceleration=254)
 2. Blocks all subsequent write commands until released
 3. Emergency stop state persists until explicit release
 
+**Mock mode:**
+
+1. Continuously clears all command interfaces to zero every write cycle while emergency stop is active
+2. Mock simulation in `read()` uses these zero commands, resulting in stopped motors
+3. Emergency stop state persists until explicit release
+
 **Note:** The broadcast uses a velocity-zero command, which the STS protocol applies regardless of the motor's configured operating mode. The error handler (`on_error`) uses per-motor mode-specific stop commands instead.
 
-**Important:** Emergency stop is NOT per-joint - it affects all motors on the bus simultaneously.
+**Important:** Emergency stop is NOT per-joint - it affects all motors on the bus simultaneously in both real and mock modes.
 
 ### Automatic Error Recovery
 

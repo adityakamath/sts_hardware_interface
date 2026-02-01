@@ -48,6 +48,14 @@ namespace sts_hardware_interface
  * Mode 2: effort (PWM duty cycle, -1.0 to +1.0)
  * Broadcast: emergency_stop (boolean, stops ALL motors)
  *
+ * EMERGENCY STOP:
+ * The emergency_stop command interface can be triggered via:
+ * 1. Command interface: Set emergency_stop > 0.5 programmatically
+ * 2. ROS 2 topic: Publish to /emergency_stop (std_msgs/Bool)
+ *    - Example: ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+ * When activated, ALL motors stop immediately in both real and mock modes.
+ * The hardware interface creates an internal node and subscriber during on_configure().
+ *
  * HARDWARE PARAMETERS (from ros2_control URDF):
  * - serial_port: Serial port path (e.g., "/dev/ttyACM0") [required]
  * - baud_rate: Communication baud rate, 9600-1000000 (default: 1000000)
