@@ -839,6 +839,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
 
   servo_.reset();
 
+  // Cleanup ROS 2 node and subscriber
+  emergency_stop_subscriber_.reset();
+  node_.reset();
+  RCLCPP_INFO(logger_, "Released ROS 2 node and subscriber resources");
+
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -863,6 +868,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
 
     servo_.reset();
   }
+
+  // Cleanup ROS 2 node and subscriber
+  emergency_stop_subscriber_.reset();
+  node_.reset();
+  RCLCPP_INFO(logger_, "Released ROS 2 node and subscriber resources");
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }

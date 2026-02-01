@@ -90,9 +90,20 @@ ros2 launch sts_hardware_interface single_motor.launch.py serial_port:=/dev/ttyA
 # In mock mode (no hardware required)
 ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
 
-# With GUI for manual control
+# With GUI for manual control (optional)
 ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true gui:=true
 ```
+
+**GUI Requirements (Optional):**
+
+The **optional** `gui:=true` argument launches `joint_state_publisher_gui`, which provides a graphical interface with sliders for manual motor control. This requires:
+
+- **Desktop environment** (Ubuntu Desktop, not Ubuntu Server)
+- **Display/Monitor** connected to your system
+- **X11 or Wayland** display server running
+- **Not supported** over SSH without X11 forwarding
+
+If you're running on a headless system (SSH connection, server edition), omit the `gui:=true` option and control the motor via ROS 2 topics instead (see "Test the motor" section below).
 
 **What it does:**
 
@@ -146,6 +157,9 @@ ros2 launch sts_hardware_interface mixed_mode.launch.py serial_port:=/dev/ttyACM
 
 # In mock mode
 ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true
+
+# With GUI for manual control (optional, requires desktop environment)
+ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true gui:=true
 ```
 
 **What it does:**
@@ -238,8 +252,8 @@ ros2 topic pub /gripper_controller/commands std_msgs/msg/Float64MultiArray "data
       <td style="padding: 0.6em; border: none;"><code>gui</code></td>
       <td style="padding: 0.6em; border: none;">bool</td>
       <td style="padding: 0.6em; border: none;"><code>false</code></td>
-      <td style="padding: 0.6em; border: none;">single_motor only</td>
-      <td style="padding: 0.6em; border: none;">Launch joint_state_publisher_gui for manual control</td>
+      <td style="padding: 0.6em; border: none;">Both</td>
+      <td style="padding: 0.6em; border: none;">Launch joint_state_publisher_gui for manual control (optional, requires desktop environment with display)</td>
     </tr>
   </tbody>
 </table>
