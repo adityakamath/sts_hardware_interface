@@ -647,19 +647,21 @@ hardware_interface::return_type STSHardwareInterface::write(
   if (enable_mock_mode_) {
     // Handle broadcast emergency stop in mock mode
     if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
-      for (size_t i = 0; i < motor_ids_.size(); ++i) {
-        hw_state_velocity_[i] = 0.0;
-        // Clear command interfaces for consistency with real hardware behavior
-        hw_cmd_velocity_[i] = 0.0;
-        hw_cmd_position_[i] = hw_state_position_[i];  // Hold current position
-        hw_cmd_effort_[i] = 0.0;
-        hw_cmd_acceleration_[i] = 0.0;
-      }
       emergency_stop_active_ = true;
       RCLCPP_WARN(logger_, "Emergency stop activated - ALL motors stopped");
     } else if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
       emergency_stop_active_ = false;
       RCLCPP_INFO(logger_, "Emergency stop released");
+    }
+
+    // Continuously clear all commands while emergency stop is active
+    if (emergency_stop_active_) {
+      for (size_t i = 0; i < motor_ids_.size(); ++i) {
+        hw_cmd_velocity_[i] = 0.0;
+        hw_cmd_position_[i] = hw_state_position_[i];  // Hold current position
+        hw_cmd_effort_[i] = 0.0;
+        hw_cmd_acceleration_[i] = 0.0;
+      }
     }
 
     return hardware_interface::return_type::OK;
