@@ -71,6 +71,24 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   enable_mock_mode_ = parse_bool_param("enable_mock_mode", false);
   use_sync_write_ = parse_bool_param("use_sync_write", true);
 
+  // Parse motor-specific parameter (model-dependent)
+  try {
+    max_velocity_steps_ = std::stoi(
+      info_.hardware_parameters.count("max_velocity_steps") ?
+      info_.hardware_parameters.at("max_velocity_steps") : "3400");  // STS3215 default
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid max_velocity_steps value: '%s' (must be a valid integer)",
+      info_.hardware_parameters.at("max_velocity_steps").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  if (max_velocity_steps_ < 1 || max_velocity_steps_ > 10000) {
+    RCLCPP_ERROR(logger_, "Invalid max_velocity_steps: %d. Must be between 1 and 10000 steps/s", max_velocity_steps_);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  RCLCPP_INFO(logger_, "Motor model parameter: max_velocity=%d steps/s", max_velocity_steps_);
+
   // ===== Parse joint-level parameters =====
   size_t num_joints = info_.joints.size();
 
@@ -105,7 +123,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   position_min_.resize(num_joints, 0.0);  // Default: 0 radians (0 steps)
   position_max_.resize(num_joints, 2.0 * M_PI);  // Default: 2π radians (4096 steps)
-  velocity_max_.resize(num_joints, static_cast<double>(STS_MAX_VELOCITY_STEPS) * STEPS_TO_RAD);  // Default: 3400 steps/s ≈ 5.22 rad/s
+  velocity_max_.resize(num_joints, static_cast<double>(max_velocity_steps_) * STEPS_TO_RAD);  // Use configured max velocity
   effort_max_.resize(num_joints, 1.0);
   has_position_limits_.resize(num_joints, false);
   has_velocity_limits_.resize(num_joints, false);
@@ -552,7 +570,7 @@ hardware_interface::return_type STSHardwareInterface::read(
       }
 
       // Simulate load based on velocity (convert simulated load percentage to effort units)
-      double simulated_load_percentage = hw_state_velocity_[i] / (STS_MAX_VELOCITY_STEPS * STEPS_TO_RAD) * 100.0;
+      double simulated_load_percentage = hw_state_velocity_[i] / (max_velocity_steps_ * STEPS_TO_RAD) * 100.0;
       simulated_load_percentage = std::clamp(simulated_load_percentage, -100.0, 100.0);
       hw_state_effort_[i] = (simulated_load_percentage / 100.0) * effort_max_[i];
 
@@ -716,7 +734,7 @@ hardware_interface::return_type STSHardwareInterface::write(
 
         servo_sync_positions_[j] = radians_to_raw_position(target_position);
         servo_sync_speeds_[j] = static_cast<u16>(std::clamp(
-          rad_s_to_raw_velocity(max_speed), 0, STS_MAX_VELOCITY_STEPS));
+          rad_s_to_raw_velocity(max_speed), 0, max_velocity_steps_));
         servo_sync_accelerations_[j] = static_cast<u8>(clamp_acceleration(idx));
       }
 
@@ -732,7 +750,7 @@ hardware_interface::return_type STSHardwareInterface::write(
 
         int raw_position = radians_to_raw_position(target_position);
         int raw_max_speed = std::clamp(
-          rad_s_to_raw_velocity(max_speed), 0, STS_MAX_VELOCITY_STEPS);
+          rad_s_to_raw_velocity(max_speed), 0, max_velocity_steps_);
         int acceleration = clamp_acceleration(idx);
 
         int result = servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration);
@@ -977,8 +995,8 @@ int STSHardwareInterface::rad_s_to_raw_velocity(double velocity_rad_s) const
   double raw = -velocity_rad_s * RAD_TO_STEPS;
   int clamped = static_cast<int>(std::clamp(
     raw,
-    static_cast<double>(-STS_MAX_VELOCITY_STEPS),
-    static_cast<double>(STS_MAX_VELOCITY_STEPS)));
+    static_cast<double>(-max_velocity_steps_),
+    static_cast<double>(max_velocity_steps_)));
   return clamped;
 }
 
@@ -989,7 +1007,7 @@ int STSHardwareInterface::radians_to_raw_position(double position_rad) const
   if (normalized < 0.0)
     normalized += 2.0 * M_PI;
   int raw = static_cast<int>(normalized * RAD_TO_STEPS);
-  return std::clamp(raw, 0, 4095);
+  return std::clamp(raw, 0, STS_MAX_POSITION);
 }
 
 /** @brief Convert effort (-1.0 to +1.0) to motor PWM (-1000 to +1000) */

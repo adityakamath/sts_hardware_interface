@@ -7,7 +7,7 @@ System design and implementation guide for the Feetech STS servo motor hardware 
 
 ## Overview
 
-The STS Hardware Interface is a `ros2_control` SystemInterface plugin that connects ROS 2 controllers to Feetech STS series servo motors (STS3215 and compatible). It provides position, velocity, and effort control modes with full state feedback, safety features, and hardware-free simulation.
+The STS Hardware Interface is a `ros2_control` SystemInterface plugin that connects ROS 2 controllers to Feetech STS series servo motors. Designed and tested with STS3215 motors, it supports all STS series motors (STS3032, STS3235, etc.) through configurable motor-specific parameters. It provides position, velocity, and effort control modes with full state feedback, safety features, and hardware-free simulation.
 
 **Key Features:**
 
@@ -279,8 +279,21 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">true/false</td>
       <td style="padding: 0.6em; border: none;">Simulation mode (no hardware required)</td>
     </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>max_velocity_steps</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;">3400</td>
+      <td style="padding: 0.6em; border: none;">1-10000</td>
+      <td style="padding: 0.6em; border: none;">Maximum motor velocity in steps/s (STS3215: 3400, STS3032: 2900)</td>
+    </tr>
   </tbody>
 </table>
+
+**Protocol Constants (hardcoded, same for all STS motors):**
+
+- `max_acceleration`: 254 (protocol limit for acceleration byte)
+- `max_position`: 4095 (12-bit encoder, 0-4095 steps)
+- `max_pwm`: 1000 (PWM duty cycle range)
 
 ### Joint Parameters
 

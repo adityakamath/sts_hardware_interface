@@ -25,6 +25,10 @@ namespace sts_hardware_interface
 /**
  * @brief ros2_control SystemInterface for Feetech STS series servo motors (single or chain)
  *
+ * Designed and tested with STS3215 servo motors. Compatible with other STS series motors
+ * (STS3032, STS3235, etc.) but may require adjusting motor-specific parameters like
+ * max_velocity to match the maximum speed in steps/s for your specific motor model.
+ *
  * Supports controlling a single motor or chain of motors on the same serial bus.
  * Uses SyncWrite functions for efficient multi-motor control.
  *
@@ -62,65 +66,18 @@ namespace sts_hardware_interface
  * - communication_timeout_ms: Serial communication timeout, 1-1000 ms (default: 100)
  * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
  * - enable_mock_mode: Enable simulation mode without hardware (default: false)
+ * - max_velocity_steps: Maximum motor velocity in steps/s (default: 3400, STS3215 spec)
+ *                       Adjust for other models: STS3032=2900, STS3235=3400
  *
  * JOINT PARAMETERS (from ros2_control URDF, per joint):
  * - motor_id: Motor ID on the serial bus (1-253) [required]
  * - operating_mode: 0=servo, 1=velocity, 2=PWM (default: 1)
  * - min_position: Minimum position limit in radians (default: 0.0)
  * - max_position: Maximum position limit in radians (default: 6.283, 2π)
- * - max_velocity: Maximum velocity limit in rad/s (default: 5.22, 3400 steps/s)
+ * - max_velocity: Maximum velocity limit in rad/s (default: 5.22, STS3215 max: 3400 steps/s)
+ *                 NOTE: Adjust this for other STS motors (e.g., STS3032 max: 2900 steps/s)
  * - max_effort: Maximum effort limit, 0-1 for PWM mode (default: 1.0)
- *
- * SINGLE MOTOR USAGE:
- * @code{.xml}
- * <ros2_control name="my_motor" type="system">
- *   <hardware>
- *     <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
- *     <param name="serial_port">/dev/ttyACM0</param>
- *     <param name="baud_rate">1000000</param>
- *   </hardware>
- *   <joint name="wheel_joint">
- *     <param name="motor_id">1</param>
- *     <param name="operating_mode">1</param>
- *     <command_interface name="velocity"/>
- *     <command_interface name="acceleration"/>
- *     <state_interface name="position"/>
- *     <state_interface name="velocity"/>
- *     ...
- *   </joint>
- * </ros2_control>
- * @endcode
- *
- * MOTOR CHAIN USAGE:
- * @code{.xml}
- * <ros2_control name="motor_chain" type="system">
- *   <hardware>
- *     <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
- *     <param name="serial_port">/dev/ttyACM0</param>
- *     <param name="use_sync_write">true</param>
- *   </hardware>
- *   <joint name="joint1">
- *     <param name="motor_id">1</param>
- *     <param name="operating_mode">1</param>
- *     <command_interface name="velocity"/>
- *     ...
- *   </joint>
- *   <joint name="joint2">
- *     <param name="motor_id">2</param>
- *     <param name="operating_mode">1</param>
- *     <command_interface name="velocity"/>
- *     ...
- *   </joint>
- *   <joint name="joint3">
- *     <param name="motor_id">3</param>
- *     <param name="operating_mode">1</param>
- *     <command_interface name="velocity"/>
- *     ...
- *   </joint>
- * </ros2_control>
- * @endcode
- */
-
+**/
 class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(STSHardwareInterface)
@@ -178,6 +135,9 @@ private:
   int communication_timeout_ms_;
   bool enable_mock_mode_;
   bool use_sync_write_;  // Use SyncWrite for multi-motor commands
+
+  // Motor-specific parameter (model-dependent)
+  int max_velocity_steps_;   // Maximum velocity in steps/s (default: 3400 for STS3215)
 
   // ===== LOGGING =====
   rclcpp::Logger logger_;
@@ -252,11 +212,10 @@ private:
   static constexpr double VOLTAGE_SCALE = 0.1;      // 1 unit = 0.1V (Feetech spec)
   static constexpr double CURRENT_SCALE = 0.0065;   // 1 unit = 6.5mA (Feetech spec)
   static constexpr double LOAD_SCALE = 0.1;         // 1 unit = 0.1% (Feetech spec)
-  
-  // STS servo motor limits
-  static constexpr int STS_MAX_VELOCITY_STEPS = 3400;  // Maximum velocity in steps/s
-  static constexpr int STS_MAX_ACCELERATION = 254;     // Maximum acceleration value
-  static constexpr int STS_MAX_POSITION = 4095;        // Maximum position in steps
+
+  // STS protocol constants (same for all STS motors)
+  static constexpr int STS_MAX_ACCELERATION = 254;     // Maximum acceleration value (protocol constant)
+  static constexpr int STS_MAX_POSITION = 4095;        // Maximum position in steps (12-bit encoder)
   static constexpr int STS_MAX_PWM = 1000;             // Maximum PWM value
   static constexpr int STS_MIN_MOTOR_ID = 1;           // Minimum valid motor ID
   static constexpr int STS_MAX_MOTOR_ID = 253;         // Maximum valid motor ID
@@ -267,7 +226,7 @@ private:
   static constexpr int MODE_VELOCITY = 1;   // Velocity control mode
   static constexpr int MODE_PWM = 2;        // PWM/effort control mode
 
-  /** @brief Convert motor steps (0-4095) to radians (0-2π) */
+  /** @brief Convert motor steps to radians (0-2π) */
   double raw_position_to_radians(int raw_position) const;
 
   /** @brief Convert motor velocity (steps/s) to rad/s */
@@ -276,7 +235,7 @@ private:
   /** @brief Convert rad/s to motor velocity (steps/s) */
   int rad_s_to_raw_velocity(double velocity_rad_s) const;
 
-  /** @brief Convert radians to motor steps (0-4095) */
+  /** @brief Convert radians to motor steps */
   int radians_to_raw_position(double position_rad) const;
 
   /** @brief Convert effort (-1.0 to +1.0) to motor PWM (-1000 to +1000) */
