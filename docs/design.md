@@ -508,9 +508,9 @@ The STS motors use step-based units internally. The hardware interface converts 
 - **Conversion:** `rad/s = steps/s × (2π / 4096)`
 
 ### Effort/Load Conversion
-- **Motor units:** -1000 to +1000 (load percentage × 10)
-- **ROS 2 units:** -100.0 to +100.0%
-- **Conversion:** `percentage = load_raw × 0.1`
+- **Motor units:** -1000 to +1000 (representing -100% to +100% load)
+- **ROS 2 units:** `-effort_max` to `+effort_max` (default: -1.0 to +1.0)
+- **Conversion:** `effort = load_raw × 0.001 × effort_max`
 
 ### Other State Conversions
 - **Voltage:** `volts = raw × 0.1` (raw 100 = 10.0V)
