@@ -283,7 +283,7 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;"><code>max_velocity_steps</code></td>
       <td style="padding: 0.6em; border: none;">int</td>
       <td style="padding: 0.6em; border: none;">3400</td>
-      <td style="padding: 0.6em; border: none;">1-10000</td>
+      <td style="padding: 0.6em; border: none;">&gt; 0</td>
       <td style="padding: 0.6em; border: none;">Maximum motor velocity in steps/s (STS3215: 3400, STS3032: 2900)</td>
     </tr>
   </tbody>
