@@ -82,8 +82,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  if (max_velocity_steps_ < 1 || max_velocity_steps_ > 10000) {
-    RCLCPP_ERROR(logger_, "Invalid max_velocity_steps: %d. Must be between 1 and 10000 steps/s", max_velocity_steps_);
+  if (max_velocity_steps_ <= 0) {
+    RCLCPP_ERROR(logger_, "Invalid max_velocity_steps: %d. Must be a positive integer", max_velocity_steps_);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
