@@ -227,8 +227,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
           joint.name.c_str(), joint.parameters.at("max_effort").c_str());
         return hardware_interface::CallbackReturn::ERROR;
       }
-      if (effort_max_[i] <= 0.0) {
-        RCLCPP_ERROR(logger_, "Joint '%s': max_effort must be greater than 0 (got %.3f)",
+      if (effort_max_[i] <= 0.0 || effort_max_[i] > 1.0) {
+        RCLCPP_ERROR(logger_, "Joint '%s': max_effort must be in range (0.0, 1.0] (got %.3f)",
           joint.name.c_str(), effort_max_[i]);
         return hardware_interface::CallbackReturn::ERROR;
       }
@@ -572,7 +572,8 @@ hardware_interface::return_type STSHardwareInterface::read(
       // Simulate load based on velocity (convert simulated load percentage to effort units)
       double simulated_load_percentage = hw_state_velocity_[i] / (max_velocity_steps_ * STEPS_TO_RAD) * 100.0;
       simulated_load_percentage = std::clamp(simulated_load_percentage, -100.0, 100.0);
-      hw_state_effort_[i] = (simulated_load_percentage / 100.0) * effort_max_[i];
+      // Motor load is absolute - doesn't depend on max_effort limit
+      hw_state_effort_[i] = simulated_load_percentage / 100.0;
 
       // Simulate voltage (STS3215 nominal: 12V, range: 10-14V under load)
       double voltage_drop = std::abs(hw_state_effort_[i]) * 0.5;  // Up to 0.5V drop at max load
@@ -637,9 +638,10 @@ hardware_interface::return_type STSHardwareInterface::read(
     hw_state_velocity_[i] = raw_velocity_to_rad_s(raw_velocity);
 
     int raw_load = servo_->ReadLoad(-1);
-    // Convert load percentage to effort: (-100% to 100%) -> (-effort_max_[i] to effort_max_[i])
+    // Convert load percentage to effort: (-100% to 100%) -> (-1.0 to 1.0)
+    // Motor load is absolute - doesn't depend on max_effort limit
     double load_percentage = raw_load * LOAD_SCALE;  // 0.1 units per percent
-    hw_state_effort_[i] = (load_percentage / 100.0) * effort_max_[i];
+    hw_state_effort_[i] = load_percentage / 100.0;
 
     int raw_voltage = servo_->ReadVoltage(-1);
     hw_state_voltage_[i] = static_cast<double>(raw_voltage) * VOLTAGE_SCALE;
@@ -1010,10 +1012,11 @@ int STSHardwareInterface::radians_to_raw_position(double position_rad) const
   return std::clamp(raw, 0, STS_MAX_POSITION);
 }
 
-/** @brief Convert effort (-1.0 to +1.0) to motor PWM (-1000 to +1000) */
+/** @brief Convert effort (limited by max_effort) to motor PWM (-1000 to +1000) */
 int STSHardwareInterface::effort_to_raw_pwm(double effort) const
 {
-  // Effort is normalized [-1.0, 1.0] -> raw PWM [-1000, 1000]
+  // Effort is in range [-max_effort, +max_effort] where max_effort <= 1.0
+  // Clamp to [-1.0, 1.0] for safety, then convert to raw PWM [-1000, 1000]
   double clamped = std::clamp(effort, -1.0, 1.0);
   return static_cast<int>(clamped * STS_MAX_PWM);
 }
@@ -1025,13 +1028,13 @@ int STSHardwareInterface::clamp_acceleration(size_t idx) const
     hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION)));
 }
 
-/** @brief Apply effort limit and normalize to [-1.0, 1.0] for PWM conversion */
+/** @brief Apply effort limit without scaling */
 double STSHardwareInterface::normalize_effort(size_t idx) const
 {
-  double target_effort = apply_limit(
+  // Just apply limits - max_effort defines the allowed range, not a scaling factor
+  // If max_effort=0.5 and user commands 0.5, motor gets PWM 500 (not 1000)
+  return apply_limit(
     hw_cmd_effort_[idx], -effort_max_[idx], effort_max_[idx], has_effort_limits_[idx]);
-  return (has_effort_limits_[idx] && effort_max_[idx] > 0.0) ?
-    (target_effort / effort_max_[idx]) : target_effort;
 }
 
 /** @brief Parse a boolean hardware parameter with default value */

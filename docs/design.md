@@ -158,8 +158,8 @@ All modes always export the following state interfaces for every joint:
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>effort</code></td>
       <td style="padding: 0.6em; border: none;">-1.0 to +1.0</td>
-      <td style="padding: 0.6em; border: none;">Normalized motor load (scaled by effort_max)</td>
-      <td style="padding: 0.6em; border: none;">raw × 0.001 × effort_max</td>
+      <td style="padding: 0.6em; border: none;">Motor load (absolute, -100% to +100%)</td>
+      <td style="padding: 0.6em; border: none;">raw × 0.001</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>voltage</code></td>
@@ -352,8 +352,8 @@ Configure these per `<joint>` in your URDF:
       <td style="padding: 0.6em; border: none;"><code>max_effort</code></td>
       <td style="padding: 0.6em; border: none;">double</td>
       <td style="padding: 0.6em; border: none;">1.0</td>
-      <td style="padding: 0.6em; border: none;">0.0-1.0</td>
-      <td style="padding: 0.6em; border: none;">Max PWM duty cycle (Mode 2 only)</td>
+      <td style="padding: 0.6em; border: none;">(0.0, 1.0]</td>
+      <td style="padding: 0.6em; border: none;">Maximum allowed effort command (Mode 2 only). Limits command range without scaling.</td>
     </tr>
   </tbody>
 </table>
@@ -508,9 +508,14 @@ The STS motors use step-based units internally. The hardware interface converts 
 - **Conversion:** `rad/s = steps/s × (2π / 4096)`
 
 ### Effort/Load Conversion
-- **Motor units:** -1000 to +1000 (representing -100% to +100% load)
-- **ROS 2 units:** `-effort_max` to `+effort_max` (default: -1.0 to +1.0)
-- **Conversion:** `effort = load_raw × 0.001 × effort_max`
+
+- **Motor units (State):** -1000 to +1000 (representing -100% to +100% load)
+- **ROS 2 units (State):** -1.0 to +1.0 (absolute motor load, not affected by max_effort)
+- **State Conversion:** `effort = load_raw × 0.001`
+- **Motor units (Command):** -1000 to +1000 PWM (Mode 2 only)
+- **ROS 2 units (Command):** `-max_effort` to `+max_effort` (default: -1.0 to +1.0)
+- **Command Conversion:** `pwm = effort × 1000` (where effort is already limited by max_effort)
+- **Note:** max_effort is a safety limiter that restricts the command range, not a scaling factor
 
 ### Other State Conversions
 - **Voltage:** `volts = raw × 0.1` (raw 100 = 10.0V)

@@ -174,7 +174,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>effort</code></td>
       <td style="padding: 0.6em; border: none;">normalized</td>
-      <td style="padding: 0.6em; border: none;">Motor load (-1.0 to +1.0, scaled by effort_max)</td>
+      <td style="padding: 0.6em; border: none;">Motor load (-1.0 to +1.0, absolute value)</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>voltage</code></td>
