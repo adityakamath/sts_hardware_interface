@@ -494,7 +494,17 @@ Mock mode provides realistic command/state behavior for controller development w
 
 ## Unit Conversions
 
-The STS motors use step-based units internally. The hardware interface converts between motor units and ROS 2 standard units:
+The STS motors use step-based units internally. The hardware interface converts between motor units and ROS 2 standard units.
+
+### REP-103 Compliance: Direction Inversion
+
+**Critical Implementation Detail:** STS motors use clockwise-positive rotation, while ROS 2 follows [REP-103](https://www.ros.org/reps/rep-0103.html) which specifies counter-clockwise positive rotation. The hardware interface automatically inverts the direction for **position** and **velocity** to ensure REP-103 compliance:
+
+- **Position:** Motor position is inverted: `inverted_position = STS_MAX_POSITION - raw_position`
+- **Velocity:** Motor velocity sign is negated during conversion
+- **Effort/PWM:** Currently NOT inverted (Mode 2 untested - may require inversion)
+
+This inversion is transparent to controllers - they always work with REP-103 compliant values.
 
 ### Position Conversion
 - **Motor units:** 0-4095 steps (12-bit resolution)
@@ -509,13 +519,23 @@ The STS motors use step-based units internally. The hardware interface converts 
 
 ### Effort/Load Conversion
 
-- **Motor units (State):** -1000 to +1000 (representing -100% to +100% load)
-- **ROS 2 units (State):** -1.0 to +1.0 (absolute motor load, not affected by max_effort)
+- **Motor units (State):** -1000 to +1000 (unitless load percentage: -100% to +100% in 0.1% increments)
+- **ROS 2 units (State):** -1.0 to +1.0 (normalized motor load, not affected by max_effort)
 - **State Conversion:** `effort = load_raw × 0.001`
-- **Motor units (Command):** -1000 to +1000 PWM (Mode 2 only)
+- **Motor units (Command):** -1000 to +1000 (unitless PWM duty cycle: -100% to +100%, Mode 2 only)
 - **ROS 2 units (Command):** `-max_effort` to `+max_effort` (default: -1.0 to +1.0)
 - **Command Conversion:** `pwm = effort × 1000` (where effort is already limited by max_effort)
+- **Note:** These are unitless values representing duty cycle (command) and load percentage (state). Negative values = reverse direction, positive = forward direction.
 - **Note:** max_effort is a safety limiter that restricts the command range, not a scaling factor
+- **Note:** PWM mode (Mode 2) is currently untested. The effort/PWM conversions may need sign inversion to properly match REP-103 guidelines.
+
+### Acceleration Conversion
+
+- **Motor units:** 0-254 (protocol constant, unitless)
+- **ROS 2 units:** 0-254 (passed directly, no conversion)
+- **Motor interpretation:** Each unit = 100 steps/s² of acceleration
+- **Availability:** Command interface for Modes 0 and 1 only (not applicable to Mode 2)
+- **Note:** Acceleration commands are clamped to the 0-254 range. Higher values produce faster acceleration ramping. Setting to 0 disables acceleration limiting (maximum acceleration).
 
 ### Other State Conversions
 - **Voltage:** `volts = raw × 0.1` (raw 100 = 10.0V)

@@ -31,7 +31,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 > `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 >
-> **⚠️ Status:** Only **Mode 1 (Velocity)** has been tested. Modes 0 (Position) and 2 (PWM) are experimental.
+> **⚠️ Status:** **Modes 0 (Position) and 1 (Velocity)** have been tested and validated. Mode 2 (PWM) is implemented but currently untested.
 
 </div>
 
