@@ -70,6 +70,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   // Parse boolean parameters
   enable_mock_mode_ = parse_bool_param("enable_mock_mode", false);
   use_sync_write_ = parse_bool_param("use_sync_write", true);
+  reset_states_on_activate_ = parse_bool_param("reset_states_on_activate", true);
 
   // Parse motor-specific parameter (model-dependent)
   try {
@@ -394,12 +395,16 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
       logger_,
       "Mock mode: Motors initialized (simulated)");
 
-    // Zero position and velocity for all joints
-    for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      hw_state_position_[i] = 0.0;
-      hw_state_velocity_[i] = 0.0;
+    // Zero position and velocity for all joints (if enabled)
+    if (reset_states_on_activate_) {
+      for (size_t i = 0; i < motor_ids_.size(); ++i) {
+        hw_state_position_[i] = 0.0;
+        hw_state_velocity_[i] = 0.0;
+      }
+      RCLCPP_INFO(logger_, "Mock mode: Odometry initialized to zero (position and velocity)");
+    } else {
+      RCLCPP_INFO(logger_, "Mock mode: State reset disabled - preserving existing odometry");
     }
-    RCLCPP_INFO(logger_, "Mock mode: Odometry initialized to zero (position and velocity)");
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -418,13 +423,16 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
       motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i]);
   }
 
-  // Zero position and velocity for all joints to initialize odometry
-  for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    hw_state_position_[i] = 0.0;
-    hw_state_velocity_[i] = 0.0;
+  // Zero position and velocity for all joints to initialize odometry (if enabled)
+  if (reset_states_on_activate_) {
+    for (size_t i = 0; i < motor_ids_.size(); ++i) {
+      hw_state_position_[i] = 0.0;
+      hw_state_velocity_[i] = 0.0;
+    }
+    RCLCPP_INFO(logger_, "All motors activated and ready - odometry initialized to zero (position and velocity)");
+  } else {
+    RCLCPP_INFO(logger_, "All motors activated and ready - state reset disabled, preserving existing odometry");
   }
-
-  RCLCPP_INFO(logger_, "All motors activated and ready - odometry initialized to zero (position and velocity)");
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -516,11 +524,6 @@ STSHardwareInterface::export_command_interfaces()
     }
 
   }
-
-  // Broadcast emergency stop (stops ALL motors at once)
-  command_interfaces.emplace_back(
-    hardware_interface::CommandInterface(
-      info_.name, "emergency_stop", &hw_cmd_emergency_stop_));
 
   RCLCPP_INFO(logger_, "Exported %zu command interfaces for %zu joints (per-joint modes)",
     command_interfaces.size(), joint_names_.size());

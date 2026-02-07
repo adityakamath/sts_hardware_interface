@@ -36,8 +36,15 @@
 **Mode 2 (PWM/Effort):**
 - `effort` - PWM duty cycle (unitless, -1.0 to +1.0 representing ±100% duty cycle)
 
-**Broadcast (all modes):**
-- `emergency_stop` - Stops all motors immediately
+## Emergency Stop
+
+Emergency stop functionality is available via ROS 2 topic:
+
+```bash
+ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+```
+
+When activated, ALL motors stop immediately and torque is disabled. Publish `false` to release.
 
 ## State Interfaces
 
@@ -109,6 +116,7 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
 | `use_sync_write` | bool | true | Enable SyncWrite for multi-motor setups |
 | `enable_mock_mode` | bool | false | Simulation mode (no hardware) |
 | `max_velocity_steps` | int | 3400 | Max motor velocity in steps/s (STS3215: 3400, STS3032: 2900) |
+| `reset_states_on_activate` | bool | true | Reset position/velocity states to zero on activation for clean odometry |
 
 ## Joint Parameters
 

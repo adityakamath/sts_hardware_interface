@@ -140,12 +140,6 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
         <td style="padding: 0.6em; border: none;">2</td>
       <td style="padding: 0.6em; border: none;">PWM duty cycle (open-loop, no velocity/acceleration)</td>
     </tr>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>emergency_stop</code></td>
-      <td style="padding: 0.6em; border: none;">bool</td>
-      <td style="padding: 0.6em; border: none;">All</td>
-      <td style="padding: 0.6em; border: none;">Stops all motors immediately (broadcast)</td>
-    </tr>
   </tbody>
 </table>
 

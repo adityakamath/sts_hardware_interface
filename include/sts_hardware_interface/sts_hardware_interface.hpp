@@ -50,13 +50,11 @@ namespace sts_hardware_interface
  * Mode 0: position (rad), velocity (max speed, rad/s), acceleration (0-254)
  * Mode 1: velocity (rad/s), acceleration (0-254)
  * Mode 2: effort (PWM duty cycle, -1.0 to +1.0)
- * Broadcast: emergency_stop (boolean, stops ALL motors)
  *
  * EMERGENCY STOP:
- * The emergency_stop command interface can be triggered via:
- * 1. Command interface: Set emergency_stop > 0.5 programmatically
- * 2. ROS 2 topic: Publish to /emergency_stop (std_msgs/Bool)
- *    - Example: ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+ * Emergency stop functionality is triggered via ROS 2 topic (not a command interface):
+ *    Topic: /emergency_stop (std_msgs/Bool)
+ *    Example: ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
  * When activated, ALL motors stop immediately in both real and mock modes.
  * The hardware interface creates an internal node and subscriber during on_configure().
  *
@@ -68,6 +66,7 @@ namespace sts_hardware_interface
  * - enable_mock_mode: Enable simulation mode without hardware (default: false)
  * - max_velocity_steps: Maximum motor velocity in steps/s (default: 3400, STS3215 spec)
  *                       Adjust for other models: STS3032=2900, STS3235=3400
+ * - reset_states_on_activate: Reset position/velocity states to zero on activation (default: true)
  *
  * JOINT PARAMETERS (from ros2_control URDF, per joint):
  * - motor_id: Motor ID on the serial bus (1-253) [required]
@@ -138,6 +137,9 @@ private:
 
   // Motor-specific parameter (model-dependent)
   int max_velocity_steps_;   // Maximum velocity in steps/s (default: 3400 for STS3215)
+
+  // Lifecycle parameter
+  bool reset_states_on_activate_;  // Reset position/velocity states on activation (default: true)
 
   // ===== LOGGING =====
   rclcpp::Logger logger_;

@@ -1,16 +1,20 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100  # Hz
+    update_rate: 100  # Hz - Control loop frequency
 
+    # Joint State Broadcaster - Publishes joint states to /joint_states and /dynamic_joint_states
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+    # Wheel Controller - Velocity control (Mode 1)
     wheel_controller:
       type: velocity_controllers/JointGroupVelocityController
 
+    # Arm Controller - Position control with trajectory following (Mode 0)
     arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
+    # Gripper Controller - PWM/Effort control (Mode 2)
     gripper_controller:
       type: effort_controllers/JointGroupEffortController
 
@@ -23,60 +27,74 @@ joint_state_broadcaster:
       - wheel_joint
       - arm_joint
       - gripper_joint
-    interfaces:
-      - position
-      - velocity
-      - effort
-      - voltage
-      - temperature
-      - current
-      - is_moving
 
+    # State interfaces to publish to /dynamic_joint_states
+    # IMPORTANT: Must explicitly list ALL interfaces, including standard ones (position, velocity, effort)
+    interfaces:
+      - position       # Current position (radians)
+      - velocity       # Current velocity (rad/s)
+      - effort         # Motor load (-1.0 to +1.0)
+      - voltage        # Supply voltage (volts)
+      - temperature    # Internal temperature (°C)
+      - current        # Motor current draw (amperes)
+      - is_moving      # Motion status (1.0=moving, 0.0=stopped)
+
+# Wheel Controller configuration (Mode 1: Velocity)
 wheel_controller:
   ros__parameters:
     joints:
       - wheel_joint
 
-    interface_name: velocity
+    interface_name: velocity  # Interface type for command subscription
 
+    # Command interface used by this controller
     command_interfaces:
-      - velocity
+      - velocity  # Target velocity in rad/s
 
+    # State interfaces monitored by this controller
     state_interfaces:
-      - position
-      - velocity
+      - position  # Current position (radians)
+      - velocity  # Current velocity (rad/s)
 
+# Arm Controller configuration (Mode 0: Position/Servo)
 arm_controller:
   ros__parameters:
     joints:
       - arm_joint
 
+    # Command interfaces used by this controller
     command_interfaces:
-      - position
-      - velocity
+      - position  # Target position in radians
+      - velocity  # Max speed in rad/s (optional, for trajectory execution)
 
+    # State interfaces monitored by this controller
     state_interfaces:
-      - position
-      - velocity
+      - position  # Current position (radians)
+      - velocity  # Current velocity (rad/s)
 
-    state_publish_rate: 50.0
-    action_monitor_rate: 20.0
+    # Trajectory execution parameters
+    state_publish_rate: 50.0      # Hz - Rate to publish controller state
+    action_monitor_rate: 20.0     # Hz - Rate to check action goal status
 
-    allow_partial_joints_goal: false
+    # Trajectory constraints
+    allow_partial_joints_goal: false  # Reject goals that don't include all joints
     constraints:
-      stopped_velocity_tolerance: 0.01
-      goal_time: 0.0
+      stopped_velocity_tolerance: 0.01  # rad/s - Velocity threshold for "stopped" state
+      goal_time: 0.0  # Seconds - Time tolerance for reaching goal (0 = no timeout)
 
+# Gripper Controller configuration (Mode 2: PWM/Effort)
 gripper_controller:
   ros__parameters:
     joints:
       - gripper_joint
 
-    interface_name: effort
+    interface_name: effort  # Interface type for command subscription
 
+    # Command interface used by this controller
     command_interfaces:
-      - effort
+      - effort  # PWM duty cycle (-max_effort to +max_effort)
 
+    # State interfaces monitored by this controller
     state_interfaces:
-      - position
-      - effort
+      - position  # Current position (radians)
+      - effort    # Motor load (-1.0 to +1.0)

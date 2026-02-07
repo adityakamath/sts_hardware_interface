@@ -281,10 +281,10 @@ ros2 topic echo /joint_states  # position, velocity, effort
 **Additional state** (`/dynamic_joint_states`):
 
 ```bash
-ros2 topic echo /dynamic_joint_states  # voltage, temperature, current, is_moving
+ros2 topic echo /dynamic_joint_states  # All interfaces including voltage, temperature, current, is_moving
 ```
 
-To enable `/dynamic_joint_states`, list all desired state interfaces in your controller YAML:
+To enable `/dynamic_joint_states`, **explicitly list ALL desired state interfaces** (standard and custom) in your controller YAML:
 
 ```yaml
 joint_state_broadcaster:
@@ -292,14 +292,15 @@ joint_state_broadcaster:
     joints:
       - wheel_joint
       - arm_joint
+    # IMPORTANT: Must list ALL standard interfaces, custom interfaces are optional
     interfaces:
-      - position
-      - velocity
-      - effort
-      - voltage
-      - temperature
-      - current
-      - is_moving
+      - position      # Standard
+      - velocity      # Standard
+      - effort        # Standard
+      - voltage       # Custom
+      - temperature   # Custom
+      - current       # Custom
+      - is_moving     # Custom
 ```
 
 See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for complete example.

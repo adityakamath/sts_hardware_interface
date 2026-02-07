@@ -202,7 +202,7 @@ The `joint_state_broadcaster` publishes motor state to two topics:
 **Additional state (`/dynamic_joint_states`):**
 - Message type: `control_msgs/DynamicJointState`
 - Contains all configured state interfaces including extended diagnostics
-- Requires explicit interface listing in controller YAML:
+- **Requires explicit listing of ALL desired interfaces** (standard and custom) in controller YAML:
 
 ```yaml
 joint_state_broadcaster:
@@ -210,14 +210,15 @@ joint_state_broadcaster:
     joints:
       - wheel_joint
       - arm_joint
+    # IMPORTANT: Must list ALL standard interfaces, custom interfaces are optional
     interfaces:
-      - position
-      - velocity
-      - effort
-      - voltage
-      - temperature
-      - current
-      - is_moving
+      - position      # Standard - required for /dynamic_joint_states
+      - velocity      # Standard - required for /dynamic_joint_states
+      - effort        # Standard - required for /dynamic_joint_states
+      - voltage       # Custom
+      - temperature   # Custom
+      - current       # Custom
+      - is_moving     # Custom
 ```
 
 See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for a complete example.
@@ -285,6 +286,13 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">3400</td>
       <td style="padding: 0.6em; border: none;">&gt; 0</td>
       <td style="padding: 0.6em; border: none;">Maximum motor velocity in steps/s (STS3215: 3400, STS3032: 2900)</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>reset_states_on_activate</code></td>
+      <td style="padding: 0.6em; border: none;">bool</td>
+      <td style="padding: 0.6em; border: none;">true</td>
+      <td style="padding: 0.6em; border: none;">true/false</td>
+      <td style="padding: 0.6em; border: none;">Reset position/velocity states to zero on activation for clean odometry</td>
     </tr>
   </tbody>
 </table>
@@ -408,7 +416,7 @@ ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
 ```
 
 **Implementation:**
-The hardware interface creates a ROS 2 node and subscriber during `on_configure()`. The subscriber callback directly sets the `emergency_stop` command interface value, which is processed in the `write()` cycle. The node is spun in every `read()` cycle using `spin_some()` to process callbacks.
+The hardware interface creates a ROS 2 node and subscriber during `on_configure()`. The subscriber callback directly sets an internal emergency stop flag, which is processed in the `write()` cycle. The node is spun in every `read()` cycle using `spin_some()` to process callbacks.
 
 **Behavior:**
 
