@@ -7,7 +7,7 @@
 [![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
 ![License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface?label=License)
 
-> `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
+`ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 
 **⚠️ Status:** **Modes 0 (Position) and 1 (Velocity)** have been tested and validated. Mode 2 (PWM) is implemented but currently untested.
 
