@@ -3,8 +3,11 @@
 ![Project Status](https://img.shields.io/badge/Status-WIP-yellow)
 ![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
 ![ROS 2 Control](https://img.shields.io/badge/ros2__control-SystemInterface-blue?style=flat&logo=ros&logoSize=auto)
-[![Blog](https://img.shields.io/badge/Blog-kamathrobotics.com-darkorange?style=flat&logo=hashnode&logoSize=auto)](https://kamathrobotics.com)
+![Repository](https://img.shields.io/badge/Repository-adityakamath%2Fsts__hardware__interface-purple?style=flat&logo=github&logoSize=auto)
+![Repository](https://img.shields.io/badge/Dependency-adityakamath%2FSCServo__Linux-purple?style=flat&logo=github&logoSize=auto)
+[![Blog](https://img.shields.io/badge/Blog-kamathrobotics.com-darkorange?style=flat&logo=hashnode&logoSize=auto)](https://kamathrobotics.com/hardware-abstraction-for-sts3215-servos)
 [![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
+![C++](https://img.shields.io/badge/C++-17-blue?style=flat&logo=cplusplus&logoColor=white)
 ![License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface?label=License)
 
 `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
