@@ -9,28 +9,62 @@
   <!-- Robot description -->
   <link name="base_link"/>
 
-  <link name="wheel_link"/>
-  <link name="arm_link"/>
-  <link name="gripper_link"/>
+  <!-- Position Mode Links (Mode 0) -->
+  <link name="arm_link_1"/>
+  <link name="arm_link_2"/>
 
-  <joint name="wheel_joint" type="continuous">
-    <parent link="base_link"/>
-    <child link="wheel_link"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
-    <axis xyz="0 0 1"/>
-  </joint>
+  <!-- Velocity Mode Links (Mode 1) -->
+  <link name="wheel_link_1"/>
+  <link name="wheel_link_2"/>
 
-  <joint name="arm_joint" type="revolute">
+  <!-- PWM Mode Links (Mode 2) -->
+  <link name="gripper_link_1"/>
+  <link name="gripper_link_2"/>
+
+  <!-- Position Mode Joints (Mode 0) - IDs 1 and 2 -->
+  <joint name="arm_joint_1" type="revolute">
     <parent link="base_link"/>
-    <child link="arm_link"/>
-    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <child link="arm_link_1"/>
+    <origin xyz="0 0.05 0.1" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit lower="0.0" upper="6.283" effort="1.0" velocity="5.0"/>
   </joint>
 
-  <joint name="gripper_joint" type="revolute">
-    <parent link="arm_link"/>
-    <child link="gripper_link"/>
+  <joint name="arm_joint_2" type="revolute">
+    <parent link="base_link"/>
+    <child link="arm_link_2"/>
+    <origin xyz="0 -0.05 0.1" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="0.0" upper="6.283" effort="1.0" velocity="5.0"/>
+  </joint>
+
+  <!-- Velocity Mode Joints (Mode 1) - IDs 3 and 4 -->
+  <joint name="wheel_joint_1" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_link_1"/>
+    <origin xyz="0.1 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <joint name="wheel_joint_2" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_link_2"/>
+    <origin xyz="-0.1 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <!-- PWM Mode Joints (Mode 2) - IDs 5 and 6 -->
+  <joint name="gripper_joint_1" type="revolute">
+    <parent link="arm_link_1"/>
+    <child link="gripper_link_1"/>
+    <origin xyz="0.2 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.5" effort="1.0" velocity="2.0"/>
+  </joint>
+
+  <joint name="gripper_joint_2" type="revolute">
+    <parent link="arm_link_2"/>
+    <child link="gripper_link_2"/>
     <origin xyz="0.2 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="0.0" upper="0.5" effort="1.0" velocity="2.0"/>
@@ -53,17 +87,21 @@
       <param name="reset_states_on_activate">true</param>  <!-- Reset position/velocity to zero on activation (default: true) -->
     </hardware>
 
-    <!-- Wheel: Velocity mode (Mode 1) -->
-    <joint name="wheel_joint">
+    <!-- Position Mode Motors (Mode 0) - IDs 1 and 2 -->
+    <!-- SyncWrite will be used for these two motors when both receive commands -->
+    <joint name="arm_joint_1">
       <!-- Required Joint Parameters -->
       <param name="motor_id">1</param>  <!-- Motor ID on serial bus: 1-253 -->
 
       <!-- Optional Joint Parameters -->
-      <param name="operating_mode">1</param>  <!-- 0=Position, 1=Velocity, 2=PWM [default: 1] -->
+      <param name="operating_mode">0</param>  <!-- 0=Position, 1=Velocity, 2=PWM [default: 1] -->
+      <param name="min_position">0.0</param>  <!-- Min position limit in radians (default: 0.0) -->
+      <param name="max_position">6.283</param>  <!-- Max position limit in radians (default: 6.283, 2π) -->
       <param name="max_velocity">5.22</param>  <!-- Max velocity limit in rad/s (default: 5.22) -->
 
-      <!-- Command Interfaces (Mode 1: Velocity) -->
-      <command_interface name="velocity"/>  <!-- Target velocity in rad/s -->
+      <!-- Command Interfaces (Mode 0: Position) -->
+      <command_interface name="position"/>  <!-- Target position in radians -->
+      <command_interface name="velocity"/>  <!-- Max speed in rad/s -->
       <command_interface name="acceleration"/>  <!-- Acceleration value: 0-254 -->
 
       <!-- State Interfaces (always exported, declarations optional but recommended) -->
@@ -76,8 +114,7 @@
       <state_interface name="is_moving"/>  <!-- Motion status (1.0=moving, 0.0=stopped) -->
     </joint>
 
-    <!-- Arm: Servo/Position mode (Mode 0) -->
-    <joint name="arm_joint">
+    <joint name="arm_joint_2">
       <!-- Required Joint Parameters -->
       <param name="motor_id">2</param>  <!-- Motor ID on serial bus: 1-253 -->
 
@@ -102,10 +139,78 @@
       <state_interface name="is_moving"/>  <!-- Motion status (1.0=moving, 0.0=stopped) -->
     </joint>
 
-    <!-- Gripper: PWM/Effort mode (Mode 2) -->
-    <joint name="gripper_joint">
+    <!-- Velocity Mode Motors (Mode 1) - IDs 3 and 4 -->
+    <!-- SyncWrite will be used for these two motors when both receive commands -->
+    <joint name="wheel_joint_1">
       <!-- Required Joint Parameters -->
       <param name="motor_id">3</param>  <!-- Motor ID on serial bus: 1-253 -->
+
+      <!-- Optional Joint Parameters -->
+      <param name="operating_mode">1</param>  <!-- 0=Position, 1=Velocity, 2=PWM [default: 1] -->
+      <param name="max_velocity">5.22</param>  <!-- Max velocity limit in rad/s (default: 5.22) -->
+
+      <!-- Command Interfaces (Mode 1: Velocity) -->
+      <command_interface name="velocity"/>  <!-- Target velocity in rad/s -->
+      <command_interface name="acceleration"/>  <!-- Acceleration value: 0-254 -->
+
+      <!-- State Interfaces (always exported, declarations optional but recommended) -->
+      <state_interface name="position"/>  <!-- Current position (radians) -->
+      <state_interface name="velocity"/>  <!-- Current velocity (rad/s) -->
+      <state_interface name="effort"/>  <!-- Motor load (-1.0 to +1.0) -->
+      <state_interface name="voltage"/>  <!-- Supply voltage (volts) -->
+      <state_interface name="temperature"/>  <!-- Internal temperature (°C) -->
+      <state_interface name="current"/>  <!-- Motor current draw (amperes) -->
+      <state_interface name="is_moving"/>  <!-- Motion status (1.0=moving, 0.0=stopped) -->
+    </joint>
+
+    <joint name="wheel_joint_2">
+      <!-- Required Joint Parameters -->
+      <param name="motor_id">4</param>  <!-- Motor ID on serial bus: 1-253 -->
+
+      <!-- Optional Joint Parameters -->
+      <param name="operating_mode">1</param>  <!-- 0=Position, 1=Velocity, 2=PWM [default: 1] -->
+      <param name="max_velocity">5.22</param>  <!-- Max velocity limit in rad/s (default: 5.22) -->
+
+      <!-- Command Interfaces (Mode 1: Velocity) -->
+      <command_interface name="velocity"/>  <!-- Target velocity in rad/s -->
+      <command_interface name="acceleration"/>  <!-- Acceleration value: 0-254 -->
+
+      <!-- State Interfaces (always exported, declarations optional but recommended) -->
+      <state_interface name="position"/>  <!-- Current position (radians) -->
+      <state_interface name="velocity"/>  <!-- Current velocity (rad/s) -->
+      <state_interface name="effort"/>  <!-- Motor load (-1.0 to +1.0) -->
+      <state_interface name="voltage"/>  <!-- Supply voltage (volts) -->
+      <state_interface name="temperature"/>  <!-- Internal temperature (°C) -->
+      <state_interface name="current"/>  <!-- Motor current draw (amperes) -->
+      <state_interface name="is_moving"/>  <!-- Motion status (1.0=moving, 0.0=stopped) -->
+    </joint>
+
+    <!-- PWM/Effort Mode Motors (Mode 2) - IDs 5 and 6 -->
+    <!-- SyncWrite will be used for these two motors when both receive commands -->
+    <joint name="gripper_joint_1">
+      <!-- Required Joint Parameters -->
+      <param name="motor_id">5</param>  <!-- Motor ID on serial bus: 1-253 -->
+
+      <!-- Optional Joint Parameters -->
+      <param name="operating_mode">2</param>  <!-- 0=Position, 1=Velocity, 2=PWM [default: 1] -->
+      <param name="max_effort">0.8</param>  <!-- Max effort command, 0.0 to 1.0 (default: 1.0, set to 0.8 for 80% max) -->
+
+      <!-- Command Interfaces (Mode 2: PWM) -->
+      <command_interface name="effort"/>  <!-- PWM duty cycle (-max_effort to +max_effort) -->
+
+      <!-- State Interfaces (always exported, declarations optional but recommended) -->
+      <state_interface name="position"/>  <!-- Current position (radians) -->
+      <state_interface name="velocity"/>  <!-- Current velocity (rad/s) -->
+      <state_interface name="effort"/>  <!-- Motor load (-1.0 to +1.0) -->
+      <state_interface name="voltage"/>  <!-- Supply voltage (volts) -->
+      <state_interface name="temperature"/>  <!-- Internal temperature (°C) -->
+      <state_interface name="current"/>  <!-- Motor current draw (amperes) -->
+      <state_interface name="is_moving"/>  <!-- Motion status (1.0=moving, 0.0=stopped) -->
+    </joint>
+
+    <joint name="gripper_joint_2">
+      <!-- Required Joint Parameters -->
+      <param name="motor_id">6</param>  <!-- Motor ID on serial bus: 1-253 -->
 
       <!-- Optional Joint Parameters -->
       <param name="operating_mode">2</param>  <!-- 0=Position, 1=Velocity, 2=PWM [default: 1] -->
