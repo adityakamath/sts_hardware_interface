@@ -196,5 +196,3 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 </table>
 
 </div>
-
-</div>
