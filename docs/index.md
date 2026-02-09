@@ -20,8 +20,8 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 ![Project Status](https://img.shields.io/badge/Status-WIP-yellow)
 ![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
 ![ROS 2 Control](https://img.shields.io/badge/ros2__control-SystemInterface-blue?style=flat&logo=ros&logoSize=auto)
-![Repository](https://img.shields.io/badge/Repository-adityakamath%2Fsts__hardware__interface-purple?style=flat&logo=github&logoSize=auto)
-![Repository](https://img.shields.io/badge/Dependency-adityakamath%2FSCServo__Linux-purple?style=flat&logo=github&logoSize=auto)
+![Repository](https://img.shields.io/badge/Repo-adityakamath%2Fsts__hardware__interface-purple?style=flat&logo=github&logoSize=auto)
+![Repository](https://img.shields.io/badge/Dep-adityakamath%2FSCServo__Linux-purple?style=flat&logo=github&logoSize=auto)
 [![Blog](https://img.shields.io/badge/Blog-kamathrobotics.com-darkorange?style=flat&logo=hashnode&logoSize=auto)](https://kamathrobotics.com/hardware-abstraction-for-sts3215-servos)
 [![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
 ![C++](https://img.shields.io/badge/C++-17-blue?style=flat&logo=cplusplus&logoColor=white)
@@ -197,15 +197,4 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
 
 </div>
 
-<div style="width: 100vw; margin-left: calc(-50vw + 50%); padding-left: 5%; padding-right: 5%; box-sizing: border-box;">
-<div style="display: flex; flex-wrap: wrap; gap: 0.6em; margin: 2em 0;">
-  <a href="quick-start" class="feature-box" style="flex: 1 1 calc(50% - 0.3em); min-width: 150px; box-sizing: border-box; text-decoration: none; color: inherit; display: flex; align-items: center; justify-content: center; gap: 0.5em; background: #ffffff; padding: 0.6em 1em; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); cursor: pointer;">
-    <span style="font-size: 1.3em;">📚</span>
-    <strong>Quick Start Guide</strong>
-  </a>
-  <a href="architecture" class="feature-box" style="flex: 1 1 calc(50% - 0.3em); min-width: 150px; box-sizing: border-box; text-decoration: none; color: inherit; display: flex; align-items: center; justify-content: center; gap: 0.5em; background: #ffffff; padding: 0.6em 1em; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); cursor: pointer;">
-    <span style="font-size: 1.3em;">⚙️</span>
-    <strong>System Design</strong>
-  </a>
-</div>
 </div>
