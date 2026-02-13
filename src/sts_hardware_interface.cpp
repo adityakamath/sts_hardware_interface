@@ -329,18 +329,19 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
 {
   RCLCPP_INFO(logger_, "Configuring STS hardware interface...");
 
-  // Create ROS 2 node for emergency stop subscriber (both mock and real hardware)
+  // Create ROS 2 node for emergency stop service (both mock and real hardware)
   if (!node_) {
     node_ = std::make_shared<rclcpp::Node>("sts_hardware_interface_node");
-    RCLCPP_INFO(logger_, "Created ROS 2 node for emergency stop subscriber");
+    RCLCPP_INFO(logger_, "Created ROS 2 node for emergency stop service");
   }
 
-  // Subscribe to emergency stop topic (both mock and real hardware)
-  emergency_stop_subscriber_ = node_->create_subscription<std_msgs::msg::Bool>(
-    "/emergency_stop", 10,
-    std::bind(&STSHardwareInterface::emergency_stop_callback, this, std::placeholders::_1));
+  // Create emergency stop service server (both mock and real hardware)
+  emergency_stop_service_ = node_->create_service<std_srvs::srv::SetBool>(
+    "/emergency_stop",
+    std::bind(&STSHardwareInterface::emergency_stop_callback, this,
+      std::placeholders::_1, std::placeholders::_2));
 
-  RCLCPP_INFO(logger_, "Subscribed to /emergency_stop topic");
+  RCLCPP_INFO(logger_, "Created /emergency_stop service");
 
   // Skip serial port initialization in mock mode
   if (enable_mock_mode_) {
@@ -896,10 +897,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
 
   servo_.reset();
 
-  // Cleanup ROS 2 node and subscriber
-  emergency_stop_subscriber_.reset();
+  // Cleanup ROS 2 node and service
+  emergency_stop_service_.reset();
   node_.reset();
-  RCLCPP_INFO(logger_, "Released ROS 2 node and subscriber resources");
+  RCLCPP_INFO(logger_, "Released ROS 2 node and service resources");
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -929,10 +930,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
     servo_.reset();
   }
 
-  // Cleanup ROS 2 node and subscriber
-  emergency_stop_subscriber_.reset();
+  // Cleanup ROS 2 node and service
+  emergency_stop_service_.reset();
   node_.reset();
-  RCLCPP_INFO(logger_, "Released ROS 2 node and subscriber resources");
+  RCLCPP_INFO(logger_, "Released ROS 2 node and service resources");
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -1133,16 +1134,21 @@ bool STSHardwareInterface::attempt_error_recovery()
   return true;
 }
 
-/** @brief Emergency stop topic callback */
-void STSHardwareInterface::emergency_stop_callback(const std_msgs::msg::Bool::SharedPtr msg)
+/** @brief Emergency stop service callback */
+void STSHardwareInterface::emergency_stop_callback(
+  const std_srvs::srv::SetBool::Request::SharedPtr req,
+  std_srvs::srv::SetBool::Response::SharedPtr res)
 {
-  hw_cmd_emergency_stop_ = msg->data ? 1.0 : 0.0;
+  hw_cmd_emergency_stop_ = req->data ? 1.0 : 0.0;
 
-  if (msg->data) {
-    RCLCPP_WARN(logger_, "Emergency stop command received via /emergency_stop topic");
+  if (req->data) {
+    RCLCPP_WARN(logger_, "Emergency stop ACTIVATE received via /emergency_stop service");
+    res->message = "Emergency stop activated";
   } else {
-    RCLCPP_INFO(logger_, "Emergency stop release command received via /emergency_stop topic");
+    RCLCPP_INFO(logger_, "Emergency stop RELEASE received via /emergency_stop service");
+    res->message = "Emergency stop released";
   }
+  res->success = true;
 }
 
 }  // namespace sts_hardware_interface

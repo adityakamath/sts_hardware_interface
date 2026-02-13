@@ -318,11 +318,11 @@ ros2 control list_hardware_components
 ### 4. Emergency Stop Testing
 
 ```bash
-# Activate emergency stop (stops ALL motors)
-ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+# Activate emergency stop (stops ALL motors, disables torque)
+ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
 
 # Release emergency stop
-ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
+ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 ```
 
 ---
@@ -411,7 +411,7 @@ ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
 
 1. **Release emergency stop:**
    ```bash
-   ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
+   ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
    ```
 
 2. **Restart controller manager:**

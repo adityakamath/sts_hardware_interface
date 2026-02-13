@@ -41,13 +41,17 @@
 
 ## Emergency Stop
 
-Emergency stop functionality is available via ROS 2 topic:
+Emergency stop functionality is available via ROS 2 service (`std_srvs/SetBool`):
 
 ```bash
-ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+# Activate emergency stop (stops ALL motors, disables torque)
+ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
+
+# Release emergency stop
+ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 ```
 
-When activated, ALL motors stop immediately and torque is disabled. Publish `false` to release.
+When activated, ALL motors stop immediately and torque is disabled. The service returns `success: true` and a confirmation message on both activate and release.
 
 ## State Interfaces
 

@@ -14,7 +14,7 @@
 #include "rclcpp/macros.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
-#include "std_msgs/msg/bool.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 
 // SCServo SDK
 #include "SMS_STS.h"
@@ -52,11 +52,12 @@ namespace sts_hardware_interface
  * Mode 2: effort (PWM duty cycle, -1.0 to +1.0)
  *
  * EMERGENCY STOP:
- * Emergency stop functionality is triggered via ROS 2 topic (not a command interface):
- *    Topic: /emergency_stop (std_msgs/Bool)
- *    Example: ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+ * Emergency stop functionality is triggered via ROS 2 service (not a command interface):
+ *    Service: /emergency_stop (std_srvs/SetBool)
+ *    Activate: ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
+ *    Release:  ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
  * When activated, ALL motors stop immediately in both real and mock modes.
- * The hardware interface creates an internal node and subscriber during on_configure().
+ * The hardware interface creates an internal node and service server during on_configure().
  *
  * HARDWARE PARAMETERS (from ros2_control URDF):
  * - serial_port: Serial port path (e.g., "/dev/ttyACM0") [required]
@@ -147,7 +148,7 @@ private:
 
   // ===== ROS 2 NODE AND COMMUNICATION =====
   std::shared_ptr<rclcpp::Node> node_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_subscriber_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr emergency_stop_service_;
 
   // ===== HARDWARE COMMUNICATION =====
   std::shared_ptr<SMS_STS> servo_;
@@ -268,8 +269,10 @@ private:
   /** @brief Parse a boolean hardware parameter with default value */
   bool parse_bool_param(const std::string& key, bool default_value) const;
 
-  /** @brief Emergency stop topic callback */
-  void emergency_stop_callback(const std_msgs::msg::Bool::SharedPtr msg);
+  /** @brief Emergency stop service callback */
+  void emergency_stop_callback(
+    const std_srvs::srv::SetBool::Request::SharedPtr req,
+    std_srvs::srv::SetBool::Response::SharedPtr res);
 };
 
 }  // namespace sts_hardware_interface

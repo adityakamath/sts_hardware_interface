@@ -35,6 +35,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Build SCServo_Linux library (C++)
 add_subdirectory(external/SCServo_Linux)
@@ -60,7 +61,9 @@ target_link_libraries(${PROJECT_NAME}
   pluginlib::pluginlib
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
+  ${std_srvs_LIBRARIES}
 )
+ament_target_dependencies(${PROJECT_NAME} std_srvs)
 
 # Export hardware interface as plugin
 pluginlib_export_plugin_description_file(hardware_interface sts_hardware_interface.xml)
@@ -139,6 +142,7 @@ ament_export_dependencies(
   rclcpp_lifecycle
   hardware_interface
   pluginlib
+  std_srvs
 )
 
 # Export targets for modern CMake usage

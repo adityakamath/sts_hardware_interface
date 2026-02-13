@@ -405,18 +405,20 @@ The hardware interface pre-computes motor groupings by operating mode during ini
 
 Emergency stop is a **hardware-level broadcast command** that stops all motors simultaneously using broadcast ID 254.
 
-**Topic Interface:**
-The hardware interface subscribes to `/emergency_stop` topic (`std_msgs/Bool`):
+**Service Interface:**
+The hardware interface exposes a `/emergency_stop` service (`std_srvs/SetBool`):
 ```bash
-# Activate emergency stop (stops ALL motors)
-ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: true"
+# Activate emergency stop (stops ALL motors, disables torque)
+ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
 
 # Release emergency stop
-ros2 topic pub /emergency_stop std_msgs/msg/Bool "data: false"
+ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 ```
 
+The service response includes `success: true` and a human-readable `message` confirming whether the stop was activated or released.
+
 **Implementation:**
-The hardware interface creates a ROS 2 node and subscriber during `on_configure()`. The subscriber callback directly sets an internal emergency stop flag, which is processed in the `write()` cycle. The node is spun in every `read()` cycle using `spin_some()` to process callbacks.
+The hardware interface creates a ROS 2 node and service server during `on_configure()`. The service callback directly sets an internal emergency stop flag, which is processed in the `write()` cycle. The node is spun in every `read()` cycle using `spin_some()` to process incoming service calls. Using a service rather than a topic provides delivery confirmation — the caller receives an explicit acknowledgment that the command was received.
 
 **Behavior:**
 
@@ -674,7 +676,7 @@ See [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro):
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><strong>Emergency stop stuck</strong></td>
       <td style="padding: 0.6em; border: none;">• Emergency stop not released<br>• Hardware error state</td>
-      <td style="padding: 0.6em; border: none;">• Publish <code>data: false</code> to emergency_stop topic<br>• Restart controller_manager<br>• Check motor error states</td>
+      <td style="padding: 0.6em; border: none;">• Call <code>/emergency_stop</code> service with <code>data: false</code><br>• Restart controller_manager<br>• Check motor error states</td>
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><strong>Consecutive errors</strong></td>
