@@ -636,10 +636,10 @@ hardware_interface::return_type STSHardwareInterface::read(
 
     // Read all state interfaces
     int raw_position = servo_->ReadPos(-1);
-    hw_state_position_[i] = raw_position_to_radians(raw_position);
+    hw_state_position_[i] = conversions::raw_position_to_radians(raw_position);
 
     int raw_velocity = servo_->ReadSpeed(-1);
-    hw_state_velocity_[i] = raw_velocity_to_rad_s(raw_velocity);
+    hw_state_velocity_[i] = conversions::raw_velocity_to_rad_s(raw_velocity);
 
     int raw_load = servo_->ReadLoad(-1);
     // Convert load percentage to effort: (-100% to 100%) -> (-1.0 to 1.0)
@@ -735,13 +735,13 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Update pre-allocated SyncWrite buffers
       for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
         size_t idx = servo_motor_indices_[j];
-        double target_position = apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
-        double max_speed = apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
+        double target_position = conversions::apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
+        double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
 
-        servo_sync_positions_[j] = radians_to_raw_position(target_position);
+        servo_sync_positions_[j] = conversions::radians_to_raw_position(target_position);
         servo_sync_speeds_[j] = static_cast<u16>(std::clamp(
-          rad_s_to_raw_velocity(max_speed), 0, max_velocity_steps_));
-        servo_sync_accelerations_[j] = static_cast<u8>(clamp_acceleration(idx));
+          conversions::rad_s_to_raw_velocity(max_speed, max_velocity_steps_), 0, max_velocity_steps_));
+        servo_sync_accelerations_[j] = static_cast<u8>(conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
       }
 
       servo_->SyncWritePosEx(
@@ -751,13 +751,13 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single servo motor or when SyncWrite disabled
       for (size_t idx : servo_motor_indices_) {
-        double target_position = apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
-        double max_speed = apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
+        double target_position = conversions::apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
+        double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
 
-        int raw_position = radians_to_raw_position(target_position);
+        int raw_position = conversions::radians_to_raw_position(target_position);
         int raw_max_speed = std::clamp(
-          rad_s_to_raw_velocity(max_speed), 0, max_velocity_steps_);
-        int acceleration = clamp_acceleration(idx);
+          conversions::rad_s_to_raw_velocity(max_speed, max_velocity_steps_), 0, max_velocity_steps_);
+        int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
 
         int result = servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration);
 
@@ -774,9 +774,9 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Update pre-allocated SyncWrite buffers
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
         size_t idx = velocity_motor_indices_[j];
-        double target_velocity = apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
-        velocity_sync_velocities_[j] = rad_s_to_raw_velocity(target_velocity);
-        velocity_sync_accelerations_[j] = static_cast<u8>(clamp_acceleration(idx));
+        double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
+        velocity_sync_velocities_[j] = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_);
+        velocity_sync_accelerations_[j] = static_cast<u8>(conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
       }
 
       servo_->SyncWriteSpe(
@@ -786,9 +786,9 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single velocity motor or when SyncWrite disabled
       for (size_t idx : velocity_motor_indices_) {
-        double target_velocity = apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
-        int raw_velocity = rad_s_to_raw_velocity(target_velocity);
-        int acceleration = clamp_acceleration(idx);
+        double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
+        int raw_velocity = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_);
+        int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
 
         int result = servo_->WriteSpe(motor_ids_[idx], raw_velocity, acceleration);
 
@@ -805,7 +805,8 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Update pre-allocated SyncWrite buffers
       for (size_t j = 0; j < pwm_motor_indices_.size(); ++j) {
         size_t idx = pwm_motor_indices_[j];
-        pwm_sync_pwm_values_[j] = effort_to_raw_pwm(normalize_effort(idx));
+        pwm_sync_pwm_values_[j] = conversions::effort_to_raw_pwm(
+          conversions::normalize_effort(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx]));
       }
 
       servo_->SyncWritePwm(pwm_sync_ids_.data(), pwm_sync_ids_.size(), pwm_sync_pwm_values_.data());
@@ -813,7 +814,8 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single PWM motor or when SyncWrite disabled
       for (size_t idx : pwm_motor_indices_) {
-        int raw_pwm = effort_to_raw_pwm(normalize_effort(idx));
+        int raw_pwm = conversions::effort_to_raw_pwm(
+          conversions::normalize_effort(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx]));
         int result = servo_->WritePwm(motor_ids_[idx], raw_pwm);
 
         if (handle_write_error(result, idx, "PWM")) {
@@ -975,70 +977,6 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
   }
 
   return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-/** @brief Convert motor steps (0-4095) to radians (0-2π) */
-double STSHardwareInterface::raw_position_to_radians(int raw_position) const
-{
-  // Convert raw position (0-4095) to radians, then invert direction
-  // We want: raw 0 → 0, raw increases → position decreases
-  // Invert by computing (4095 - raw_position) which maps:
-  //   raw 0 → 4095 → ~2π, raw 4095 → 0 → 0
-  // This makes increasing raw position correspond to decreasing angle
-  int inverted_raw = STS_MAX_POSITION - raw_position;
-  return static_cast<double>(inverted_raw) * STEPS_TO_RAD;
-}
-
-/** @brief Convert motor velocity (steps/s) to rad/s */
-double STSHardwareInterface::raw_velocity_to_rad_s(int raw_velocity) const
-{
-  return static_cast<double>(-raw_velocity) * STEPS_TO_RAD;
-}
-
-/** @brief Convert rad/s to motor velocity (steps/s) */
-int STSHardwareInterface::rad_s_to_raw_velocity(double velocity_rad_s) const
-{
-  double raw = -velocity_rad_s * RAD_TO_STEPS;
-  int clamped = static_cast<int>(std::clamp(
-    raw,
-    static_cast<double>(-max_velocity_steps_),
-    static_cast<double>(max_velocity_steps_)));
-  return clamped;
-}
-
-/** @brief Convert radians to motor steps (0-4095) */
-int STSHardwareInterface::radians_to_raw_position(double position_rad) const
-{
-  double normalized = std::fmod(-position_rad, 2.0 * M_PI);
-  if (normalized < 0.0)
-    normalized += 2.0 * M_PI;
-  int raw = static_cast<int>(normalized * RAD_TO_STEPS);
-  return std::clamp(raw, 0, STS_MAX_POSITION);
-}
-
-/** @brief Convert effort (limited by max_effort) to motor PWM (-1000 to +1000) */
-int STSHardwareInterface::effort_to_raw_pwm(double effort) const
-{
-  // Effort is in range [-max_effort, +max_effort] where max_effort <= 1.0
-  // Clamp to [-1.0, 1.0] for safety, then convert to raw PWM [-1000, 1000]
-  double clamped = std::clamp(effort, -1.0, 1.0);
-  return static_cast<int>(clamped * STS_MAX_PWM);
-}
-
-/** @brief Clamp acceleration command to valid range [0, STS_MAX_ACCELERATION] */
-int STSHardwareInterface::clamp_acceleration(size_t idx) const
-{
-  return static_cast<int>(std::clamp(
-    hw_cmd_acceleration_[idx], 0.0, static_cast<double>(STS_MAX_ACCELERATION)));
-}
-
-/** @brief Apply effort limit without scaling */
-double STSHardwareInterface::normalize_effort(size_t idx) const
-{
-  // Just apply limits - max_effort defines the allowed range, not a scaling factor
-  // If max_effort=0.5 and user commands 0.5, motor gets PWM 500 (not 1000)
-  return apply_limit(
-    hw_cmd_effort_[idx], -effort_max_[idx], effort_max_[idx], has_effort_limits_[idx]);
 }
 
 /** @brief Parse a boolean hardware parameter with default value */

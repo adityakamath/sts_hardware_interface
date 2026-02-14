@@ -19,6 +19,9 @@
 // SCServo SDK
 #include "SMS_STS.h"
 
+// Conversion utilities
+#include "sts_hardware_interface/sts_conversions.hpp"
+
 namespace sts_hardware_interface
 {
 
@@ -229,21 +232,6 @@ private:
   static constexpr int MODE_VELOCITY = 1;   // Velocity control mode
   static constexpr int MODE_PWM = 2;        // PWM/effort control mode
 
-  /** @brief Convert motor steps to radians (0-2π) */
-  double raw_position_to_radians(int raw_position) const;
-
-  /** @brief Convert motor velocity (steps/s) to rad/s */
-  double raw_velocity_to_rad_s(int raw_velocity) const;
-
-  /** @brief Convert rad/s to motor velocity (steps/s) */
-  int rad_s_to_raw_velocity(double velocity_rad_s) const;
-
-  /** @brief Convert radians to motor steps */
-  int radians_to_raw_position(double position_rad) const;
-
-  /** @brief Convert effort (-1.0 to +1.0) to motor PWM (-1000 to +1000) */
-  int effort_to_raw_pwm(double effort) const;
-
   /** @brief Attempt to recover from communication errors by pinging motors */
   bool attempt_error_recovery();
 
@@ -252,19 +240,6 @@ private:
 
   /** @brief Handle write operation errors with logging and recovery */
   bool handle_write_error(int result, size_t idx, const char* operation);
-
-  /** @brief Clamp a value to [min_val, max_val] if limit is enabled */
-  template<typename T>
-  T apply_limit(T value, T min_val, T max_val, bool has_limit) const {
-    if (!has_limit) return value;
-    return std::clamp(value, min_val, max_val);
-  }
-
-  /** @brief Clamp acceleration command to valid range [0, STS_MAX_ACCELERATION] */
-  int clamp_acceleration(size_t idx) const;
-
-  /** @brief Apply effort limit and normalize to [-1.0, 1.0] for PWM conversion */
-  double normalize_effort(size_t idx) const;
 
   /** @brief Parse a boolean hardware parameter with default value */
   bool parse_bool_param(const std::string& key, bool default_value) const;
