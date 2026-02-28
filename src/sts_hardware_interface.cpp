@@ -341,7 +341,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     std::bind(&STSHardwareInterface::emergency_stop_callback, this,
       std::placeholders::_1, std::placeholders::_2));
 
-  RCLCPP_INFO(logger_, "Created /emergency_stop service");
+  // Enable service introspection: publishes full request/response content to
+  // /emergency_stop/_service_event for monitoring activations and releases
+  emergency_stop_service_->configure_introspection(
+    node_->get_clock(),
+    rclcpp::SystemDefaultsQoS(),
+    RCL_SERVICE_INTROSPECTION_CONTENTS);
+
+  RCLCPP_INFO(logger_, "Created /emergency_stop service with introspection enabled");
 
   // Skip serial port initialization in mock mode
   if (enable_mock_mode_) {
