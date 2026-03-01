@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-
-"""Launch file for single STS motor in velocity mode.
+"""
+Launch file for single STS motor in velocity mode.
 
 This launch file demonstrates basic usage of the STS Hardware Interface with a single motor
 configured in velocity (wheel) mode. It sets up the complete ros2_control stack including:
@@ -18,9 +18,8 @@ Example usage:
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -28,10 +27,14 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    """Generate launch description for single motor demonstration.
+    """
+    Generate launch description for single motor demonstration.
 
-    Returns:
-        LaunchDescription: Complete launch configuration with all nodes and parameters
+    Returns
+    -------
+    LaunchDescription
+        Complete launch configuration with all nodes and parameters
+
     """
     # Declare arguments
     declared_arguments = []
@@ -101,7 +104,9 @@ def generate_launch_description():
             'use_mock:=', use_mock,
         ]
     )
-    robot_description = {'robot_description': ParameterValue(robot_description_content, value_type=str)}
+    robot_description = {
+        'robot_description': ParameterValue(robot_description_content, value_type=str)
+    }
 
     # Robot state publisher
     robot_state_publisher_node = Node(
@@ -138,14 +143,6 @@ def generate_launch_description():
         arguments=['velocity_controller', '--controller-manager', '/controller_manager'],
     )
 
-    # Delay velocity controller start after joint state broadcaster
-    delay_velocity_controller_spawner_after_joint_state_broadcaster = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[velocity_controller_spawner],
-        )
-    )
-
     # Joint state publisher GUI (optional)
     joint_state_publisher_gui_node = Node(
         package='joint_state_publisher_gui',
@@ -157,7 +154,7 @@ def generate_launch_description():
         robot_state_publisher_node,
         controller_manager_node,
         joint_state_broadcaster_spawner,
-        delay_velocity_controller_spawner_after_joint_state_broadcaster,
+        velocity_controller_spawner,
         joint_state_publisher_gui_node,
     ]
 

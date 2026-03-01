@@ -1,6 +1,6 @@
 # STS Hardware Interface
 
-![Project Status](https://img.shields.io/badge/Status-WIP-yellow)
+![Project Status](https://img.shields.io/badge/Status-Active-green)
 ![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
 ![ROS 2 Control](https://img.shields.io/badge/ros2__control-SystemInterface-blue?style=flat&logo=ros&logoSize=auto)
 ![Repository](https://img.shields.io/badge/Repo-adityakamath%2Fsts__hardware__interface-purple?style=flat&logo=github&logoSize=auto)

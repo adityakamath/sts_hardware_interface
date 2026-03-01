@@ -417,6 +417,12 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 
 The service response includes `success: true` and a human-readable `message` confirming whether the stop was activated or released.
 
+**Service Introspection:**
+Service introspection is enabled on `/emergency_stop`. Full request and response content is published to `/emergency_stop/_service_event` for passive monitoring without additional instrumentation:
+```bash
+ros2 topic echo /emergency_stop/_service_event
+```
+
 **Implementation:**
 The hardware interface creates a ROS 2 node and service server during `on_configure()`. The service callback directly sets an internal emergency stop flag, which is processed in the `write()` cycle. The node is spun in every `read()` cycle using `spin_some()` to process incoming service calls. Using a service rather than a topic provides delivery confirmation — the caller receives an explicit acknowledgment that the command was received.
 
@@ -685,6 +691,159 @@ See [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro):
     </tr>
   </tbody>
 </table>
+
+---
+
+## Testing
+
+The package ships with a comprehensive test suite covering unit conversion math, mock-mode hardware interface behavior, and end-to-end integration with `controller_manager`. All tests run without physical hardware — either as pure C++ unit tests with no ROS dependency, or as launch tests that use mock mode.
+
+### Test Architecture
+
+```
+test/
+├── test_conversions.cpp           # Pure unit tests — zero ROS dependency
+├── test_hardware_interface.cpp    # Mock-mode hardware interface tests
+├── test_single_motor.launch.py    # Integration: single motor (velocity mode)
+└── test_mixed_mode.launch.py      # Integration: three motors in mixed modes
+```
+
+**Separation of concerns:**
+
+- **C++ unit tests** (`ament_add_gtest`) are compiled and run as standalone executables. They exercise pure logic without starting any ROS 2 nodes or the hardware interface plugin.
+- **Launch tests** (`add_launch_test`) spin up the real `controller_manager` node in mock mode and validate the live system against expected ROS 2 topic and service behavior.
+
+---
+
+### Unit Tests: `test_conversions.cpp`
+
+**43 tests** covering all unit conversion functions in isolation.
+
+**What is tested:**
+- `steps_to_radians` and `radians_to_steps` — forward and inverse conversions, boundary values (0, full-range), mid-range linearity
+- `steps_to_rad_per_sec` and `rad_per_sec_to_steps` — velocity conversions, sign correctness under REP-103 direction inversion
+- `raw_load_to_effort` — load normalization from ±1000 protocol units to ±1.0
+- `raw_voltage_to_volts`, `raw_current_to_amperes`, `raw_temperature_to_celsius` — sensor state conversions
+- `clamp_velocity_steps`, `clamp_acceleration`, `clamp_effort` — limit enforcement edge cases
+- Rounding and floating-point precision across all conversions
+
+**Key design:** No ROS headers are included. Tests compile and run with a plain C++ test binary, so they are fast, deterministic, and require no ROS 2 environment.
+
+---
+
+### Unit Tests: `test_hardware_interface.cpp`
+
+**82 tests** exercising the full `STSHardwareInterface` in mock mode, covering every branch of the lifecycle.
+
+**Parameter validation (`on_init`):**
+
+| Test Group | What Is Covered |
+|---|---|
+| `serial_port` | Missing parameter → `RETURN_ERROR` |
+| `baud_rate` | Missing, non-integer strings → `RETURN_ERROR` |
+| `communication_timeout_ms` | Missing, non-integer strings, out-of-range → `RETURN_ERROR` |
+| `max_velocity_steps` | Missing, non-positive, non-integer strings → `RETURN_ERROR` |
+| `motor_id` | Missing per joint, out-of-range (0, 254, 255) → `RETURN_ERROR` |
+| `operating_mode` | Values 0, 1, 2 (valid), unknown value (defaults to velocity) |
+| Position limits | `min_position`, `max_position` non-number strings → `RETURN_ERROR` |
+| Velocity limits | `max_velocity` non-number strings → `RETURN_ERROR` |
+| Effort limits | `max_effort` non-number strings → `RETURN_ERROR` |
+
+**Lifecycle transitions:**
+
+All standard `hardware_interface::SystemInterface` lifecycle transitions are exercised with valid mock-mode configuration:
+
+```
+on_init → on_configure → on_activate → on_deactivate
+                      ↘ on_shutdown  ↗ on_cleanup → on_error
+```
+
+Each transition is asserted to return `CallbackReturn::SUCCESS`. The `reset_states_on_activate = false` path is tested separately (states persist across deactivate/reactivate cycles).
+
+**Read/Write behavior (mock mode):**
+
+| Scenario | What Is Verified |
+|---|---|
+| Velocity mode read | Position integrates from velocity command; `is_moving` set correctly |
+| Position mode (servo) read | Position steps toward target per cycle; snaps to target when within one step |
+| Position mode negative error | Correct direction of step when current > target |
+| PWM mode read | Effort command scaled to velocity (×10.0 rad/s) and integrated |
+| `reset_states_on_activate = false` | Position state preserved after reactivation |
+| Multi-joint | Two joints in different modes updated independently |
+| Write cycle | Command interfaces written without errors in all modes |
+
+**Emergency stop (mock mode):**
+
+- Activating emergency stop clears all command interfaces to zero
+- Releasing emergency stop restores normal write behavior
+- Service callback is invoked directly without a live ROS node (tests the internal callback function)
+
+---
+
+### Integration Tests: `test_single_motor.launch.py`
+
+Spins up the `single_motor` example launch configuration in mock mode and validates:
+
+| Test | What Is Checked |
+|---|---|
+| `test_ros2_control_running` | `/controller_manager` node is discoverable |
+| `test_joint_state_broadcaster_active` | `joint_state_broadcaster` reports `active` state |
+| `test_velocity_controller_active` | `velocity_controller` reaches `active` state (polled up to 30 s) |
+| `test_joint_states_published` | `/joint_states` topic publishes `sensor_msgs/JointState` messages |
+| `test_mock_mode_feedback` | Feedback is non-NaN across all 7 state interfaces |
+| `test_hardware_interfaces_available` | Hardware command and state interfaces are listed |
+| `test_emergency_stop_service` | `/emergency_stop` service is callable and returns `success: true` |
+| `test_emergency_stop_introspection_topic` | `/emergency_stop/_service_event` topic exists (skipped if `ServiceEvent` unavailable in this ROS 2 build) |
+
+**Notable implementation details:**
+
+- `test_velocity_controller_active` uses a **polling loop** (100 ms intervals, 30 s deadline) rather than a fixed sleep, making it robust to system load variation.
+- `test_emergency_stop_introspection_topic` wraps the `ServiceEvent` import in a `try/except` and calls `self.skipTest()` if the message type is not available in the installed ROS 2 distribution, preventing an import error from failing the entire test suite.
+
+---
+
+### Integration Tests: `test_mixed_mode.launch.py`
+
+Spins up the `mixed_mode` example in mock mode (three motors: velocity, position, PWM) and validates:
+
+| Test | What Is Checked |
+|---|---|
+| `test_ros2_control_running` | `controller_manager` is discoverable |
+| `test_joint_state_broadcaster_active` | `joint_state_broadcaster` is `active` |
+| `test_arm_controller_active` | `arm_controller` (JointTrajectoryController, Mode 0) is `active` |
+| `test_wheel_controller_active` | `wheel_controller` (VelocityController, Mode 1) is `active` |
+| `test_gripper_controller_active` | `gripper_controller` (EffortController, Mode 2) is `active` |
+| `test_joint_states_published` | `/joint_states` publishes all three joints |
+| `test_mock_mode_all_joints` | All three joints have valid non-NaN feedback |
+| `test_emergency_stop_service` | Emergency stop service is callable across mixed-mode joints |
+
+---
+
+### Running the Tests
+
+```bash
+# Build with test targets
+colcon build --packages-select sts_hardware_interface
+
+# Run all tests
+colcon test --packages-select sts_hardware_interface
+
+# View results (verbose output shows individual test pass/fail)
+colcon test-result --verbose
+
+# Run only the C++ unit tests (faster, no ROS nodes)
+colcon test --packages-select sts_hardware_interface \
+  --ctest-args -R "test_conversions|test_hardware_interface"
+
+# Run only the launch integration tests
+colcon test --packages-select sts_hardware_interface \
+  --ctest-args -R "test_single_motor|test_mixed_mode"
+```
+
+**Prerequisites:**
+- No hardware required — all tests use mock mode
+- No active Zenoh router or other conflicting ROS 2 nodes in the same namespace during launch tests
+- `colcon build` must complete successfully before running tests
 
 ---
 

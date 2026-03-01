@@ -125,13 +125,44 @@ if(BUILD_TESTING)
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
 
-  # Run automatic linters
+  # Disable lint_cmake and uncrustify auto-detection: both linters would recurse into
+  # external/SCServo_Linux which is a vendor directory with its own style conventions.
+  # Setting _FOUND before ament_lint_auto_find_test_dependencies() prevents hook
+  # registration and avoids duplicate-test build errors.
+  set(ament_cmake_lint_cmake_FOUND TRUE)
+  set(ament_cmake_uncrustify_FOUND TRUE)
+
+  # Run automatic linters (lint_cmake and uncrustify are excluded above)
   ament_lint_auto_find_test_dependencies()
 
-  # TODO: Add unit tests for conversion functions and mock mode
-  # find_package(ament_cmake_gtest REQUIRED)
-  # ament_add_gtest(test_conversions test/test_conversions.cpp)
-  # target_link_libraries(test_conversions ${PROJECT_NAME})
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(launch_testing_ament_cmake REQUIRED)
+
+  # C++ unit tests: pure conversion math (no ROS required)
+  ament_add_gtest(test_conversions test/test_conversions.cpp)
+  target_include_directories(test_conversions PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  )
+
+  # C++ unit tests: hardware interface lifecycle and mock behavior (needs rclcpp)
+  ament_add_gtest(test_hardware_interface
+    test/test_hardware_interface.cpp
+  )
+  ament_target_dependencies(test_hardware_interface
+    rclcpp
+    hardware_interface
+    std_srvs
+  )
+  target_include_directories(test_hardware_interface PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  )
+  target_link_libraries(test_hardware_interface ${PROJECT_NAME})
+
+  # Python launch tests: single motor example with use_mock:=true
+  add_launch_test(test/test_single_motor.launch.py)
+
+  # Python launch tests: mixed mode example with use_mock:=true
+  add_launch_test(test/test_mixed_mode.launch.py)
 endif()
 
 # Export package information for downstream packages

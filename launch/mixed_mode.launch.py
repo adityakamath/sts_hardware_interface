@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-
-"""Launch file for mixed-mode motor chain (wheel + arm + gripper).
+"""
+Launch file for mixed-mode motor chain (wheel + arm + gripper).
 
 This launch file demonstrates advanced usage of the STS Hardware Interface with multiple
 motors operating in different control modes on the same serial bus:
@@ -21,9 +21,8 @@ Example usage:
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -31,10 +30,14 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    """Generate launch description for mixed-mode motor chain demonstration.
+    """
+    Generate launch description for mixed-mode motor chain demonstration.
 
-    Returns:
-        LaunchDescription: Complete launch configuration with all nodes and parameters
+    Returns
+    -------
+    LaunchDescription
+        Complete launch configuration with all nodes and parameters
+
     """
     # Declare arguments
     declared_arguments = []
@@ -67,7 +70,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'gui',
             default_value='false',
-            description='Start joint_state_publisher_gui for manual control (requires desktop environment)'
+            description=(
+                'Start joint_state_publisher_gui for manual control'
+                ' (requires desktop environment)'
+            )
         )
     )
 
@@ -93,7 +99,9 @@ def generate_launch_description():
             'use_mock:=', use_mock,
         ]
     )
-    robot_description = {'robot_description': ParameterValue(robot_description_content, value_type=str)}
+    robot_description = {
+        'robot_description': ParameterValue(robot_description_content, value_type=str)
+    }
 
     # Robot state publisher
     robot_state_publisher_node = Node(
@@ -144,28 +152,6 @@ def generate_launch_description():
         arguments=['gripper_controller', '--controller-manager', '/controller_manager'],
     )
 
-    # Delay controllers start after joint state broadcaster
-    delay_arm_controller = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[arm_controller_spawner],
-        )
-    )
-
-    delay_wheel_controller = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[wheel_controller_spawner],
-        )
-    )
-
-    delay_gripper_controller = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[gripper_controller_spawner],
-        )
-    )
-
     # Joint state publisher GUI (optional)
     joint_state_publisher_gui_node = Node(
         package='joint_state_publisher_gui',
@@ -177,9 +163,9 @@ def generate_launch_description():
         robot_state_publisher_node,
         controller_manager_node,
         joint_state_broadcaster_spawner,
-        delay_arm_controller,
-        delay_wheel_controller,
-        delay_gripper_controller,
+        arm_controller_spawner,
+        wheel_controller_spawner,
+        gripper_controller_spawner,
         joint_state_publisher_gui_node,
     ]
 

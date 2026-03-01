@@ -323,6 +323,9 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
 
 # Release emergency stop
 ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
+
+# Monitor emergency stop events (service introspection - full request/response content)
+ros2 topic echo /emergency_stop/_service_event
 ```
 
 ---
@@ -445,6 +448,60 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
    ros2 topic echo /dynamic_joint_states  # Check voltage, temperature, current
    ```
    Mock mode simulates realistic velocity integration and sensor feedback (voltage ~12V, temperature 25-40°C, current proportional to load).
+
+---
+
+## Running the Test Suite
+
+The package includes a full test suite that runs without physical hardware — no serial port or motors needed.
+
+### Prerequisites
+
+- No special hardware required; all tests use mock mode
+- No other ROS 2 nodes (e.g. a Zenoh router, other `controller_manager` instances) running in the same namespace when executing the launch integration tests
+
+### Run All Tests
+
+```bash
+# Build first (required before running tests)
+colcon build --packages-select sts_hardware_interface
+
+# Run all tests
+colcon test --packages-select sts_hardware_interface
+
+# View detailed pass/fail output
+colcon test-result --verbose
+```
+
+### Test Groups
+
+| Test File | Type | Tests | What Is Covered |
+|---|---|---|---|
+| `test_conversions.cpp` | C++ unit | 43 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
+| `test_hardware_interface.cpp` | C++ unit | 82 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
+| `test_single_motor.launch.py` | Launch integration | 8 | Full controller_manager stack — single velocity-mode motor in mock mode |
+| `test_mixed_mode.launch.py` | Launch integration | 8 | Three-motor mixed-mode stack (position, velocity, PWM) in mock mode |
+
+### Run Specific Test Groups
+
+```bash
+# C++ unit tests only (fast, no ROS nodes required)
+colcon test --packages-select sts_hardware_interface \
+  --ctest-args -R "test_conversions|test_hardware_interface"
+
+# Launch integration tests only
+colcon test --packages-select sts_hardware_interface \
+  --ctest-args -R "test_single_motor|test_mixed_mode"
+```
+
+### Interpreting Results
+
+```
+Summary: X tests, 0 errors, 0 failures, Y skipped
+```
+
+- **Skipped** (not failed): `test_emergency_stop_introspection_topic` is skipped when the `ServiceEvent` message type is not available in the installed ROS 2 distribution. This is expected.
+- All other tests must pass. If any fail, run `colcon test-result --verbose` and check the per-test logs in `log/latest_test/`.
 
 ---
 
