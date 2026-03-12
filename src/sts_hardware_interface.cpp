@@ -88,7 +88,42 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  // Parse proportional acceleration parameters
+  try {
+    proportional_acc_max_ = std::stoi(
+      info_.hardware_parameters.count("proportional_acc_max") ?
+      info_.hardware_parameters.at("proportional_acc_max") : "100");
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_acc_max value: '%s' (must be a valid integer)",
+      info_.hardware_parameters.at("proportional_acc_max").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  if (proportional_acc_max_ < 0 || proportional_acc_max_ > STS_MAX_ACCELERATION) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_acc_max: %d. Must be in [0, %d]",
+      proportional_acc_max_, STS_MAX_ACCELERATION);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  try {
+    proportional_acc_deadband_rad_s_ = std::stod(
+      info_.hardware_parameters.count("proportional_acc_deadband") ?
+      info_.hardware_parameters.at("proportional_acc_deadband") : "0.05");
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_acc_deadband value: '%s' (must be a valid number)",
+      info_.hardware_parameters.at("proportional_acc_deadband").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  if (proportional_acc_deadband_rad_s_ < 0.0) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_acc_deadband: %.4f. Must be >= 0.0",
+      proportional_acc_deadband_rad_s_);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
   RCLCPP_INFO(logger_, "Motor model parameter: max_velocity=%d steps/s", max_velocity_steps_);
+  RCLCPP_INFO(logger_, "Proportional ACC: max=%d, deadband=%.4f rad/s",
+    proportional_acc_max_, proportional_acc_deadband_rad_s_);
 
   // ===== Parse joint-level parameters =====
   size_t num_joints = info_.joints.size();
@@ -778,12 +813,30 @@ hardware_interface::return_type STSHardwareInterface::write(
   // ===== WRITE COMMANDS FOR VELOCITY MODE MOTORS =====
   if (!velocity_motor_indices_.empty()) {
     if (use_sync_write_ && velocity_motor_indices_.size() > 1) {
-      // Update pre-allocated SyncWrite buffers
+      // Pass 1: compute target velocities and find the largest velocity delta across all wheels.
+      // This is used to scale each wheel's acceleration proportionally so that all wheels
+      // complete their ramp in the same wall-clock time (T = max_delta / (acc_max × 100)).
+      double max_delta_rad_s = 0.0;
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
         size_t idx = velocity_motor_indices_[j];
         double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
         velocity_sync_velocities_[j] = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_);
-        velocity_sync_accelerations_[j] = static_cast<u8>(conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
+        double delta = std::abs(hw_cmd_velocity_[idx] - hw_state_velocity_[idx]);
+        max_delta_rad_s = std::max(max_delta_rad_s, delta);
+      }
+
+      // Pass 2: assign proportional acceleration.  When the max delta is below the deadband
+      // (steady-state cruising), send ACC=0 so the servo uses its own uncapped slew — there
+      // is nothing meaningful to synchronise at that point.
+      for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
+        size_t idx = velocity_motor_indices_[j];
+        if (proportional_acc_max_ == 0 || max_delta_rad_s < proportional_acc_deadband_rad_s_) {
+          velocity_sync_accelerations_[j] = 0;
+        } else {
+          double delta = std::abs(hw_cmd_velocity_[idx] - hw_state_velocity_[idx]);
+          int acc = static_cast<int>(std::round((delta / max_delta_rad_s) * proportional_acc_max_));
+          velocity_sync_accelerations_[j] = static_cast<u8>(std::clamp(acc, 1, STS_MAX_ACCELERATION));
+        }
       }
 
       servo_->SyncWriteSpe(
