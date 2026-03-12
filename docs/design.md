@@ -417,7 +417,7 @@ ACC_i    = clamp(round(delta_i / max_delta * proportional_acc_max), 1, 254)
 T        = max_delta / (proportional_acc_max * 100)    -- same for every wheel
 ```
 
-This is particularly important for multi-wheel drive geometries (e.g. kiwi/omni drives) where different wheels have structurally different delta magnitudes for the same robot-level command. The per-wheel deltas are stored in a pre-allocated `velocity_sync_deltas_` buffer between passes to avoid recomputation. Below `proportional_acc_deadband` rad/s max delta (steady-state cruise), all wheels receive `ACC=0` (hardware-native slew, no ramp imposed). The individual-write fallback path is unchanged.
+This is particularly important for multi-wheel drive geometries (e.g. LeKiwi/omni drives) where different wheels have structurally different delta magnitudes for the same robot-level command. The per-wheel deltas are stored in a pre-allocated `velocity_sync_deltas_` buffer between passes to avoid recomputation. Below `proportional_acc_deadband` rad/s max delta (steady-state cruise), all wheels receive `ACC=0` (hardware-native slew, no ramp imposed). The individual-write fallback path is unchanged.
 
 **Performance Optimization:**
 The hardware interface pre-computes motor groupings by operating mode during initialization and pre-allocates all SyncWrite communication buffers. This eliminates per-cycle heap allocations, reducing latency and ensuring deterministic performance at high controller update rates (100+ Hz).
