@@ -123,6 +123,8 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
 | `use_sync_write` | bool | true | Enable SyncWrite for multi-motor setups |
 | `enable_mock_mode` | bool | false | Simulation mode (no hardware) |
 | `max_velocity_steps` | int | 3400 | Max motor velocity in steps/s (STS3215: 3400, STS3032: 2900) |
+| `proportional_acc_max` | int | 100 | ACC [0–254] assigned to the wheel with the largest velocity delta in `SyncWriteSpe`. All others are scaled proportionally so all wheels complete their ramp in equal time. Set to `0` to disable. |
+| `proportional_acc_deadband` | double | 0.05 | Minimum velocity delta (rad/s) below which `ACC=0` is sent to all wheels (steady-state cruise). |
 | `reset_states_on_activate` | bool | true | Reset position/velocity states to zero on activation for clean odometry |
 
 ## Joint Parameters

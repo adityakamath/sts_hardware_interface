@@ -288,6 +288,20 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">Maximum motor velocity in steps/s (STS3215: 3400, STS3032: 2900)</td>
     </tr>
     <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>proportional_acc_max</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;">100</td>
+      <td style="padding: 0.6em; border: none;">0–254</td>
+      <td style="padding: 0.6em; border: none;">ACC given to the wheel with the largest velocity delta in <code>SyncWriteSpe</code>. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to <code>0</code> to disable (ACC=0 for all wheels).</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>proportional_acc_deadband</code></td>
+      <td style="padding: 0.6em; border: none;">double</td>
+      <td style="padding: 0.6em; border: none;">0.05</td>
+      <td style="padding: 0.6em; border: none;">&ge; 0.0 rad/s</td>
+      <td style="padding: 0.6em; border: none;">Minimum velocity delta below which ACC=0 is sent to all wheels (avoids jitter during steady-state cruise).</td>
+    </tr>
+    <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>reset_states_on_activate</code></td>
       <td style="padding: 0.6em; border: none;">bool</td>
       <td style="padding: 0.6em; border: none;">true</td>
@@ -393,6 +407,16 @@ Configure these per `<joint>` in your URDF:
 - ✅ **Benefit:** Individual error detection per motor command
 - ⚠️ **Tradeoff:** Higher latency (~5ms per motor)
 - **Best for:** Single motor setups, debugging communication failures
+
+**Proportional Acceleration (SyncWriteSpe path only):**
+When `use_sync_write: true` and multiple velocity-mode motors are active, the hardware interface uses per-wheel ACC scaling to keep all wheels in sync during velocity transitions. Each cycle, it finds the maximum velocity delta across all wheels and assigns ACC proportionally:
+
+```
+ACC_i = clamp(round(delta_i / max_delta * proportional_acc_max), 1, 254)
+T = max_delta / (proportional_acc_max * 100)   -- same for every wheel
+```
+
+This is particularly important for multi-wheel drive geometries (e.g. kiwi/omni drives) where different wheels have structurally different delta magnitudes for the same robot-level command. Below `proportional_acc_deadband` rad/s, all wheels receive `ACC=0` (hardware-native slew, no ramp imposed). The individual-write fallback path is unchanged.
 
 **Performance Optimization:**
 The hardware interface pre-computes motor groupings by operating mode during initialization and pre-allocates all SyncWrite communication buffers. This eliminates per-cycle heap allocations, reducing latency and ensuring deterministic performance at high controller update rates (100+ Hz).
@@ -743,6 +767,8 @@ test/
 | `baud_rate` | Missing, non-integer strings → `RETURN_ERROR` |
 | `communication_timeout_ms` | Missing, non-integer strings, out-of-range → `RETURN_ERROR` |
 | `max_velocity_steps` | Missing, non-positive, non-integer strings → `RETURN_ERROR` |
+| `proportional_acc_max` | Non-integer strings, out-of-range [0–254] → `RETURN_ERROR` |
+| `proportional_acc_deadband` | Non-number strings, negative values → `RETURN_ERROR` |
 | `motor_id` | Missing per joint, out-of-range (0, 254, 255) → `RETURN_ERROR` |
 | `operating_mode` | Values 0, 1, 2 (valid), unknown value (defaults to velocity) |
 | Position limits | `min_position`, `max_position` non-number strings → `RETURN_ERROR` |
