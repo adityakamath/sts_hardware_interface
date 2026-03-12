@@ -341,6 +341,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   servo_sync_accelerations_.resize(servo_motor_indices_.size());
   velocity_sync_velocities_.resize(velocity_motor_indices_.size());
   velocity_sync_accelerations_.resize(velocity_motor_indices_.size());
+  velocity_sync_deltas_.resize(velocity_motor_indices_.size());
   pwm_sync_pwm_values_.resize(pwm_motor_indices_.size());
 
   RCLCPP_INFO(logger_, "Motor groupings: %zu servo, %zu velocity, %zu PWM",
@@ -813,28 +814,28 @@ hardware_interface::return_type STSHardwareInterface::write(
   // ===== WRITE COMMANDS FOR VELOCITY MODE MOTORS =====
   if (!velocity_motor_indices_.empty()) {
     if (use_sync_write_ && velocity_motor_indices_.size() > 1) {
-      // Pass 1: compute target velocities and find the largest velocity delta across all wheels.
-      // This is used to scale each wheel's acceleration proportionally so that all wheels
-      // complete their ramp in the same wall-clock time (T = max_delta / (acc_max × 100)).
+      // Pass 1: compute clamped target velocities, per-wheel deltas, and the maximum delta.
+      // Delta = |target - current| in rad/s, matching exactly what the servo will ramp through.
+      // ACC units: 1 ACC unit = 100 steps/s². Ramp time T = delta_steps / (ACC * 100).
+      // Since steps/s = rad/s * (4096 / 2π), the rad/s ratio equals the steps/s ratio, so
+      // proportional scaling in rad/s is equivalent to scaling in steps/s.
       double max_delta_rad_s = 0.0;
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
         size_t idx = velocity_motor_indices_[j];
         double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
         velocity_sync_velocities_[j] = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_);
-        double delta = std::abs(hw_cmd_velocity_[idx] - hw_state_velocity_[idx]);
-        max_delta_rad_s = std::max(max_delta_rad_s, delta);
+        velocity_sync_deltas_[j] = std::abs(target_velocity - hw_state_velocity_[idx]);
+        max_delta_rad_s = std::max(max_delta_rad_s, velocity_sync_deltas_[j]);
       }
 
-      // Pass 2: assign proportional acceleration.  When the max delta is below the deadband
-      // (steady-state cruising), send ACC=0 so the servo uses its own uncapped slew — there
-      // is nothing meaningful to synchronise at that point.
+      // Pass 2: assign ACC proportional to each wheel's delta so all wheels finish ramping
+      // at the same time: T = max_delta / (acc_max * 100) seconds for every wheel.
+      // Below the deadband (steady-state cruise), ACC=0 lets the hardware follow naturally.
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
-        size_t idx = velocity_motor_indices_[j];
         if (proportional_acc_max_ == 0 || max_delta_rad_s < proportional_acc_deadband_rad_s_) {
           velocity_sync_accelerations_[j] = 0;
         } else {
-          double delta = std::abs(hw_cmd_velocity_[idx] - hw_state_velocity_[idx]);
-          int acc = static_cast<int>(std::round((delta / max_delta_rad_s) * proportional_acc_max_));
+          int acc = static_cast<int>(std::round((velocity_sync_deltas_[j] / max_delta_rad_s) * proportional_acc_max_));
           velocity_sync_accelerations_[j] = static_cast<u8>(std::clamp(acc, 1, STS_MAX_ACCELERATION));
         }
       }

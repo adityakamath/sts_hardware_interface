@@ -179,6 +179,7 @@ private:
   std::vector<u8> velocity_sync_ids_;
   std::vector<s16> velocity_sync_velocities_;
   std::vector<u8> velocity_sync_accelerations_;
+  std::vector<double> velocity_sync_deltas_;  // |target_velocity - current_velocity| per joint (rad/s)
   std::vector<u8> pwm_sync_ids_;
   std::vector<s16> pwm_sync_pwm_values_;
 

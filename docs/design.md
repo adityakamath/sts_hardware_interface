@@ -409,14 +409,15 @@ Configure these per `<joint>` in your URDF:
 - **Best for:** Single motor setups, debugging communication failures
 
 **Proportional Acceleration (SyncWriteSpe path only):**
-When `use_sync_write: true` and multiple velocity-mode motors are active, the hardware interface uses per-wheel ACC scaling to keep all wheels in sync during velocity transitions. Each cycle, it finds the maximum velocity delta across all wheels and assigns ACC proportionally:
+When `use_sync_write: true` and multiple velocity-mode motors are active, the hardware interface uses per-wheel ACC scaling to keep all wheels in sync during velocity transitions. Each cycle it computes `delta_i = |target_velocity_i - current_velocity_i|` — where `target_velocity` is the limit-clamped value actually written to the servo, read from `hw_state_velocity_[idx]` populated by the preceding `read()` — and assigns ACC proportionally to the maximum delta across all wheels:
 
 ```
-ACC_i = clamp(round(delta_i / max_delta * proportional_acc_max), 1, 254)
-T = max_delta / (proportional_acc_max * 100)   -- same for every wheel
+delta_i  = |target_velocity_i - current_velocity_i|   (rad/s, clamped target)
+ACC_i    = clamp(round(delta_i / max_delta * proportional_acc_max), 1, 254)
+T        = max_delta / (proportional_acc_max * 100)    -- same for every wheel
 ```
 
-This is particularly important for multi-wheel drive geometries (e.g. kiwi/omni drives) where different wheels have structurally different delta magnitudes for the same robot-level command. Below `proportional_acc_deadband` rad/s, all wheels receive `ACC=0` (hardware-native slew, no ramp imposed). The individual-write fallback path is unchanged.
+This is particularly important for multi-wheel drive geometries (e.g. kiwi/omni drives) where different wheels have structurally different delta magnitudes for the same robot-level command. The per-wheel deltas are stored in a pre-allocated `velocity_sync_deltas_` buffer between passes to avoid recomputation. Below `proportional_acc_deadband` rad/s max delta (steady-state cruise), all wheels receive `ACC=0` (hardware-native slew, no ramp imposed). The individual-write fallback path is unchanged.
 
 **Performance Optimization:**
 The hardware interface pre-computes motor groupings by operating mode during initialization and pre-allocates all SyncWrite communication buffers. This eliminates per-cycle heap allocations, reducing latency and ensuring deterministic performance at high controller update rates (100+ Hz).
