@@ -146,6 +146,11 @@ private:
   int proportional_acc_max_;             // ACC given to the wheel with the largest Δv [1-254] (default: 100)
   double proportional_acc_deadband_rad_s_;  // Min Δv below which all ACC → 0 (default: 0.05 rad/s)
 
+  // Proportional velocity parameters (SyncWritePosEx servo path only)
+  int proportional_vel_max_;  // max_speed (steps/s) given to the joint with the largest Δpos; others scaled
+                              // proportionally so all joints finish moving at the same time.
+                              // Set to 0 to disable (each joint uses its commanded velocity). (default: 0)
+
   // Lifecycle parameter
   bool reset_states_on_activate_;  // Reset position/velocity states on activation (default: true)
 
@@ -176,6 +181,7 @@ private:
   std::vector<s16> servo_sync_positions_;
   std::vector<u16> servo_sync_speeds_;
   std::vector<u8> servo_sync_accelerations_;
+  std::vector<double> servo_sync_deltas_;   // |target_position - current_position| per joint (rad)
   std::vector<u8> velocity_sync_ids_;
   std::vector<s16> velocity_sync_velocities_;
   std::vector<u8> velocity_sync_accelerations_;

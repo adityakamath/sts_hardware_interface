@@ -105,25 +105,40 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  // Steady-state cruise deadband: below this max-delta the proportional ACC
+  // logic sends ACC=0 to all wheels, letting the hardware follow naturally.
+  // Hardcoded because 0.05 rad/s is a safe implementation constant — not a
+  // per-robot tuning knob. To expose it as a URDF parameter if ever needed:
+  //
+  //   <param name="proportional_acc_deadband">0.05</param>
+  //
+  //   proportional_acc_deadband_rad_s_ = std::stod(
+  //     info_.hardware_parameters.count("proportional_acc_deadband") ?
+  //     info_.hardware_parameters.at("proportional_acc_deadband") : "0.05");
+  proportional_acc_deadband_rad_s_ = 0.05;
+
+  // Parse proportional velocity parameter (servo/position mode path)
   try {
-    proportional_acc_deadband_rad_s_ = std::stod(
-      info_.hardware_parameters.count("proportional_acc_deadband") ?
-      info_.hardware_parameters.at("proportional_acc_deadband") : "0.05");
+    proportional_vel_max_ = std::stoi(
+      info_.hardware_parameters.count("proportional_vel_max") ?
+      info_.hardware_parameters.at("proportional_vel_max") : "0");
   } catch (const std::exception &) {
-    RCLCPP_ERROR(logger_, "Invalid proportional_acc_deadband value: '%s' (must be a valid number)",
-      info_.hardware_parameters.at("proportional_acc_deadband").c_str());
+    RCLCPP_ERROR(logger_, "Invalid proportional_vel_max value: '%s' (must be a valid integer)",
+      info_.hardware_parameters.at("proportional_vel_max").c_str());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  if (proportional_acc_deadband_rad_s_ < 0.0) {
-    RCLCPP_ERROR(logger_, "Invalid proportional_acc_deadband: %.4f. Must be >= 0.0",
-      proportional_acc_deadband_rad_s_);
+  if (proportional_vel_max_ < 0 || proportional_vel_max_ > max_velocity_steps_) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_vel_max: %d. Must be in [0, %d]",
+      proportional_vel_max_, max_velocity_steps_);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
   RCLCPP_INFO(logger_, "Motor model parameter: max_velocity=%d steps/s", max_velocity_steps_);
   RCLCPP_INFO(logger_, "Proportional ACC: max=%d, deadband=%.4f rad/s",
     proportional_acc_max_, proportional_acc_deadband_rad_s_);
+  RCLCPP_INFO(logger_, "Proportional VEL: max=%d steps/s (%s)",
+    proportional_vel_max_, proportional_vel_max_ > 0 ? "enabled" : "disabled");
 
   // ===== Parse joint-level parameters =====
   size_t num_joints = info_.joints.size();
@@ -339,6 +354,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   servo_sync_positions_.resize(servo_motor_indices_.size());
   servo_sync_speeds_.resize(servo_motor_indices_.size());
   servo_sync_accelerations_.resize(servo_motor_indices_.size());
+  servo_sync_deltas_.resize(servo_motor_indices_.size());
   velocity_sync_velocities_.resize(velocity_motor_indices_.size());
   velocity_sync_accelerations_.resize(velocity_motor_indices_.size());
   velocity_sync_deltas_.resize(velocity_motor_indices_.size());
@@ -775,16 +791,32 @@ hardware_interface::return_type STSHardwareInterface::write(
   // ===== WRITE COMMANDS FOR SERVO MODE MOTORS =====
   if (!servo_motor_indices_.empty()) {
     if (use_sync_write_ && servo_motor_indices_.size() > 1) {
-      // Update pre-allocated SyncWrite buffers
+      // Pass 1: compute target positions, per-joint deltas, and max delta.
+      // Delta = |target - current| in radians; used by proportional velocity scaling.
+      double max_delta_rad = 0.0;
       for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
         size_t idx = servo_motor_indices_[j];
         double target_position = conversions::apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
-        double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
-
         servo_sync_positions_[j] = conversions::radians_to_raw_position(target_position);
-        servo_sync_speeds_[j] = static_cast<u16>(std::clamp(
-          conversions::rad_s_to_raw_velocity(max_speed, max_velocity_steps_), 0, max_velocity_steps_));
+        servo_sync_deltas_[j] = std::abs(target_position - hw_state_position_[idx]);
+        max_delta_rad = std::max(max_delta_rad, servo_sync_deltas_[j]);
         servo_sync_accelerations_[j] = static_cast<u8>(conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
+      }
+
+      // Pass 2: assign speed proportional to each joint's displacement so all joints
+      // finish moving at the same time. The master joint (largest delta) gets
+      // proportional_vel_max_; others are scaled down accordingly.
+      // Below 0.01 rad max-delta (steady-state hold) or when disabled, use commanded speed.
+      for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
+        size_t idx = servo_motor_indices_[j];
+        if (proportional_vel_max_ == 0 || max_delta_rad < 0.01) {
+          double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
+          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(
+            conversions::rad_s_to_raw_velocity(max_speed, max_velocity_steps_), 0, max_velocity_steps_));
+        } else {
+          int scaled = static_cast<int>(std::round((servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_));
+          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(scaled, 1, max_velocity_steps_));
+        }
       }
 
       servo_->SyncWritePosEx(
