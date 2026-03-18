@@ -275,6 +275,58 @@ TEST(ConversionsTest, ApplyLimit_IntType) {
   EXPECT_EQ(apply_limit(15, 0, 10, false), 15);  // passthrough
 }
 
+// ---- rad_s_to_raw_speed ----
+//
+// Unlike rad_s_to_raw_velocity, this function:
+//   - does NOT invert the sign (speed is an unsigned magnitude for WritePosEx)
+//   - clamps negative inputs to 0 (not to -max)
+// STS protocol: speed==0 sent to WritePosEx → hardware uses its own max speed.
+
+TEST(ConversionsTest, RadSToRawSpeed_Zero) {
+  // 0 rad/s → raw 0.  STS protocol interprets raw 0 as "hardware max speed".
+  EXPECT_EQ(rad_s_to_raw_speed(0.0, TEST_MAX_VEL_STEPS), 0);
+}
+
+TEST(ConversionsTest, RadSToRawSpeed_Positive) {
+  // Positive speed magnitude → positive raw (no sign inversion)
+  int result = rad_s_to_raw_speed(1.0, TEST_MAX_VEL_STEPS);
+  EXPECT_GT(result, 0);
+}
+
+TEST(ConversionsTest, RadSToRawSpeed_NegativeClampsToZero) {
+  // Negative magnitude (direction-less: magnitudes are unsigned) → clamped to 0
+  int result = rad_s_to_raw_speed(-1.0, TEST_MAX_VEL_STEPS);
+  EXPECT_EQ(result, 0);
+}
+
+TEST(ConversionsTest, RadSToRawSpeed_ClampsToMax) {
+  // Very high speed → clamped to max_velocity_steps
+  int result = rad_s_to_raw_speed(10000.0, 500);
+  EXPECT_EQ(result, 500);
+}
+
+TEST(ConversionsTest, RadSToRawSpeed_MagnitudeMatchesSignedVelocity) {
+  // rad_s_to_raw_speed and rad_s_to_raw_velocity use the same scale factor
+  // (RAD_TO_STEPS).  For a positive rad/s magnitude, the two functions should
+  // return the same absolute value; only the sign differs.
+  const double speed_rad_s = 2.0;
+  int spd_raw = rad_s_to_raw_speed(speed_rad_s, TEST_MAX_VEL_STEPS);
+  int vel_raw = rad_s_to_raw_velocity(-speed_rad_s, TEST_MAX_VEL_STEPS);  // negate → positive raw
+  EXPECT_EQ(spd_raw, vel_raw);
+}
+
+TEST(ConversionsTest, RadSToRawSpeed_NoSignInversionContrastWithVelocity) {
+  // For the same positive rad/s value:
+  //   rad_s_to_raw_velocity → negative raw (CW/CCW inversion)
+  //   rad_s_to_raw_speed    → positive raw (unsigned magnitude, no inversion)
+  const double speed_rad_s = 1.0;
+  int vel_raw = rad_s_to_raw_velocity(speed_rad_s, TEST_MAX_VEL_STEPS);
+  int spd_raw = rad_s_to_raw_speed(speed_rad_s, TEST_MAX_VEL_STEPS);
+  EXPECT_LT(vel_raw, 0);          // velocity: sign-inverted → negative
+  EXPECT_GT(spd_raw, 0);          // speed: unsigned magnitude → positive
+  EXPECT_EQ(-vel_raw, spd_raw);   // same magnitude
+}
+
 int main(int argc, char ** argv)
 {
   testing::InitGoogleTest(&argc, argv);

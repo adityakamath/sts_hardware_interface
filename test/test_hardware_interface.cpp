@@ -74,12 +74,13 @@ hardware_interface::HardwareInfo make_valid_position_motor_info()
   joint.parameters["motor_id"] = "2";
   joint.parameters["operating_mode"] = "0";
 
-  // Mode 0 (position) requires: position + velocity + acceleration
-  for (const auto & name : {"position", "velocity", "acceleration"}) {
-    hardware_interface::InterfaceInfo iface;
-    iface.name = name;
-    joint.command_interfaces.push_back(iface);
-  }
+  // Mode 0 (position): only the position interface is required.
+  // velocity and acceleration are optional — omitting them makes the hardware
+  // use its max speed (raw 0) and default ramp (ACC 0) for position moves.
+  hardware_interface::InterfaceInfo pos_iface;
+  pos_iface.name = "position";
+  joint.command_interfaces.push_back(pos_iface);
+
   info.joints.push_back(joint);
   return info;
 }
@@ -100,6 +101,68 @@ hardware_interface::HardwareInfo make_valid_effort_motor_info()
   eff_iface.name = "effort";
   joint.command_interfaces.push_back(eff_iface);
 
+  info.joints.push_back(joint);
+  return info;
+}
+
+/// Build info for a servo-mode motor with position + velocity command interfaces.
+/// Use this for mock tests that exercise the velocity command path (max-speed control).
+hardware_interface::HardwareInfo make_servo_info_with_velocity()
+{
+  hardware_interface::HardwareInfo info;
+  info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
+  info.hardware_parameters["enable_mock_mode"] = "true";
+
+  hardware_interface::ComponentInfo joint;
+  joint.name = "arm_joint";
+  joint.parameters["motor_id"] = "2";
+  joint.parameters["operating_mode"] = "0";
+
+  for (const auto & name : {"position", "velocity"}) {
+    hardware_interface::InterfaceInfo iface;
+    iface.name = name;
+    joint.command_interfaces.push_back(iface);
+  }
+  info.joints.push_back(joint);
+  return info;
+}
+
+/// Build info for a servo-mode motor with all three command interfaces.
+hardware_interface::HardwareInfo make_servo_info_with_vel_acc()
+{
+  hardware_interface::HardwareInfo info;
+  info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
+  info.hardware_parameters["enable_mock_mode"] = "true";
+
+  hardware_interface::ComponentInfo joint;
+  joint.name = "arm_joint";
+  joint.parameters["motor_id"] = "2";
+  joint.parameters["operating_mode"] = "0";
+
+  for (const auto & name : {"position", "velocity", "acceleration"}) {
+    hardware_interface::InterfaceInfo iface;
+    iface.name = name;
+    joint.command_interfaces.push_back(iface);
+  }
+  info.joints.push_back(joint);
+  return info;
+}
+
+/// Build info for a velocity-mode motor WITHOUT the optional acceleration interface.
+hardware_interface::HardwareInfo make_velocity_info_no_acc()
+{
+  hardware_interface::HardwareInfo info;
+  info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
+  info.hardware_parameters["enable_mock_mode"] = "true";
+
+  hardware_interface::ComponentInfo joint;
+  joint.name = "wheel_joint";
+  joint.parameters["motor_id"] = "1";
+  joint.parameters["operating_mode"] = "1";
+
+  hardware_interface::InterfaceInfo vel_iface;
+  vel_iface.name = "velocity";
+  joint.command_interfaces.push_back(vel_iface);
   info.joints.push_back(joint);
   return info;
 }
@@ -131,11 +194,10 @@ hardware_interface::HardwareInfo make_two_motor_info()
     joint.name = "arm_joint";
     joint.parameters["motor_id"] = "2";
     joint.parameters["operating_mode"] = "0";
-    for (const auto & name : {"position", "velocity", "acceleration"}) {
-      hardware_interface::InterfaceInfo iface;
-      iface.name = name;
-      joint.command_interfaces.push_back(iface);
-    }
+    // position interface only — velocity and acceleration are optional
+    hardware_interface::InterfaceInfo pos_iface;
+    pos_iface.name = "position";
+    joint.command_interfaces.push_back(pos_iface);
     info.joints.push_back(joint);
   }
 
@@ -341,13 +403,13 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityMode) {
 }
 
 TEST(HardwareInterfaceExportTest, CommandInterfacesPositionMode) {
-  // Mode 0: position + velocity + acceleration = 3 command interfaces
+  // Mode 0 with position-only URDF (make_valid_position_motor_info) → 1 command interface
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_position_motor_info();
   ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
 
   auto cmd_ifaces = hw.export_command_interfaces();
-  EXPECT_EQ(cmd_ifaces.size(), 3u);
+  EXPECT_EQ(cmd_ifaces.size(), 1u);
 }
 
 TEST(HardwareInterfaceExportTest, CommandInterfacesEffortMode) {
@@ -995,9 +1057,9 @@ TEST_F(HardwareInterfaceMultiJointTest, TotalStateInterfaceCount) {
 
 TEST_F(HardwareInterfaceMultiJointTest, TotalCommandInterfaceCount) {
   // wheel_joint (vel mode): velocity + acceleration = 2
-  // arm_joint   (pos mode): position + velocity + acceleration = 3
-  // Total = 5
-  EXPECT_EQ(cmd_ifaces_.size(), 5u);
+  // arm_joint   (pos mode): position only = 1
+  // Total = 3
+  EXPECT_EQ(cmd_ifaces_.size(), 3u);
 }
 
 TEST_F(HardwareInterfaceMultiJointTest, AllStateInterfaceNamesPresent) {
@@ -1297,7 +1359,7 @@ protected:
   void SetUp() override
   {
     hw_ = std::make_unique<sts_hardware_interface::STSHardwareInterface>();
-    info_ = make_valid_position_motor_info();
+    info_ = make_servo_info_with_velocity();  // position + velocity for mock stepping tests
     ASSERT_EQ(hw_->on_init(info_), CallbackReturn::SUCCESS);
     state_ifaces_ = hw_->export_state_interfaces();
     cmd_ifaces_ = hw_->export_command_interfaces();
@@ -1449,6 +1511,245 @@ TEST_F(HardwareInterfaceServoMockTest, NegativePositionErrorStepsBackward) {
   (void)pos_state->get_value(pos_after_step, true);
   // Stepped backward: new pos = 1.0 - 0.0001 = 0.9999
   EXPECT_NEAR(pos_after_step, 1.0 - 0.0001, 1e-9);
+}
+
+// ============================================================
+// on_init: servo mode (MODE_SERVO) command interface validation
+// position is required; velocity and acceleration are optional.
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, ServoModeWithPositionAndVelocity) {
+  // position + velocity → SUCCESS (velocity is optional in MODE_SERVO)
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_servo_info_with_velocity();
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, ServoModeWithAllInterfaces) {
+  // position + velocity + acceleration → SUCCESS (both extras are optional)
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_servo_info_with_vel_acc();
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, ServoModeWithoutPositionReturnsError) {
+  // MODE_SERVO without the mandatory position interface → ERROR
+  sts_hardware_interface::STSHardwareInterface hw;
+  hardware_interface::HardwareInfo info;
+  info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
+  info.hardware_parameters["enable_mock_mode"] = "true";
+
+  hardware_interface::ComponentInfo joint;
+  joint.name = "arm_joint";
+  joint.parameters["motor_id"] = "2";
+  joint.parameters["operating_mode"] = "0";
+
+  // Only velocity — position is missing
+  hardware_interface::InterfaceInfo vel_iface;
+  vel_iface.name = "velocity";
+  joint.command_interfaces.push_back(vel_iface);
+
+  info.joints.push_back(joint);
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+// ============================================================
+// on_init: velocity mode (MODE_VELOCITY) command interface validation
+// velocity is required; acceleration is optional.
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, VelocityModeWithVelocityOnly) {
+  // velocity only (no acceleration) → SUCCESS
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_velocity_info_no_acc();
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, VelocityModeWithoutVelocityReturnsError) {
+  // MODE_VELOCITY without the mandatory velocity interface → ERROR
+  sts_hardware_interface::STSHardwareInterface hw;
+  hardware_interface::HardwareInfo info;
+  info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
+  info.hardware_parameters["enable_mock_mode"] = "true";
+
+  hardware_interface::ComponentInfo joint;
+  joint.name = "wheel_joint";
+  joint.parameters["motor_id"] = "1";
+  joint.parameters["operating_mode"] = "1";
+
+  // Only acceleration — velocity is missing
+  hardware_interface::InterfaceInfo acc_iface;
+  acc_iface.name = "acceleration";
+  joint.command_interfaces.push_back(acc_iface);
+
+  info.joints.push_back(joint);
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+// ============================================================
+// on_init: proportional_acc_deadband parameter validation
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, NegativeProportionalAccDeadbandReturnsError) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_acc_deadband"] = "-0.1";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, NonNumericProportionalAccDeadbandReturnsError) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_acc_deadband"] = "not_a_number";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, ZeroProportionalAccDeadbandSucceeds) {
+  // 0.0 disables the deadband — should be accepted
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_acc_deadband"] = "0.0";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, PositiveProportionalAccDeadbandSucceeds) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_acc_deadband"] = "0.1";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+// ============================================================
+// on_init: proportional_vel_deadband parameter validation
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, NegativeProportionalVelDeadbandReturnsError) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_vel_deadband"] = "-0.01";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, NonNumericProportionalVelDeadbandReturnsError) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_vel_deadband"] = "not_a_number";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, ZeroProportionalVelDeadbandSucceeds) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_vel_deadband"] = "0.0";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, PositiveProportionalVelDeadbandSucceeds) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["proportional_vel_deadband"] = "0.05";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+// ============================================================
+// on_init: proportional_vel_max parameter validation
+// Valid range: [0, max_velocity_steps].  Default max_velocity_steps = 3400.
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, ProportionalVelMaxNegativeReturnsError) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_position_motor_info();
+  info.hardware_parameters["proportional_vel_max"] = "-1";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, ProportionalVelMaxExceedsMaxVelocityStepsReturnsError) {
+  // Default max_velocity_steps = 3400; 3401 exceeds it
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_position_motor_info();
+  info.hardware_parameters["proportional_vel_max"] = "3401";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, NonNumericProportionalVelMaxReturnsError) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_position_motor_info();
+  info.hardware_parameters["proportional_vel_max"] = "not_a_number";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, ProportionalVelMaxZeroSucceeds) {
+  // 0 = disabled; valid regardless of joint count, no warning
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_position_motor_info();
+  info.hardware_parameters["proportional_vel_max"] = "0";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, ProportionalVelMaxWithSingleServoJointWarnsButSucceeds) {
+  // proportional_vel_max > 0 with only 1 servo joint → WARN (SyncWrite needs >1
+  // joints) but the configuration is still considered valid → SUCCESS
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_position_motor_info();
+  info.hardware_parameters["proportional_vel_max"] = "500";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+// ============================================================
+// export_command_interfaces: servo mode optional interface exports
+// ============================================================
+
+TEST(HardwareInterfaceExportTest, CommandInterfacesServoModeWithVelocity) {
+  // Mode 0 with position + velocity in URDF → exports 2 command interfaces
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_servo_info_with_velocity();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+
+  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_EQ(cmd_ifaces.size(), 2u);
+
+  std::vector<std::string> names;
+  for (const auto & iface : cmd_ifaces) {
+    names.push_back(iface.get_interface_name());
+  }
+  EXPECT_NE(std::find(names.begin(), names.end(), "position"), names.end());
+  EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
+  EXPECT_EQ(std::find(names.begin(), names.end(), "acceleration"), names.end());
+}
+
+TEST(HardwareInterfaceExportTest, CommandInterfacesServoModeWithVelocityAndAcc) {
+  // Mode 0 with position + velocity + acceleration in URDF → exports 3 command interfaces
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_servo_info_with_vel_acc();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+
+  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_EQ(cmd_ifaces.size(), 3u);
+
+  std::vector<std::string> names;
+  for (const auto & iface : cmd_ifaces) {
+    names.push_back(iface.get_interface_name());
+  }
+  EXPECT_NE(std::find(names.begin(), names.end(), "position"), names.end());
+  EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
+  EXPECT_NE(std::find(names.begin(), names.end(), "acceleration"), names.end());
+}
+
+TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityModeWithoutAcceleration) {
+  // Mode 1 with velocity-only URDF → exports 1 command interface (velocity only)
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_velocity_info_no_acc();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+
+  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_EQ(cmd_ifaces.size(), 1u);
+
+  std::vector<std::string> names;
+  for (const auto & iface : cmd_ifaces) {
+    names.push_back(iface.get_interface_name());
+  }
+  EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
+  EXPECT_EQ(std::find(names.begin(), names.end(), "acceleration"), names.end());
 }
 
 int main(int argc, char ** argv)
