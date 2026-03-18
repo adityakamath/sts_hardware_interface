@@ -68,14 +68,14 @@ Each motor can be configured independently in one of three modes:
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><strong>0: Position</strong></td>
       <td style="padding: 0.6em; border: none;">Arm joints, precise positioning</td>
-      <td style="padding: 0.6em; border: none;">position, velocity†, acceleration†</td>
+      <td style="padding: 0.6em; border: none;">position, velocity†(optional), acceleration†(optional)</td>
       <td style="padding: 0.6em; border: none;">0 to 2π radians (configurable)</td>
       <td style="padding: 0.6em; border: none;">Maximum speed during position move</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><strong>1: Velocity</strong></td>
       <td style="padding: 0.6em; border: none;">Wheels, continuous rotation</td>
-      <td style="padding: 0.6em; border: none;">velocity, acceleration†</td>
+      <td style="padding: 0.6em; border: none;">velocity, acceleration†(optional)</td>
       <td style="padding: 0.6em; border: none;">Unlimited</td>
       <td style="padding: 0.6em; border: none;">Target velocity for continuous rotation</td>
     </tr>

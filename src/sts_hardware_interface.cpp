@@ -105,17 +105,42 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Steady-state cruise deadband: below this max-delta the proportional ACC
-  // logic sends ACC=0 to all wheels, letting the hardware follow naturally.
-  // Hardcoded because 0.05 rad/s is a safe implementation constant — not a
-  // per-robot tuning knob. To expose it as a URDF parameter if ever needed:
-  //
-  //   <param name="proportional_acc_deadband">0.05</param>
-  //
-  //   proportional_acc_deadband_rad_s_ = std::stod(
-  //     info_.hardware_parameters.count("proportional_acc_deadband") ?
-  //     info_.hardware_parameters.at("proportional_acc_deadband") : "0.05");
-  proportional_acc_deadband_rad_s_ = 0.05;
+  // Steady-state cruise deadband for velocity mode proportional acceleration.
+  // Below this max Δv (rad/s), ACC=0 is sent to all wheels (hardware-native slew).
+  // Seldom needs tuning; the default 0.05 rad/s is safe for most drive geometries.
+  try {
+    proportional_acc_deadband_rad_s_ = std::stod(
+      info_.hardware_parameters.count("proportional_acc_deadband") ?
+      info_.hardware_parameters.at("proportional_acc_deadband") : "0.05");
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_acc_deadband value: '%s' (must be a valid number)",
+      info_.hardware_parameters.at("proportional_acc_deadband").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+  if (proportional_acc_deadband_rad_s_ < 0.0) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_acc_deadband: %.4f. Must be >= 0",
+      proportional_acc_deadband_rad_s_);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  // Steady-state hold deadband for servo/position mode proportional velocity.
+  // Below this max Δpos (rad), all joints revert to their commanded velocity.
+  // ~0.01 rad ≈ 0.57° — too small a delta for synchronized arrival to be meaningful.
+  // Seldom needs tuning; the default is safe for most arm/pan-tilt geometries.
+  try {
+    proportional_vel_deadband_rad_ = std::stod(
+      info_.hardware_parameters.count("proportional_vel_deadband") ?
+      info_.hardware_parameters.at("proportional_vel_deadband") : "0.01");
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_vel_deadband value: '%s' (must be a valid number)",
+      info_.hardware_parameters.at("proportional_vel_deadband").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+  if (proportional_vel_deadband_rad_ < 0.0) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_vel_deadband: %.4f. Must be >= 0",
+      proportional_vel_deadband_rad_);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   // Parse proportional velocity parameter (servo/position mode path)
   try {
@@ -137,8 +162,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   RCLCPP_INFO(logger_, "Motor model parameter: max_velocity=%d steps/s", max_velocity_steps_);
   RCLCPP_INFO(logger_, "Proportional ACC: max=%d, deadband=%.4f rad/s",
     proportional_acc_max_, proportional_acc_deadband_rad_s_);
-  RCLCPP_INFO(logger_, "Proportional VEL: max=%d steps/s (%s)",
-    proportional_vel_max_, proportional_vel_max_ > 0 ? "enabled" : "disabled");
+  RCLCPP_INFO(logger_, "Proportional VEL: max=%d steps/s (%s), deadband=%.4f rad",
+    proportional_vel_max_, proportional_vel_max_ > 0 ? "enabled" : "disabled",
+    proportional_vel_deadband_rad_);
 
   // ===== Parse joint-level parameters =====
   size_t num_joints = info_.joints.size();
@@ -286,14 +312,20 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       has_effort_limits_[i] = true;
     }
 
-    // Validate command interfaces match operating mode
+    // Validate command interfaces match operating mode.
+    // For MODE_SERVO: only position is required. velocity (max speed for the move) and
+    //   acceleration are optional — when omitted, speed 0 (= hardware max) and ACC 0
+    //   (= hardware default) are used. proportional_vel_max drives velocity internally
+    //   during SyncWrite when != 0.
+    // For MODE_VELOCITY: only velocity is required. acceleration is optional — when omitted,
+    //   proportional_acc_max drives ACC internally during SyncWrite, or ACC 0 otherwise.
     std::vector<std::string> required_cmd_interfaces;
     switch (operating_modes_[i]) {
       case MODE_SERVO:
-        required_cmd_interfaces = {"position", "velocity", "acceleration"};
+        required_cmd_interfaces = {"position"};
         break;
       case MODE_VELOCITY:
-        required_cmd_interfaces = {"velocity", "acceleration"};
+        required_cmd_interfaces = {"velocity"};
         break;
       case MODE_PWM:
         required_cmd_interfaces = {"effort"};
@@ -362,6 +394,21 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   RCLCPP_INFO(logger_, "Motor groupings: %zu servo, %zu velocity, %zu PWM",
     servo_motor_indices_.size(), velocity_motor_indices_.size(), pwm_motor_indices_.size());
+
+  // Warn when proportional coordination parameters are configured but cannot take effect.
+  // SyncWrite (and therefore proportional scaling) requires >1 joint in the same mode.
+  if (proportional_vel_max_ > 0 && servo_motor_indices_.size() <= 1) {
+    RCLCPP_WARN(logger_,
+      "proportional_vel_max=%d is set but only %zu servo joint(s) configured. "
+      "SyncWrite requires >1 joints in the same mode; proportional_vel_max has no effect.",
+      proportional_vel_max_, servo_motor_indices_.size());
+  }
+  if (proportional_acc_max_ != 0 && velocity_motor_indices_.size() <= 1) {
+    RCLCPP_WARN(logger_,
+      "proportional_acc_max=%d is set but only %zu velocity joint(s) configured. "
+      "SyncWrite requires >1 joints in the same mode; proportional_acc_max has no effect.",
+      proportional_acc_max_, velocity_motor_indices_.size());
+  }
 
   // Initialize error tracking
   consecutive_read_errors_ = 0;
@@ -559,21 +606,37 @@ STSHardwareInterface::export_command_interfaces()
         command_interfaces.emplace_back(
           hardware_interface::CommandInterface(
             joint_name, hardware_interface::HW_IF_POSITION, &hw_cmd_position_[i]));
-        command_interfaces.emplace_back(
-          hardware_interface::CommandInterface(
-            joint_name, hardware_interface::HW_IF_VELOCITY, &hw_cmd_velocity_[i]));
-        command_interfaces.emplace_back(
-          hardware_interface::CommandInterface(
-            joint_name, "acceleration", &hw_cmd_acceleration_[i]));
+        // velocity and acceleration are optional: export only if declared in the URDF.
+        // When velocity is omitted, raw speed 0 (= hardware max speed) is used.
+        // When acceleration is omitted, ACC 0 (= hardware default ramp) is used.
+        // proportional_vel_max drives velocity internally in SyncWrite when != 0.
+        for (const auto & cmd : info_.joints[i].command_interfaces) {
+          if (cmd.name == "velocity") {
+            command_interfaces.emplace_back(
+              hardware_interface::CommandInterface(
+                joint_name, hardware_interface::HW_IF_VELOCITY, &hw_cmd_velocity_[i]));
+          } else if (cmd.name == "acceleration") {
+            command_interfaces.emplace_back(
+              hardware_interface::CommandInterface(
+                joint_name, "acceleration", &hw_cmd_acceleration_[i]));
+          }
+        }
         break;
 
       case MODE_VELOCITY:  // Velocity control
         command_interfaces.emplace_back(
           hardware_interface::CommandInterface(
             joint_name, hardware_interface::HW_IF_VELOCITY, &hw_cmd_velocity_[i]));
-        command_interfaces.emplace_back(
-          hardware_interface::CommandInterface(
-            joint_name, "acceleration", &hw_cmd_acceleration_[i]));
+        // acceleration is optional: export only if declared in the URDF.
+        // When omitted, proportional_acc_max drives ACC internally.
+        for (const auto & cmd : info_.joints[i].command_interfaces) {
+          if (cmd.name == "acceleration") {
+            command_interfaces.emplace_back(
+              hardware_interface::CommandInterface(
+                joint_name, "acceleration", &hw_cmd_acceleration_[i]));
+            break;
+          }
+        }
         break;
 
       case MODE_PWM:  // PWM/effort control
@@ -809,10 +872,13 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Below 0.01 rad max-delta (steady-state hold) or when disabled, use commanded speed.
       for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
         size_t idx = servo_motor_indices_[j];
-        if (proportional_vel_max_ == 0 || max_delta_rad < 0.01) {
-          double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
-          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(
-            conversions::rad_s_to_raw_velocity(max_speed, max_velocity_steps_), 0, max_velocity_steps_));
+        if (proportional_vel_max_ == 0 || max_delta_rad < proportional_vel_deadband_rad_) {
+          // Proportional velocity disabled or below deadband: use each joint's commanded max speed.
+          // hw_cmd_velocity_ == 0.0 (not declared / not written) → raw 0 = STS protocol max speed.
+          double max_speed = std::max(0.0,
+            conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]));
+          servo_sync_speeds_[j] = static_cast<u16>(
+            conversions::rad_s_to_raw_speed(max_speed, max_velocity_steps_));
         } else {
           int scaled = static_cast<int>(std::round((servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_));
           servo_sync_speeds_[j] = static_cast<u16>(std::clamp(scaled, 1, max_velocity_steps_));
@@ -830,8 +896,10 @@ hardware_interface::return_type STSHardwareInterface::write(
         double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
 
         int raw_position = conversions::radians_to_raw_position(target_position);
-        int raw_max_speed = std::clamp(
-          conversions::rad_s_to_raw_velocity(max_speed, max_velocity_steps_), 0, max_velocity_steps_);
+        // rad_s_to_raw_speed: unsigned magnitude conversion for position mode — no sign inversion.
+        // hw_cmd_velocity_ == 0.0 (not declared / not written) → raw 0 = STS protocol max speed.
+        int raw_max_speed = conversions::rad_s_to_raw_speed(
+          std::max(0.0, max_speed), max_velocity_steps_);
         int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
 
         int result = servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration);
@@ -860,11 +928,20 @@ hardware_interface::return_type STSHardwareInterface::write(
         max_delta_rad_s = std::max(max_delta_rad_s, velocity_sync_deltas_[j]);
       }
 
-      // Pass 2: assign ACC proportional to each wheel's delta so all wheels finish ramping
-      // at the same time: T = max_delta / (acc_max * 100) seconds for every wheel.
-      // Below the deadband (steady-state cruise), ACC=0 lets the hardware follow naturally.
+      // Pass 2: assign ACC for each wheel.
+      // Priority:
+      //   proportional_acc_max != 0 → proportional scaling wins; controller-set ACC is ignored.
+      //     Below the deadband (steady-state cruise), ACC=0 lets the hardware follow naturally.
+      //   proportional_acc_max == 0 → use per-joint hw_cmd_acceleration_ set by the controller
+      //     (or ACC=0 if the acceleration command interface is not declared / not written).
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
-        if (proportional_acc_max_ == 0 || max_delta_rad_s < proportional_acc_deadband_rad_s_) {
+        size_t idx = velocity_motor_indices_[j];
+        if (proportional_acc_max_ == 0) {
+          // Proportional ACC disabled: pass through controller-commanded ACC per joint.
+          velocity_sync_accelerations_[j] = static_cast<u8>(
+            conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
+        } else if (max_delta_rad_s < proportional_acc_deadband_rad_s_) {
+          // Steady-state cruise: send ACC=0 so hardware follows naturally.
           velocity_sync_accelerations_[j] = 0;
         } else {
           int acc = static_cast<int>(std::round((velocity_sync_deltas_[j] / max_delta_rad_s) * proportional_acc_max_));

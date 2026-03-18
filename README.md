@@ -29,12 +29,18 @@
 
 **Mode 0 (Position/Servo):**
 - `position` - Target position (radians)
-- `velocity` - Maximum speed (rad/s)
-- `acceleration` - Acceleration (0-254, unitless protocol value)
+- `velocity` *(optional)* - Maximum speed for the position move (rad/s). Behaviour depends on `proportional_vel_max` and `use_sync_write`:
+  - `use_sync_write=true` and `proportional_vel_max != 0`: proportional velocity always wins; this command interface is ignored.
+  - `use_sync_write=true` and `proportional_vel_max == 0`: per-joint commanded max speed is used (0 = hardware max speed).
+  - `use_sync_write=false`: per-joint commanded max speed is always used directly, `proportional_vel_max` has no effect.
+- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). When omitted: ACC 0 (hardware default).
 
 **Mode 1 (Velocity):**
 - `velocity` - Target velocity (rad/s)
-- `acceleration` - Acceleration (0-254, unitless protocol value)
+- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). Behaviour depends on `proportional_acc_max` and `use_sync_write`:
+  - `use_sync_write=true` and `proportional_acc_max != 0` (default): proportional acceleration always wins; this command interface is ignored.
+  - `use_sync_write=true` and `proportional_acc_max == 0`: per-joint commanded acceleration is used.
+  - `use_sync_write=false`: per-joint commanded acceleration is always used directly, `proportional_acc_max` has no effect.
 
 **Mode 2 (PWM/Effort):**
 - `effort` - PWM duty cycle (unitless, -1.0 to +1.0 representing ±100% duty cycle)
@@ -96,7 +102,11 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
     <param name="operating_mode">1</param>
 
     <command_interface name="velocity"/>
-    <command_interface name="acceleration"/>
+    <!-- acceleration is optional for velocity mode.
+         With use_sync_write=true and proportional_acc_max != 0 (default): proportional acceleration always wins; this interface is ignored.
+         With use_sync_write=true and proportional_acc_max == 0: per-joint commanded acceleration is used.
+         With use_sync_write=false: per-joint commanded acceleration is always used. -->
+    <!-- <command_interface name="acceleration"/> -->
 
     <!-- State interfaces (optional declarations for documentation) -->
     <state_interface name="position"/>
@@ -123,8 +133,10 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
 | `use_sync_write` | bool | true | Enable SyncWrite for multi-motor setups |
 | `enable_mock_mode` | bool | false | Simulation mode (no hardware) |
 | `max_velocity_steps` | int | 3400 | Max motor velocity in steps/s (STS3215: 3400, STS3032: 2900) |
-| `proportional_acc_max` | int | 100 | ACC [0–254] assigned to the wheel with the largest `\|target_velocity - current_velocity\|` delta in `SyncWriteSpe`. All others are scaled proportionally so every wheel finishes ramping in the same time. Set to `0` to disable. |
-| `proportional_acc_deadband` | double | 0.05 | Minimum max-delta (rad/s) below which `ACC=0` is sent to all wheels (steady-state cruise, avoids noise-driven jitter). |
+| `proportional_vel_max` | int | 0 | **SyncWrite only.** Velocity value [0–`max_velocity_steps`] assigned to the joint with the largest `\|target_position - current_position\|` delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to `0` to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when `use_sync_write=false`. |
+| `proportional_vel_deadband` | double | 0.01 | **SyncWrite only.** Minimum max-delta (rad) below which all joints revert to their commanded velocity (steady-state hold, avoids noise-driven re-scaling). Has no effect when `use_sync_write=false` or `proportional_vel_max=0`. |
+| `proportional_acc_max` | int | 100 | **SyncWrite only.** Acceleration value [0–254] assigned to the wheel with the largest `\|target_velocity - current_velocity\|` delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to `0` to disable (falls back to per-joint commanded acceleration, or 0 if the interface is not declared). Has no effect when `use_sync_write=false`. |
+| `proportional_acc_deadband` | double | 0.05 | **SyncWrite only.** Minimum max-delta (rad/s) below which acceleration 0 is sent to all wheels (steady-state cruise, avoids noise-driven jitter). Has no effect when `use_sync_write=false` or `proportional_acc_max=0`. |
 | `reset_states_on_activate` | bool | true | Reset position/velocity states to zero on activation for clean odometry |
 
 ## Joint Parameters

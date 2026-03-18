@@ -50,9 +50,9 @@ namespace sts_hardware_interface
  * - is_moving: Motion status (1.0=moving, 0.0=stopped)
  *
  * COMMAND INTERFACES (Write to hardware - mode dependent, per joint):
- * Mode 0: position (rad), velocity (max speed, rad/s), acceleration (0-254)
- * Mode 1: velocity (rad/s), acceleration (0-254)
- * Mode 2: effort (PWM duty cycle, -1.0 to +1.0)
+ * Mode 0: position (rad) [required], velocity (max speed, rad/s) [optional], acceleration (0-254) [optional]
+ * Mode 1: velocity (rad/s) [required], acceleration (0-254) [optional]
+ * Mode 2: effort (PWM duty cycle, -1.0 to +1.0) [required]
  *
  * EMERGENCY STOP:
  * Emergency stop functionality is triggered via ROS 2 service (not a command interface):
@@ -150,6 +150,8 @@ private:
   int proportional_vel_max_;  // max_speed (steps/s) given to the joint with the largest Δpos; others scaled
                               // proportionally so all joints finish moving at the same time.
                               // Set to 0 to disable (each joint uses its commanded velocity). (default: 0)
+  double proportional_vel_deadband_rad_;  // Min Δpos below which all joints revert to commanded velocity
+                                          // (steady-state hold — avoids noise-driven re-scaling). (default: 0.01 rad)
 
   // Lifecycle parameter
   bool reset_states_on_activate_;  // Reset position/velocity states on activation (default: true)

@@ -67,6 +67,7 @@ inline double raw_velocity_to_rad_s(int raw_velocity)
  * @brief Convert rad/s to raw velocity (steps/s), clamped to ±max_velocity_steps.
  *
  * Applies the same sign inversion as raw_velocity_to_rad_s.
+ * Use this for MODE_VELOCITY (WriteSpe / SyncWriteSpe) where sign encodes direction.
  */
 inline int rad_s_to_raw_velocity(double velocity_rad_s, int max_velocity_steps)
 {
@@ -74,6 +75,24 @@ inline int rad_s_to_raw_velocity(double velocity_rad_s, int max_velocity_steps)
   return static_cast<int>(std::clamp(
     raw,
     static_cast<double>(-max_velocity_steps),
+    static_cast<double>(max_velocity_steps)));
+}
+
+/**
+ * @brief Convert a speed magnitude (rad/s) to raw steps/s for position mode.
+ *
+ * Unlike rad_s_to_raw_velocity, this does NOT apply sign inversion.
+ * WritePosEx / SyncWritePosEx take speed as an unsigned magnitude — direction
+ * is implied by the position target.  Returns 0 when speed_mag_rad_s == 0,
+ * which the STS protocol interprets as "no speed limit / use hardware max".
+ *
+ * Use this for MODE_SERVO (WritePosEx / SyncWritePosEx) only.
+ */
+inline int rad_s_to_raw_speed(double speed_mag_rad_s, int max_velocity_steps)
+{
+  return static_cast<int>(std::clamp(
+    speed_mag_rad_s * RAD_TO_STEPS,
+    0.0,
     static_cast<double>(max_velocity_steps)));
 }
 
