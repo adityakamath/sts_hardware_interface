@@ -122,6 +122,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       proportional_acc_deadband_rad_s_);
     return hardware_interface::CallbackReturn::ERROR;
   }
+  if (proportional_acc_deadband_rad_s_ == 0.0) {
+    RCLCPP_WARN(logger_, "proportional_acc_deadband is 0.0; division by zero will be avoided but proportional scaling will be disabled at zero delta.");
+  }
 
   // Steady-state hold deadband for servo/position mode proportional velocity.
   // Below this max Δpos (rad), all joints revert to their commanded velocity.
@@ -140,6 +143,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     RCLCPP_ERROR(logger_, "Invalid proportional_vel_deadband: %.4f. Must be >= 0",
       proportional_vel_deadband_rad_);
     return hardware_interface::CallbackReturn::ERROR;
+  }
+  if (proportional_vel_deadband_rad_ == 0.0) {
+    RCLCPP_WARN(logger_, "proportional_vel_deadband is 0.0; division by zero will be avoided but proportional scaling will be disabled at zero delta.");
   }
 
   // Parse proportional velocity parameter (servo/position mode path)
@@ -872,16 +878,20 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Below 0.01 rad max-delta (steady-state hold) or when disabled, use commanded speed.
       for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
         size_t idx = servo_motor_indices_[j];
-        if (proportional_vel_max_ == 0 || max_delta_rad < proportional_vel_deadband_rad_) {
-          // Proportional velocity disabled or below deadband: use each joint's commanded max speed.
-          // hw_cmd_velocity_ == 0.0 (not declared / not written) → raw 0 = STS protocol max speed.
+        if (proportional_vel_max_ == 0 || max_delta_rad < proportional_vel_deadband_rad_ || max_delta_rad == 0.0) {
+          // Proportional velocity disabled, below deadband, or all joints at target: use each joint's commanded max speed.
           double max_speed = std::max(0.0,
             conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]));
           servo_sync_speeds_[j] = static_cast<u16>(
             conversions::rad_s_to_raw_speed(max_speed, max_velocity_steps_));
+        } else if (servo_sync_deltas_[j] == 0.0) {
+          // This joint is already at its target: set speed to 0 (no move)
+          servo_sync_speeds_[j] = 0;
         } else {
-          int scaled = static_cast<int>(std::round((servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_));
-          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(scaled, 1, max_velocity_steps_));
+          // Proportional scaling, but respect per-joint velocity_max
+          double scaled = (servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_;
+          double limited = std::min(scaled, velocity_max_[idx]);
+          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(static_cast<int>(std::round(limited)), 1, max_velocity_steps_));
         }
       }
 
@@ -936,12 +946,15 @@ hardware_interface::return_type STSHardwareInterface::write(
       //     (or ACC=0 if the acceleration command interface is not declared / not written).
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
         size_t idx = velocity_motor_indices_[j];
-        if (proportional_acc_max_ == 0) {
-          // Proportional ACC disabled: pass through controller-commanded ACC per joint.
+        if (proportional_acc_max_ == 0 || max_delta_rad_s == 0.0) {
+          // Proportional ACC disabled or all wheels at target: pass through controller-commanded ACC per joint.
           velocity_sync_accelerations_[j] = static_cast<u8>(
             conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
         } else if (max_delta_rad_s < proportional_acc_deadband_rad_s_) {
           // Steady-state cruise: send ACC=0 so hardware follows naturally.
+          velocity_sync_accelerations_[j] = 0;
+        } else if (velocity_sync_deltas_[j] == 0.0) {
+          // This wheel is already at its target: set ACC to 0
           velocity_sync_accelerations_[j] = 0;
         } else {
           int acc = static_cast<int>(std::round((velocity_sync_deltas_[j] / max_delta_rad_s) * proportional_acc_max_));

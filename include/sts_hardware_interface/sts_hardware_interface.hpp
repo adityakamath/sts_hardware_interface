@@ -143,7 +143,7 @@ private:
   int max_velocity_steps_;   // Maximum velocity in steps/s (default: 3400 for STS3215)
 
   // Proportional acceleration parameters (SyncWriteSpe velocity path only)
-  int proportional_acc_max_;             // ACC given to the wheel with the largest Δv [1-254] (default: 100)
+  int proportional_acc_max_;             // ACC given to the wheel with the largest Δv [0-254] (default: 100)
   double proportional_acc_deadband_rad_s_;  // Min Δv below which all ACC → 0 (default: 0.05 rad/s)
 
   // Proportional velocity parameters (SyncWritePosEx servo path only)
