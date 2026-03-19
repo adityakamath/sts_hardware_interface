@@ -166,6 +166,9 @@ if(BUILD_TESTING)
   # Python launch tests: single motor example with use_mock:=true
   add_launch_test(test/test_single_motor.launch.py)
 
+  # Python launch tests: motor diagnostics integration
+  add_launch_test(test/test_motor_diagnostics.launch.py)
+
   # Python launch tests: mixed mode example with use_mock:=true
   add_launch_test(test/test_mixed_mode.launch.py)
 endif()
