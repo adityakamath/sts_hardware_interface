@@ -28,6 +28,10 @@
   <depend>pluginlib</depend>
   <depend>std_srvs</depend>
 
+  <!-- Diagnostics node dependencies -->
+  <depend>diagnostic_msgs</depend>
+  <depend>control_msgs</depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_cmake_clang_tidy</test_depend>

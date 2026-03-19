@@ -78,7 +78,7 @@ subtitle: ros2_control SystemInterface for Feetech STS series servo motors
     <div style="flex: 1;">
       <strong>Full State Feedback</strong>
       <br/><br/>
-      <span style="font-size: 0.95em;">Measure position, velocity, load, voltage, temperature, current, motion status.</span>
+      <span style="font-size: 0.95em;">Measure position, velocity, load, voltage, temperature, current, motion status. Includes real-time health monitoring and diagnostics.</span>
     </div>
   </div>
   <div class="feature-box" style="flex: 1 1 calc(33.333% - 0.4em); min-width: 280px; display: flex; align-items: flex-start; gap: 0.8em; background: #ffffff; padding: 0.7em 0.9em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">

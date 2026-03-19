@@ -19,6 +19,7 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 - Hardware-level emergency stop
 - Automatic error recovery
 - Mock mode for hardware-free development
+- **Motor diagnostics node:** Real-time health monitoring and diagnostics publishing for all connected motors
 
 ---
 
@@ -33,6 +34,7 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 2. **Hardware Interface** - SystemInterface plugin bridging controllers to motor protocol
 3. **Communication Layer** - SCServo protocol over RS485/TTL serial (half-duplex daisy-chain)
 4. **Physical Motors** - Feetech STS series servo motors with unique IDs (1-253)
+5. **Diagnostics Node** - Monitors joint state and publishes aggregated diagnostics to `/diagnostics`
 
 ---
 
@@ -497,6 +499,40 @@ The hardware interface automatically recovers from communication failures:
 **Recovery Failure:**
 - If recovery fails, hardware interface transitions to ERROR state
 - Manual intervention required (restart controller_manager or hardware interface)
+
+### Motor Diagnostics
+
+The `motor_diagnostics_node` provides real-time health monitoring for all motors managed by the hardware interface. It subscribes to `/dynamic_joint_states` and publishes aggregated diagnostic status to the standard `/diagnostics` topic, enabling integration with ROS 2 diagnostic tools and dashboards.
+
+**Features:**
+- Monitors voltage, temperature, current, and motion status for each joint
+- Detects and reports out-of-range or abnormal values (e.g., over-temperature, low voltage)
+- Aggregates per-motor status into a single diagnostics message
+- Publishes at a configurable rate (default: 2 Hz)
+- Compatible with rqt_robot_monitor and other ROS 2 diagnostic consumers
+
+**Architecture:**
+- **Input:** `control_msgs/DynamicJointState` from `/dynamic_joint_states` (joint_state_broadcaster)
+- **Output:** `diagnostic_msgs/DiagnosticArray` on `/diagnostics`
+- **Config:** YAML file for thresholds and warning levels (see `config/motor_diagnostics_config.yaml`)
+
+**Usage:**
+1. Launch the diagnostics node:
+  ```bash
+  ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+  ```
+2. View diagnostics in rqt:
+  ```bash
+  rqt_robot_monitor
+  ```
+3. Customize thresholds by editing `config/motor_diagnostics_config.yaml`.
+
+**Typical Applications:**
+- Early detection of hardware faults (overheating, power issues)
+- Continuous monitoring in field robots and research platforms
+- Integration with fleet management and remote monitoring systems
+
+See the [README](../README.md#motor-diagnostics-node) for more details and configuration options.
 
 ---
 

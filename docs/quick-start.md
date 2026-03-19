@@ -131,6 +131,12 @@ ros2 topic echo /joint_states
 
 # Monitor additional state (voltage, temperature, current, is_moving)
 ros2 topic echo /dynamic_joint_states
+ 
+# (Optional) Monitor motor diagnostics in real time
+ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+ros2 topic echo /diagnostics
+  # Or view in rqt:
+  rqt_robot_monitor
 ```
 
 ### Example 2: Mixed Mode (Multiple Motors)
@@ -189,6 +195,12 @@ ros2 action send_goal /arm_controller/follow_joint_trajectory \
 
 # Gripper (effort command)
 ros2 topic pub /gripper_controller/commands std_msgs/msg/Float64MultiArray "data: [0.5]"
+ 
+# (Optional) Monitor motor diagnostics in real time
+ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+ros2 topic echo /diagnostics
+  # Or view in rqt:
+  rqt_robot_monitor
 ```
 
 ---
@@ -328,6 +340,33 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 ros2 topic echo /emergency_stop/_service_event
 ```
 
+### 5. Monitor Motor Diagnostics
+
+The `motor_diagnostics_node` provides real-time health monitoring for all motors. It subscribes to `/dynamic_joint_states` and publishes aggregated diagnostic status to `/diagnostics`, which can be viewed in rqt or echoed in the terminal.
+
+**How to launch:**
+
+```bash
+ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+```
+
+**View diagnostics:**
+
+```bash
+ros2 topic echo /diagnostics
+# Or use rqt for a graphical view:
+rqt_robot_monitor
+```
+
+**Customize thresholds:**
+Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for voltage, temperature, and current.
+
+**Typical uses:**
+- Early detection of hardware faults (overheating, low voltage)
+- Continuous monitoring in the field
+- Integration with fleet management dashboards
+```
+
 ---
 
 ## Troubleshooting
@@ -357,6 +396,13 @@ ros2 topic echo /emergency_stop/_service_event
    ```
    If mock mode works, issue is hardware/communication related.
 
+5. **Check diagnostics for hardware faults:**
+  ```bash
+  ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+  ros2 topic echo /diagnostics
+  ```
+  Look for warnings about voltage, temperature, or current.
+
 ### Communication Errors
 
 **Problem:** Frequent "Failed to read feedback" or "Failed to write command" errors.
@@ -383,6 +429,13 @@ ros2 topic echo /emergency_stop/_service_event
 4. **Test with single motor first:**
    - Isolate communication issues by testing one motor
    - Add motors incrementally
+
+5. **Use diagnostics to identify issues:**
+  ```bash
+  ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+  ros2 topic echo /diagnostics
+  ```
+  Diagnostics may report communication or hardware errors.
 
 ### Position Jumps or Drift
 

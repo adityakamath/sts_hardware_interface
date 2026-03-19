@@ -24,6 +24,7 @@
 - **Safety Features**: Broadcast emergency stop, hardware limits, automatic error recovery
 - **Full State Feedback**: Position, velocity, load, voltage, temperature, current, motion status
 - **Mock Mode**: Hardware-free simulation for development and testing
+- **Motor Diagnostics Node**: Real-time health/stall/voltage/current/temperature monitoring for STS motors
 
 ## Command Interfaces
 
@@ -45,6 +46,20 @@
 **Mode 2 (PWM/Effort):**
 - `effort` - PWM duty cycle (unitless, -1.0 to +1.0 representing ±100% duty cycle)
 
+## State Interfaces
+
+The hardware always exports all 7 state interfaces for every joint (regardless of operating mode):
+
+- `position` - Current position (radians)
+- `velocity` - Current velocity (rad/s)
+- `effort` - Motor load percentage (-1.0 to +1.0, normalized)
+- `voltage` - Supply voltage (volts)
+- `temperature` - Internal temperature (°C)
+- `current` - Motor current draw (amperes)
+- `is_moving` - Motion status (1.0 = moving, 0.0 = stopped)
+
+**Note:** Unlike command interfaces (which must match the operating mode), all state interfaces are always exported regardless of URDF configuration. URDF state interface declarations are optional but recommended for documentation.
+
 ## Emergency Stop
 
 Emergency stop functionality is available via ROS 2 service (`std_srvs/SetBool`):
@@ -59,19 +74,53 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 
 When activated, ALL motors stop immediately and torque is disabled. The service returns `success: true` and a confirmation message on both activate and release.
 
-## State Interfaces
+## Motor Diagnostics Node
 
-The hardware always exports all 7 state interfaces for every joint (regardless of operating mode):
+This package provides a real-time diagnostics node for STS motors, monitoring temperature, voltage, current, and detecting internal stalls using feedback from the hardware interface.
 
-- `position` - Current position (radians)
-- `velocity` - Current velocity (rad/s)
-- `effort` - Motor load percentage (-1.0 to +1.0, normalized)
-- `voltage` - Supply voltage (volts)
-- `temperature` - Internal temperature (°C)
-- `current` - Motor current draw (amperes)
-- `is_moving` - Motion status (1.0 = moving, 0.0 = stopped)
+**Features:**
+- Publishes standard ROS 2 diagnostics to `/diagnostics`
+- Detects over-temperature, over-current, under/over-voltage, and stall conditions
+- Configurable thresholds via YAML
+- Can be run standalone or alongside any STS hardware interface setup
 
-**Note:** Unlike command interfaces (which must match the operating mode), all state interfaces are always exported regardless of URDF configuration. URDF state interface declarations are optional but recommended for documentation.
+**Usage:**
+
+To launch the diagnostics node with the default config:
+
+```bash
+ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+```
+
+To use a custom config file:
+
+```bash
+ros2 launch sts_hardware_interface motor_diagnostics.launch.py config_file:=/path/to/your_config.yaml
+```
+
+**Configuration Example:**
+
+See [`config/motor_diagnostics_config.yaml`](config/motor_diagnostics_config.yaml):
+
+```yaml
+motor_diagnostics_node:
+  ros__parameters:
+    effort_threshold: 0.5          # N·m - effort threshold for stall detection
+    current_threshold: 1.5         # A - current threshold for stall detection
+    voltage_min: 6.0               # V - minimum acceptable supply voltage
+    voltage_max: 14.0              # V - maximum acceptable supply voltage
+    temp_warn: 60.0                # °C - temperature warning threshold
+    temp_error: 75.0               # °C - temperature error threshold
+    current_max: 3.0               # A - maximum acceptable motor current
+```
+
+**Node Details:**
+- **Node name:** `motor_diagnostics_node`
+- **Subscribed topics:** `/dynamic_joint_states` (from hardware interface)
+- **Published topics:** `/diagnostics` (diagnostic_msgs/DiagnosticArray)
+- **Parameters:** See config YAML above
+
+This node is recommended for all robots using STS motors to ensure safe operation and early detection of hardware issues.
 
 ## Quick Start
 

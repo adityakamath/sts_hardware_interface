@@ -49,6 +49,11 @@ add_library(${PROJECT_NAME} SHARED
   src/sts_hardware_interface.cpp
 )
 
+# Motor Diagnostics Node
+add_executable(motor_diagnostics_node src/motor_diagnostics_node.cpp)
+ament_target_dependencies(motor_diagnostics_node rclcpp diagnostic_msgs control_msgs)
+install(TARGETS motor_diagnostics_node DESTINATION lib/${PROJECT_NAME})
+
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
