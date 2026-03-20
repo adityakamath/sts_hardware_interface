@@ -36,6 +36,8 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
+find_package(control_msgs REQUIRED)
 
 # Build SCServo_Linux library (C++)
 add_subdirectory(external/SCServo_Linux)
@@ -51,7 +53,11 @@ add_library(${PROJECT_NAME} SHARED
 
 # Motor Diagnostics Node
 add_executable(motor_diagnostics_node src/motor_diagnostics_node.cpp)
-ament_target_dependencies(motor_diagnostics_node rclcpp diagnostic_msgs control_msgs)
+target_link_libraries(motor_diagnostics_node
+  rclcpp::rclcpp
+  ${diagnostic_msgs_TARGETS}
+  ${control_msgs_TARGETS}
+)
 install(TARGETS motor_diagnostics_node DESTINATION lib/${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -66,9 +72,8 @@ target_link_libraries(${PROJECT_NAME}
   pluginlib::pluginlib
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
-  ${std_srvs_LIBRARIES}
+  ${std_srvs_TARGETS}
 )
-ament_target_dependencies(${PROJECT_NAME} std_srvs)
 
 # Export hardware interface as plugin
 pluginlib_export_plugin_description_file(hardware_interface sts_hardware_interface.xml)
@@ -153,10 +158,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_hardware_interface
     test/test_hardware_interface.cpp
   )
-  ament_target_dependencies(test_hardware_interface
-    rclcpp
-    hardware_interface
-    std_srvs
+  target_link_libraries(test_hardware_interface
+    ${PROJECT_NAME}
+    ${rclcpp_TARGETS}
+    hardware_interface::hardware_interface
+    ${std_srvs_TARGETS}
   )
   target_include_directories(test_hardware_interface PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
