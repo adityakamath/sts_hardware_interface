@@ -6,7 +6,8 @@ This launch file starts the motor_diagnostics_node with the default config.
 
 Example usage:
     ros2 launch sts_hardware_interface motor_diagnostics.launch.py
-    ros2 launch sts_hardware_interface motor_diagnostics.launch.py config_file:=/path/to/custom.yaml
+    ros2 launch sts_hardware_interface motor_diagnostics.launch.py \
+        config_file:=/path/to/custom.yaml
 """
 
 from launch import LaunchDescription
@@ -21,7 +22,8 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'config_file',
             default_value=PathJoinSubstitution([
-                FindPackageShare('sts_hardware_interface'), 'config', 'motor_diagnostics_config.yaml'
+                FindPackageShare('sts_hardware_interface'),
+                'config', 'motor_diagnostics_config.yaml'
             ]),
             description='Path to diagnostics config YAML'
         )

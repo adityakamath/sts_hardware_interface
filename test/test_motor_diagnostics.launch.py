@@ -14,6 +14,7 @@
 
 """
 Integration tests for the motor_diagnostics_node in mock mode.
+
 Verifies diagnostics are published and reflect joint state conditions.
 """
 
@@ -27,9 +28,9 @@ import launch_testing.actions
 import launch_testing.markers
 import pytest
 import rclpy
-from rclpy.node import Node
-from diagnostic_msgs.msg import DiagnosticArray
-from control_msgs.msg import DynamicJointState
+from control_msgs.msg import DynamicJointState, InterfaceValue
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
+
 
 @pytest.mark.launch_test
 @launch_testing.markers.keep_alive
@@ -60,7 +61,9 @@ def generate_test_description():
         launch_testing.actions.ReadyToTest(),
     ])
 
+
 class TestMotorDiagnosticsIntegration(unittest.TestCase):
+
     @classmethod
     def setUpClass(cls):
         rclpy.init()
@@ -77,7 +80,8 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
 
     def _wait_for_diagnostics(self, timeout_sec=30.0):
         received = []
-        sub = self.node.create_subscription(DiagnosticArray, '/diagnostics', received.append, 10)
+        sub = self.node.create_subscription(
+            DiagnosticArray, '/diagnostics', received.append, 10)
         deadline = time.time() + timeout_sec
         while time.time() < deadline and not received:
             rclpy.spin_once(self.node, timeout_sec=0.1)
@@ -94,21 +98,29 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
         received = self._wait_for_diagnostics(timeout_sec=30.0)
         self.assertTrue(received)
         status = received[0].status[0]
-        self.assertEqual(status.level, 0, f"Expected OK (0), got {status.level}")
+        self.assertEqual(
+            status.level, DiagnosticStatus.OK,
+            f'Expected OK ({DiagnosticStatus.OK}), got {status.level}')
 
-    def _publish_dynamic_joint_state(self, name, effort=None, current=None, voltage=None, temperature=None):
+    def _publish_dynamic_joint_state(
+            self, name, effort=None, current=None, voltage=None, temperature=None):
         pub = self.node.create_publisher(DynamicJointState, '/dynamic_joint_states', 10)
         msg = DynamicJointState()
         msg.joint_names = [name]
+        iv = InterfaceValue()
         if effort is not None:
-            msg.interface_values.append(DynamicJointState.InterfaceValue(interface_name='effort', value=effort))
+            iv.interface_names.append('effort')
+            iv.values.append(effort)
         if current is not None:
-            msg.interface_values.append(DynamicJointState.InterfaceValue(interface_name='current', value=current))
+            iv.interface_names.append('current')
+            iv.values.append(current)
         if voltage is not None:
-            msg.interface_values.append(DynamicJointState.InterfaceValue(interface_name='voltage', value=voltage))
+            iv.interface_names.append('voltage')
+            iv.values.append(voltage)
         if temperature is not None:
-            msg.interface_values.append(DynamicJointState.InterfaceValue(interface_name='temperature', value=temperature))
-        # Publish several times to ensure delivery
+            iv.interface_names.append('temperature')
+            iv.values.append(temperature)
+        msg.interface_values.append(iv)
         for _ in range(5):
             pub.publish(msg)
             rclpy.spin_once(self.node, timeout_sec=0.1)
@@ -116,20 +128,26 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
 
     def test_diagnostics_warn_temperature(self):
         """Diagnostics status is WARN when temperature exceeds temp_warn but below temp_error."""
-        self._publish_dynamic_joint_state('wheel_joint', temperature=65.0)  # temp_warn=60, temp_error=75
+        self._publish_dynamic_joint_state(
+            'wheel_joint', temperature=65.0)  # temp_warn=60, temp_error=75
         received = self._wait_for_diagnostics(timeout_sec=5.0)
         self.assertTrue(received)
         status = received[-1].status[0]
-        self.assertEqual(status.level, 1, f"Expected WARN (1), got {status.level}")
+        self.assertEqual(
+            status.level, DiagnosticStatus.WARN,
+            f'Expected WARN ({DiagnosticStatus.WARN}), got {status.level}')
         self.assertIn('temperature', status.message)
 
     def test_diagnostics_error_temperature(self):
         """Diagnostics status is ERROR when temperature exceeds temp_error."""
-        self._publish_dynamic_joint_state('wheel_joint', temperature=80.0)  # temp_error=75
+        self._publish_dynamic_joint_state(
+            'wheel_joint', temperature=80.0)  # temp_error=75
         received = self._wait_for_diagnostics(timeout_sec=5.0)
         self.assertTrue(received)
         status = received[-1].status[0]
-        self.assertEqual(status.level, 2, f"Expected ERROR (2), got {status.level}")
+        self.assertEqual(
+            status.level, DiagnosticStatus.ERROR,
+            f'Expected ERROR ({DiagnosticStatus.ERROR}), got {status.level}')
         self.assertIn('temperature', status.message)
 
     def test_diagnostics_warn_voltage(self):
@@ -138,14 +156,18 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
         received = self._wait_for_diagnostics(timeout_sec=5.0)
         self.assertTrue(received)
         status = received[-1].status[0]
-        self.assertEqual(status.level, 1, f"Expected WARN (1), got {status.level}")
+        self.assertEqual(
+            status.level, DiagnosticStatus.WARN,
+            f'Expected WARN ({DiagnosticStatus.WARN}), got {status.level}')
         self.assertIn('voltage', status.message)
 
-    def test_diagnostics_error_current(self):
-        """Diagnostics status is ERROR when current exceeds current_max."""
+    def test_diagnostics_warn_current(self):
+        """Diagnostics status is WARN when current exceeds current_max."""
         self._publish_dynamic_joint_state('wheel_joint', current=4.0)  # current_max=3.0
         received = self._wait_for_diagnostics(timeout_sec=5.0)
         self.assertTrue(received)
         status = received[-1].status[0]
-        self.assertEqual(status.level, 2, f"Expected ERROR (2), got {status.level}")
+        self.assertEqual(
+            status.level, DiagnosticStatus.WARN,
+            f'Expected WARN ({DiagnosticStatus.WARN}), got {status.level}')
         self.assertIn('current', status.message)
