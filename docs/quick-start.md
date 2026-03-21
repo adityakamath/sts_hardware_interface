@@ -151,9 +151,9 @@ Demonstrates three motors in different operating modes on the same serial bus.
 
 **Motors configured:**
 
-- Motor 1 (`wheel_joint`): **Mode 1** - Velocity control (closed-loop)
-- Motor 2 (`arm_joint`): **Mode 0** - Position/servo control (closed-loop)
-- Motor 3 (`gripper_joint`): **Mode 2** - PWM/effort control (open-loop)
+- Motors 1–2 (`arm_joint_1`, `arm_joint_2`): **Mode 0** - Position/servo control (closed-loop)
+- Motors 3–4 (`wheel_joint_1`, `wheel_joint_2`): **Mode 1** - Velocity control (closed-loop)
+- Motors 5–6 (`gripper_joint_1`, `gripper_joint_2`): **Mode 2** - PWM/effort control (open-loop)
 
 **How to run:**
 
@@ -365,7 +365,6 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
 - Early detection of hardware faults (overheating, low voltage)
 - Continuous monitoring in the field
 - Integration with fleet management dashboards
-```
 
 ---
 
@@ -533,7 +532,8 @@ colcon test-result --verbose
 | `test_conversions.cpp` | C++ unit | 43 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
 | `test_hardware_interface.cpp` | C++ unit | 82 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
 | `test_single_motor.launch.py` | Launch integration | 8 | Full controller_manager stack — single velocity-mode motor in mock mode |
-| `test_mixed_mode.launch.py` | Launch integration | 8 | Three-motor mixed-mode stack (position, velocity, PWM) in mock mode |
+| `test_mixed_mode.launch.py` | Launch integration | 8 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
+| `test_motor_diagnostics.launch.py` | Launch integration | — | Motor diagnostics node integration with hardware interface feedback |
 
 ### Run Specific Test Groups
 
@@ -544,7 +544,7 @@ colcon test --packages-select sts_hardware_interface \
 
 # Launch integration tests only
 colcon test --packages-select sts_hardware_interface \
-  --ctest-args -R "test_single_motor|test_mixed_mode"
+  --ctest-args -R "test_single_motor|test_mixed_mode|test_motor_diagnostics"
 ```
 
 ### Interpreting Results

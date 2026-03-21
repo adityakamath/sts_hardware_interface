@@ -167,7 +167,6 @@ if(BUILD_TESTING)
   target_include_directories(test_hardware_interface PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   )
-  target_link_libraries(test_hardware_interface ${PROJECT_NAME})
 
   # Python launch tests: single motor example with use_mock:=true
   add_launch_test(test/test_single_motor.launch.py)
