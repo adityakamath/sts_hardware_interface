@@ -91,11 +91,7 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
 
     def _wait_for_diagnostic_level(
             self, name, expected_level, keyword, timeout_sec=5.0, **values):
-        """Repeatedly publish fault values until a matching diagnostic status is received.
-
-        Publishes and spins concurrently so the subscription is active during publishing,
-        avoiding races with nominal data from the hardware interface.
-        """
+        """Publish fault values in a loop until a matching diagnostic status is received."""
         matched = []
 
         def on_diag(msg):
