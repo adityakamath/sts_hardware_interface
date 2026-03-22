@@ -290,18 +290,32 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">Maximum motor velocity in steps/s (STS3215: 3400, STS3032: 2900)</td>
     </tr>
     <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>proportional_vel_max</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;">0</td>
+      <td style="padding: 0.6em; border: none;">0–<code>max_velocity_steps</code></td>
+      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Velocity (steps/s) assigned to the servo joint with the largest |target_position − current_position| delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded velocity). Has no effect when <code>use_sync_write=false</code>.</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>proportional_vel_deadband</code></td>
+      <td style="padding: 0.6em; border: none;">double</td>
+      <td style="padding: 0.6em; border: none;">0.01</td>
+      <td style="padding: 0.6em; border: none;">&ge; 0.0 rad</td>
+      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Minimum max-delta (rad) below which all joints revert to their commanded velocity (avoids noise-driven re-scaling at steady-state). Has no effect when <code>use_sync_write=false</code> or <code>proportional_vel_max=0</code>.</td>
+    </tr>
+    <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>proportional_acc_max</code></td>
       <td style="padding: 0.6em; border: none;">int</td>
       <td style="padding: 0.6em; border: none;">100</td>
       <td style="padding: 0.6em; border: none;">0–254</td>
-      <td style="padding: 0.6em; border: none;">ACC given to the wheel with the largest velocity delta in <code>SyncWriteSpe</code>. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to <code>0</code> to disable (ACC=0 for all wheels).</td>
+      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Acceleration value [0–254] assigned to the velocity joint with the largest |target_velocity − current_velocity| delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded acceleration). Has no effect when <code>use_sync_write=false</code>.</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>proportional_acc_deadband</code></td>
       <td style="padding: 0.6em; border: none;">double</td>
       <td style="padding: 0.6em; border: none;">0.05</td>
       <td style="padding: 0.6em; border: none;">&ge; 0.0 rad/s</td>
-      <td style="padding: 0.6em; border: none;">Minimum velocity delta below which ACC=0 is sent to all wheels (avoids jitter during steady-state cruise).</td>
+      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Minimum velocity delta (rad/s) below which ACC=0 is sent to all wheels (avoids jitter during steady-state cruise). Has no effect when <code>use_sync_write=false</code> or <code>proportional_acc_max=0</code>.</td>
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>reset_states_on_activate</code></td>
@@ -705,7 +719,7 @@ See [config/single_motor.urdf.xacro](../config/single_motor.urdf.xacro):
 ### Mixed Mode (Multi-Motor)
 
 See [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro):
-- Three motors in different modes
+- Six motors in three modes (two per mode)
 - Enabled SyncWrite for coordination
 - Demonstrates position, velocity, and effort control
 
@@ -763,10 +777,11 @@ The package ships with a comprehensive test suite covering unit conversion math,
 
 ```
 test/
-├── test_conversions.cpp           # Pure unit tests — zero ROS dependency
-├── test_hardware_interface.cpp    # Mock-mode hardware interface tests
-├── test_single_motor.launch.py    # Integration: single motor (velocity mode)
-└── test_mixed_mode.launch.py      # Integration: three motors in mixed modes
+├── test_conversions.cpp              # Pure unit tests — zero ROS dependency
+├── test_hardware_interface.cpp       # Mock-mode hardware interface tests
+├── test_single_motor.launch.py       # Integration: single motor (velocity mode)
+├── test_mixed_mode.launch.py         # Integration: six motors in mixed modes
+└── test_motor_diagnostics.launch.py  # Integration: motor diagnostics node
 ```
 
 **Separation of concerns:**
@@ -867,7 +882,7 @@ Spins up the `single_motor` example launch configuration in mock mode and valida
 
 ### Integration Tests: `test_mixed_mode.launch.py`
 
-Spins up the `mixed_mode` example in mock mode (three motors: velocity, position, PWM) and validates:
+Spins up the `mixed_mode` example in mock mode (six motors: two position, two velocity, two PWM) and validates:
 
 | Test | What Is Checked |
 |---|---|
@@ -876,9 +891,29 @@ Spins up the `mixed_mode` example in mock mode (three motors: velocity, position
 | `test_arm_controller_active` | `arm_controller` (JointTrajectoryController, Mode 0) is `active` |
 | `test_wheel_controller_active` | `wheel_controller` (VelocityController, Mode 1) is `active` |
 | `test_gripper_controller_active` | `gripper_controller` (EffortController, Mode 2) is `active` |
-| `test_joint_states_published` | `/joint_states` publishes all three joints |
-| `test_mock_mode_all_joints` | All three joints have valid non-NaN feedback |
+| `test_joint_states_published` | `/joint_states` publishes all six joints |
+| `test_mock_mode_all_joints` | All six joints have valid non-NaN feedback |
 | `test_emergency_stop_service` | Emergency stop service is callable across mixed-mode joints |
+
+---
+
+### Integration Tests: `test_motor_diagnostics.launch.py`
+
+Spins up the `motor_diagnostics` and `single_motor` launch files together in mock mode and validates:
+
+| Test | What Is Checked |
+|---|---|
+| `test_diagnostics_published` | `/diagnostics` topic publishes `diagnostic_msgs/DiagnosticArray` messages within 30 s |
+| `test_diagnostics_ok_status` | Diagnostics level is `OK` under nominal mock conditions |
+| `test_diagnostics_warn_temperature` | Injecting temperature=65°C (above `temp_warn=60`) produces a `WARN` status |
+| `test_diagnostics_error_temperature` | Injecting temperature=80°C (above `temp_error=75`) produces an `ERROR` status |
+| `test_diagnostics_warn_voltage` | Injecting voltage=5V (below `voltage_min=6`) produces a `WARN` status |
+| `test_diagnostics_warn_current` | Injecting current=4A (above `current_max=3`) produces a `WARN` status |
+
+**Notable implementation details:**
+
+- Each fault test subscribes to `/diagnostics` and publishes injected `DynamicJointState` values in a loop, spinning concurrently until a matching diagnostic level + keyword is received. This avoids races with the hardware interface's continuous nominal data stream.
+- Thresholds used in assertions match those in `config/motor_diagnostics_config.yaml`.
 
 ---
 

@@ -158,7 +158,7 @@ Demonstrates three motors in different operating modes on the same serial bus.
 **How to run:**
 
 ```bash
-# With real hardware (requires 3 motors with IDs 1, 2, 3)
+# With real hardware (requires 6 motors with IDs 1–6)
 ros2 launch sts_hardware_interface mixed_mode.launch.py serial_port:=/dev/ttyACM0
 
 # In mock mode
@@ -170,7 +170,7 @@ ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true gui:=true
 
 **What it does:**
 
-1. Loads robot description with three joints in different modes
+1. Loads robot description with six joints in three modes (two per mode)
 2. Starts `ros2_control` node with SyncWrite enabled for efficiency
 3. Spawns multiple controllers:
    - `joint_state_broadcaster` - publishes joint states
@@ -188,8 +188,8 @@ ros2 topic pub /wheel_controller/commands std_msgs/msg/Float64MultiArray "data: 
 ros2 action send_goal /arm_controller/follow_joint_trajectory \
   control_msgs/action/FollowJointTrajectory "{
     trajectory: {
-      joint_names: ['arm_joint'],
-      points: [{positions: [1.0], time_from_start: {sec: 2}}]
+      joint_names: ['arm_joint_1', 'arm_joint_2'],
+      points: [{positions: [1.0, 1.0], time_from_start: {sec: 2}}]
     }
   }"
 
@@ -533,7 +533,7 @@ colcon test-result --verbose
 | `test_hardware_interface.cpp` | C++ unit | 82 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
 | `test_single_motor.launch.py` | Launch integration | 8 | Full controller_manager stack — single velocity-mode motor in mock mode |
 | `test_mixed_mode.launch.py` | Launch integration | 8 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
-| `test_motor_diagnostics.launch.py` | Launch integration | — | Motor diagnostics node integration with hardware interface feedback |
+| `test_motor_diagnostics.launch.py` | Launch integration | 6 | Motor diagnostics node integration with hardware interface feedback |
 
 ### Run Specific Test Groups
 
