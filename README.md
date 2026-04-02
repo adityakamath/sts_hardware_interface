@@ -116,7 +116,7 @@ See [`config/motor_diagnostics_config.yaml`](config/motor_diagnostics_config.yam
 ```yaml
 motor_diagnostics_node:
   ros__parameters:
-    effort_threshold: 0.5          # N·m - effort threshold for stall detection
+    effort_threshold: 0.5          # normalized effort (0.0–1.0) - threshold for stall detection
     current_threshold: 1.5         # A - current threshold for stall detection
     voltage_min: 6.0               # V - minimum acceptable supply voltage
     voltage_max: 14.0              # V - maximum acceptable supply voltage

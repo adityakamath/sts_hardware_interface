@@ -294,7 +294,7 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">int</td>
       <td style="padding: 0.6em; border: none;">0</td>
       <td style="padding: 0.6em; border: none;">0–<code>max_velocity_steps</code></td>
-      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Velocity (steps/s) assigned to the servo joint with the largest |target_position − current_position| delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded velocity). Has no effect when <code>use_sync_write=false</code>.</td>
+      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Velocity (steps/s) assigned to the servo joint with the largest |target_position − current_position| delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when <code>use_sync_write=false</code>.</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>proportional_vel_deadband</code></td>
@@ -316,20 +316,6 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">0.05</td>
       <td style="padding: 0.6em; border: none;">&ge; 0.0 rad/s</td>
       <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Minimum velocity delta (rad/s) below which ACC=0 is sent to all wheels (avoids jitter during steady-state cruise). Has no effect when <code>use_sync_write=false</code> or <code>proportional_acc_max=0</code>.</td>
-    </tr>
-    <tr style="background: #ffffff;">
-      <td style="padding: 0.6em; border: none;"><code>proportional_vel_max</code></td>
-      <td style="padding: 0.6em; border: none;">int</td>
-      <td style="padding: 0.6em; border: none;">0</td>
-      <td style="padding: 0.6em; border: none;">0–<code>max_velocity_steps</code></td>
-      <td style="padding: 0.6em; border: none;">Speed (steps/s) given to the joint with the largest <code>|target_position - current_position|</code> delta in <code>SyncWritePosEx</code>. All others are scaled proportionally so every joint arrives at its target at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared).</td>
-    </tr>
-    <tr style="background: #f0f0f0;">
-      <td style="padding: 0.6em; border: none;"><code>proportional_vel_deadband</code></td>
-      <td style="padding: 0.6em; border: none;">double</td>
-      <td style="padding: 0.6em; border: none;">0.01</td>
-      <td style="padding: 0.6em; border: none;">&ge; 0.0 rad</td>
-      <td style="padding: 0.6em; border: none;">Minimum max-delta (rad) below which all joints revert to their commanded velocity (steady-state hold, avoids noise-driven re-scaling).</td>
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>reset_states_on_activate</code></td>
@@ -543,8 +529,9 @@ The hardware interface automatically recovers from communication failures:
 The `motor_diagnostics_node` provides real-time health monitoring for all motors managed by the hardware interface. It subscribes to `/dynamic_joint_states` and publishes aggregated diagnostic status to the standard `/diagnostics` topic, enabling integration with ROS 2 diagnostic tools and dashboards.
 
 **Features:**
-- Monitors voltage, temperature, current, and motion status for each joint
-- Detects and reports out-of-range or abnormal values (e.g., over-temperature, low voltage)
+- Monitors voltage, temperature, current, motion status, and effort for each joint
+- Detects internal motor stalls (motor not moving with high effort or current)
+- Detects and reports out-of-range or abnormal values (e.g., over-temperature, low voltage, over-current)
 - Aggregates per-motor status into a single diagnostics message
 - Publishes at a configurable rate (default: 2 Hz)
 - Compatible with rqt_robot_monitor and other ROS 2 diagnostic consumers
@@ -845,8 +832,10 @@ test/
 | `max_velocity_steps` | Missing, non-positive, non-integer strings → `RETURN_ERROR` |
 | `proportional_acc_max` | Non-integer strings, out-of-range [0–254] → `RETURN_ERROR` |
 | `proportional_acc_deadband` | Non-number strings, negative values → `RETURN_ERROR` |
-| `motor_id` | Missing per joint, out-of-range (0, 254, 255) → `RETURN_ERROR` |
-| `operating_mode` | Values 0, 1, 2 (valid), unknown value (defaults to velocity) |
+| `proportional_vel_max` | Non-integer strings, negative or > `max_velocity_steps` → `RETURN_ERROR` |
+| `proportional_vel_deadband` | Non-number strings, negative values → `RETURN_ERROR` |
+| `motor_id` | Missing per joint, out-of-range (0, 254, 255) → `RETURN_ERROR`; duplicate IDs → `RETURN_ERROR` |
+| `operating_mode` | Values 0, 1, 2 (valid); invalid values (non-integer or out of range) → `RETURN_ERROR`; missing parameter → defaults to velocity (1) |
 | Position limits | `min_position`, `max_position` non-number strings → `RETURN_ERROR` |
 | Velocity limits | `max_velocity` non-number strings → `RETURN_ERROR` |
 | Effort limits | `max_effort` non-number strings → `RETURN_ERROR` |
