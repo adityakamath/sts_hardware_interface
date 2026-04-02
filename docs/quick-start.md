@@ -115,9 +115,9 @@ If you're running on a headless system (SSH connection, server edition), omit th
 
 When running in mock mode (`use_mock:=true`), the hardware interface simulates realistic sensor feedback:
 
-- **Voltage:** ~12V with load-dependent voltage drop (10-12V range)
+- **Voltage:** ~12V with load-dependent voltage drop of up to 0.5V (11.5-12V range)
 - **Temperature:** Ambient 25°C + thermal heating from velocity/load (typically 25-40°C)
-- **Current:** Proportional to motor effort (up to ~1A at max load)
+- **Current:** Proportional to motor effort (up to ~1A at maximum effort)
 - **Emergency stop:** Clears all command interfaces to match real hardware behavior
 
 **Test the motor:**
@@ -141,7 +141,7 @@ ros2 topic echo /diagnostics
 
 ### Example 2: Mixed Mode (Multiple Motors)
 
-Demonstrates three motors in different operating modes on the same serial bus.
+Demonstrates six motors (two per mode) in different operating modes on the same serial bus.
 
 **What it includes:**
 
@@ -174,17 +174,18 @@ ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true gui:=true
 2. Starts `ros2_control` node with SyncWrite enabled for efficiency
 3. Spawns multiple controllers:
    - `joint_state_broadcaster` - publishes joint states
-   - `wheel_controller` - velocity control for wheel
-   - `arm_controller` - trajectory control for arm
-   - `gripper_controller` - effort control for gripper
+   - `wheel_controller` - velocity control for two wheel joints
+   - `arm_controller` - trajectory control for two arm joints
+   - `gripper_controller` - effort control for two gripper joints
 
 **Test each motor:**
 
 ```bash
 # Wheel (velocity command)
-ros2 topic pub /wheel_controller/commands std_msgs/msg/Float64MultiArray "data: [3.0]"
+# Wheel (velocity command - two wheels)
+ros2 topic pub /wheel_controller/commands std_msgs/msg/Float64MultiArray "data: [3.0, 3.0]"
 
-# Arm (position trajectory)
+# Arm (position trajectory - two arm joints)
 ros2 action send_goal /arm_controller/follow_joint_trajectory \
   control_msgs/action/FollowJointTrajectory "{
     trajectory: {
@@ -193,8 +194,8 @@ ros2 action send_goal /arm_controller/follow_joint_trajectory \
     }
   }"
 
-# Gripper (effort command)
-ros2 topic pub /gripper_controller/commands std_msgs/msg/Float64MultiArray "data: [0.5]"
+# Gripper (effort command - two grippers)
+ros2 topic pub /gripper_controller/commands std_msgs/msg/Float64MultiArray "data: [0.5, 0.5]"
  
 # (Optional) Monitor motor diagnostics in real time
 ros2 launch sts_hardware_interface motor_diagnostics.launch.py
@@ -499,7 +500,7 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
    ros2 topic echo /joint_states
    ros2 topic echo /dynamic_joint_states  # Check voltage, temperature, current
    ```
-   Mock mode simulates realistic velocity integration and sensor feedback (voltage ~12V, temperature 25-40°C, current proportional to load).
+   Mock mode simulates realistic velocity integration and sensor feedback (voltage 11.5-12V with load-dependent drop, temperature 25-40°C, current proportional to effort up to ~1A).
 
 ---
 
@@ -529,10 +530,10 @@ colcon test-result --verbose
 
 | Test File | Type | Tests | What Is Covered |
 |---|---|---|---|
-| `test_conversions.cpp` | C++ unit | 43 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
-| `test_hardware_interface.cpp` | C++ unit | 82 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
-| `test_single_motor.launch.py` | Launch integration | 8 | Full controller_manager stack — single velocity-mode motor in mock mode |
-| `test_mixed_mode.launch.py` | Launch integration | 8 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
+| `test_conversions.cpp` | C++ unit | 49 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
+| `test_hardware_interface.cpp` | C++ unit | 103 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
+| `test_single_motor.launch.py` | Launch integration | 6 | Full controller_manager stack — single velocity-mode motor in mock mode |
+| `test_mixed_mode.launch.py` | Launch integration | 6 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
 | `test_motor_diagnostics.launch.py` | Launch integration | 6 | Motor diagnostics node integration with hardware interface feedback |
 
 ### Run Specific Test Groups

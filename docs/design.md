@@ -308,7 +308,7 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">int</td>
       <td style="padding: 0.6em; border: none;">100</td>
       <td style="padding: 0.6em; border: none;">0–254</td>
-      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Acceleration value [0–254] assigned to the velocity joint with the largest |target_velocity − current_velocity| delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded acceleration). Has no effect when <code>use_sync_write=false</code>.</td>
+      <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Acceleration value [0–254] assigned to the velocity joint with the largest |target_velocity − current_velocity| delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded acceleration, or ACC=0 if the interface is not declared). Has no effect when <code>use_sync_write=false</code>.</td>
     </tr>
     <tr style="background: #f0f0f0;">
       <td style="padding: 0.6em; border: none;"><code>proportional_acc_deadband</code></td>
@@ -316,6 +316,20 @@ Configure these at the `<hardware>` level in your URDF:
       <td style="padding: 0.6em; border: none;">0.05</td>
       <td style="padding: 0.6em; border: none;">&ge; 0.0 rad/s</td>
       <td style="padding: 0.6em; border: none;"><strong>SyncWrite only.</strong> Minimum velocity delta (rad/s) below which ACC=0 is sent to all wheels (avoids jitter during steady-state cruise). Has no effect when <code>use_sync_write=false</code> or <code>proportional_acc_max=0</code>.</td>
+    </tr>
+    <tr style="background: #ffffff;">
+      <td style="padding: 0.6em; border: none;"><code>proportional_vel_max</code></td>
+      <td style="padding: 0.6em; border: none;">int</td>
+      <td style="padding: 0.6em; border: none;">0</td>
+      <td style="padding: 0.6em; border: none;">0–<code>max_velocity_steps</code></td>
+      <td style="padding: 0.6em; border: none;">Speed (steps/s) given to the joint with the largest <code>|target_position - current_position|</code> delta in <code>SyncWritePosEx</code>. All others are scaled proportionally so every joint arrives at its target at the same time. Set to <code>0</code> to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared).</td>
+    </tr>
+    <tr style="background: #f0f0f0;">
+      <td style="padding: 0.6em; border: none;"><code>proportional_vel_deadband</code></td>
+      <td style="padding: 0.6em; border: none;">double</td>
+      <td style="padding: 0.6em; border: none;">0.01</td>
+      <td style="padding: 0.6em; border: none;">&ge; 0.0 rad</td>
+      <td style="padding: 0.6em; border: none;">Minimum max-delta (rad) below which all joints revert to their commanded velocity (steady-state hold, avoids noise-driven re-scaling).</td>
     </tr>
     <tr style="background: #ffffff;">
       <td style="padding: 0.6em; border: none;"><code>reset_states_on_activate</code></td>
@@ -433,7 +447,17 @@ ACC_i    = clamp(round(delta_i / max_delta * proportional_acc_max), 1, 254)
 T        = max_delta / (proportional_acc_max * 100)    -- same for every wheel
 ```
 
-This is particularly important for multi-wheel drive geometries (e.g. LeKiwi/omni drives) where different wheels have structurally different delta magnitudes for the same robot-level command. The per-wheel deltas are stored in a pre-allocated `velocity_sync_deltas_` buffer between passes to avoid recomputation. Below `proportional_acc_deadband` rad/s max delta (steady-state cruise), all wheels receive `ACC=0` (hardware-native slew, no ramp imposed). The individual-write fallback path is unchanged.
+This is particularly important for multi-wheel drive geometries (e.g. LeKiwi/omni drives) where different wheels have structurally different delta magnitudes for the same robot-level command. The per-wheel deltas are stored in a pre-allocated `velocity_sync_deltas_` buffer between passes to avoid recomputation. Below `proportional_acc_deadband` rad/s max delta (steady-state cruise), all wheels receive `ACC=0` (hardware-native slew, no ramp imposed). When `proportional_acc_max=0`, the hardware interface falls back to per-joint commanded acceleration (or ACC=0 if the acceleration interface is not declared). The individual-write fallback path is unchanged.
+
+**Proportional Velocity (SyncWritePosEx path only):**
+When `use_sync_write: true` and multiple position-mode motors are active, the hardware interface uses per-joint speed scaling to keep all joints in sync during position moves. Each cycle it computes `delta_j = |target_position_j - current_position_j|` and assigns speed proportionally to the maximum delta across all joints:
+
+```
+delta_j  = |target_position_j - current_position_j|   (rad, clamped target)
+speed_j  = clamp(round(delta_j / max_delta * proportional_vel_max), 1, max_velocity_steps)
+```
+
+The joint with the largest delta receives `proportional_vel_max` (steps/s); all others are scaled down so every joint arrives at its target at the same time. Per-joint `velocity_max` is respected as an upper bound. Below `proportional_vel_deadband` rad max delta (steady-state hold), all joints revert to their commanded speed. When `proportional_vel_max=0`, the hardware interface falls back to per-joint commanded speed (or raw 0 = hardware max speed if the velocity interface is not declared). The individual-write fallback path is unchanged.
 
 **Performance Optimization:**
 The hardware interface pre-computes motor groupings by operating mode during initialization and pre-allocates all SyncWrite communication buffers. This eliminates per-cycle heap allocations, reducing latency and ensuring deterministic performance at high controller update rates (100+ Hz).
@@ -572,7 +596,7 @@ Test controllers without hardware by setting `enable_mock_mode: true` in hardwar
 **Additional Simulations:**
 - **Load:** Based on velocity percentage (higher speed = higher load percentage)
 - **Motion detection:** `is_moving` threshold at 0.01 rad/s
-- **Voltage:** Physics-based simulation (nominal 12V with load-dependent drop of up to 0.5V)
+- **Voltage:** Physics-based simulation (nominal 12V with load-dependent drop of up to 0.5V, range 11.5-12V)
 - **Temperature:** Thermal model (ambient 25°C + heating from velocity and load, typically 25-40°C range)
 - **Current:** Proportional to effort (up to ~1A at maximum load)
 
@@ -600,7 +624,7 @@ This inversion is transparent to controllers - they always work with REP-103 com
 ### Position Conversion
 - **Motor units:** 0-4095 steps (12-bit resolution)
 - **ROS 2 units:** 0-2π radians (one full revolution)
-- **Conversion:** `radians = steps × (2π / 4096)`
+- **Conversion:** `radians = (4095 - steps) × (2π / 4096)` — includes REP-103 direction inversion (raw 0 → ~2π, raw 4095 → 0)
 - **Note:** Position wraps at 2π (4096 steps)
 
 ### Velocity Conversion
@@ -793,7 +817,7 @@ test/
 
 ### Unit Tests: `test_conversions.cpp`
 
-**43 tests** covering all unit conversion functions in isolation.
+**49 tests** covering all unit conversion functions in isolation.
 
 **What is tested:**
 - `steps_to_radians` and `radians_to_steps` — forward and inverse conversions, boundary values (0, full-range), mid-range linearity
@@ -809,7 +833,7 @@ test/
 
 ### Unit Tests: `test_hardware_interface.cpp`
 
-**82 tests** exercising the full `STSHardwareInterface` in mock mode, covering every branch of the lifecycle.
+**103 tests** exercising the full `STSHardwareInterface` in mock mode, covering every branch of the lifecycle.
 
 **Parameter validation (`on_init`):**
 
@@ -864,19 +888,17 @@ Spins up the `single_motor` example launch configuration in mock mode and valida
 
 | Test | What Is Checked |
 |---|---|
-| `test_ros2_control_running` | `/controller_manager` node is discoverable |
-| `test_joint_state_broadcaster_active` | `joint_state_broadcaster` reports `active` state |
-| `test_velocity_controller_active` | `velocity_controller` reaches `active` state (polled up to 30 s) |
 | `test_joint_states_published` | `/joint_states` topic publishes `sensor_msgs/JointState` messages |
-| `test_mock_mode_feedback` | Feedback is non-NaN across all 7 state interfaces |
-| `test_hardware_interfaces_available` | Hardware command and state interfaces are listed |
-| `test_emergency_stop_service` | `/emergency_stop` service is callable and returns `success: true` |
-| `test_emergency_stop_introspection_topic` | `/emergency_stop/_service_event` topic exists (skipped if `ServiceEvent` unavailable in this ROS 2 build) |
+| `test_joint_state_has_wheel_joint` | `/joint_states` message contains `wheel_joint` in the name list |
+| `test_controller_manager_available` | `/controller_manager/list_controllers` service is reachable |
+| `test_velocity_controller_active` | `velocity_controller` reaches `active` state (polled up to 30 s) |
+| `test_emergency_stop_service_available` | `/emergency_stop` service is reachable |
+| `test_emergency_stop_introspection_topic` | `/emergency_stop/_service_event` topic receives an event after a service call (skipped if `ServiceEvent` unavailable in this ROS 2 build) |
 
 **Notable implementation details:**
 
 - `test_velocity_controller_active` uses a **polling loop** (100 ms intervals, 30 s deadline) rather than a fixed sleep, making it robust to system load variation.
-- `test_emergency_stop_introspection_topic` wraps the `ServiceEvent` import in a `try/except` and calls `self.skipTest()` if the message type is not available in the installed ROS 2 distribution, preventing an import error from failing the entire test suite.
+- `test_emergency_stop_introspection_topic` triggers a service call to generate an introspection event, then waits for the `/_service_event` topic to respond. It wraps the `ServiceEvent` import in a `try/except` and calls `self.skipTest()` if the message type is not available in the installed ROS 2 distribution, preventing an import error from failing the entire test suite.
 
 ---
 
@@ -886,14 +908,12 @@ Spins up the `mixed_mode` example in mock mode (six motors: two position, two ve
 
 | Test | What Is Checked |
 |---|---|
-| `test_ros2_control_running` | `controller_manager` is discoverable |
+| `test_joint_states_published` | `/joint_states` publishes `sensor_msgs/JointState` messages |
+| `test_all_joints_present` | `/joint_states` contains all six joints (`arm_joint_1/2`, `wheel_joint_1/2`, `gripper_joint_1/2`) |
+| `test_all_three_controllers_active` | `arm_controller`, `wheel_controller`, and `gripper_controller` all reach `active` state |
 | `test_joint_state_broadcaster_active` | `joint_state_broadcaster` is `active` |
-| `test_arm_controller_active` | `arm_controller` (JointTrajectoryController, Mode 0) is `active` |
-| `test_wheel_controller_active` | `wheel_controller` (VelocityController, Mode 1) is `active` |
-| `test_gripper_controller_active` | `gripper_controller` (EffortController, Mode 2) is `active` |
-| `test_joint_states_published` | `/joint_states` publishes all six joints |
-| `test_mock_mode_all_joints` | All six joints have valid non-NaN feedback |
-| `test_emergency_stop_service` | Emergency stop service is callable across mixed-mode joints |
+| `test_emergency_stop_service_available` | `/emergency_stop` service is reachable in mixed-mode configuration |
+| `test_dynamic_joint_states_published` | `/dynamic_joint_states` publishes `control_msgs/DynamicJointState` messages |
 
 ---
 

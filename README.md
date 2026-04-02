@@ -26,39 +26,50 @@
 - **Mock Mode**: Hardware-free simulation for development and testing
 - **Motor Diagnostics Node**: Real-time health/stall/voltage/current/temperature monitoring for STS motors
 
-## Command Interfaces
+## Quick Start
 
-**Mode 0 (Position/Servo):**
-- `position` - Target position (radians)
-- `velocity` *(optional)* - Maximum speed for the position move (rad/s). Behaviour depends on `proportional_vel_max` and `use_sync_write`:
-  - `use_sync_write=true` and `proportional_vel_max != 0`: proportional velocity always wins; this command interface is ignored.
-  - `use_sync_write=true` and `proportional_vel_max == 0`: per-joint commanded max speed is used (0 = hardware max speed).
-  - `use_sync_write=false`: per-joint commanded max speed is always used directly, `proportional_vel_max` has no effect.
-- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). When omitted: ACC 0 (hardware default).
+```bash
+cd ~/ros2_ws/src
+git clone https://github.com/adityakamath/sts_hardware_interface.git
+cd sts_hardware_interface
+git submodule update --init --recursive
+cd ~/ros2_ws
+colcon build --packages-select sts_hardware_interface
+```
 
-**Mode 1 (Velocity):**
-- `velocity` - Target velocity (rad/s)
-- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). Behaviour depends on `proportional_acc_max` and `use_sync_write`:
-  - `use_sync_write=true` and `proportional_acc_max != 0` (default): proportional acceleration always wins; this command interface is ignored.
-  - `use_sync_write=true` and `proportional_acc_max == 0`: per-joint commanded acceleration is used.
-  - `use_sync_write=false`: per-joint commanded acceleration is always used directly, `proportional_acc_max` has no effect.
+See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions on running the example launch files and configuring your hardware.
 
-**Mode 2 (PWM/Effort):**
-- `effort` - PWM duty cycle (unitless, -1.0 to +1.0 representing ±100% duty cycle)
+## Configuration Example
 
-## State Interfaces
+```xml
+<ros2_control name="sts_system" type="system">
+  <hardware>
+    <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+    <param name="serial_port">/dev/ttyACM0</param>
+    <param name="baud_rate">1000000</param>
+    <param name="use_sync_write">true</param>
+  </hardware>
 
-The hardware always exports all 7 state interfaces for every joint (regardless of operating mode):
+  <joint name="wheel_joint">
+    <param name="motor_id">1</param>
+    <param name="operating_mode">1</param>
 
-- `position` - Current position (radians)
-- `velocity` - Current velocity (rad/s)
-- `effort` - Motor load percentage (-1.0 to +1.0, normalized)
-- `voltage` - Supply voltage (volts)
-- `temperature` - Internal temperature (°C)
-- `current` - Motor current draw (amperes)
-- `is_moving` - Motion status (1.0 = moving, 0.0 = stopped)
+    <command_interface name="velocity"/>
+    <!-- acceleration is optional for velocity mode.
+         With use_sync_write=true and proportional_acc_max != 0 (default): proportional acceleration always wins; this interface is ignored.
+         With use_sync_write=true and proportional_acc_max == 0: per-joint commanded acceleration is used.
+         With use_sync_write=false: per-joint commanded acceleration is always used. -->
+    <!-- <command_interface name="acceleration"/> -->
 
-**Note:** Unlike command interfaces (which must match the operating mode), all state interfaces are always exported regardless of URDF configuration. URDF state interface declarations are optional but recommended for documentation.
+    <!-- State interfaces (optional declarations for documentation) -->
+    <state_interface name="position"/>
+    <state_interface name="velocity"/>
+    <state_interface name="effort"/>
+    <state_interface name="temperature"/>
+    <!-- Optional: All 7 state interfaces can be enabled if needed -->
+  </joint>
+</ros2_control>
+```
 
 ## Emergency Stop
 
@@ -122,56 +133,6 @@ motor_diagnostics_node:
 
 This node is recommended for all robots using STS motors to ensure safe operation and early detection of hardware issues.
 
-## Quick Start
-
-```bash
-cd ~/ros2_ws/src
-git clone https://github.com/adityakamath/sts_hardware_interface.git
-cd sts_hardware_interface
-git submodule update --init --recursive
-cd ~/ros2_ws
-colcon build --packages-select sts_hardware_interface
-```
-
-See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions on running the example launch files and configuring your hardware.
-
-## Configuration Example
-
-```xml
-<ros2_control name="sts_system" type="system">
-  <hardware>
-    <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
-    <param name="serial_port">/dev/ttyACM0</param>
-    <param name="baud_rate">1000000</param>
-    <param name="use_sync_write">true</param>
-  </hardware>
-
-  <joint name="wheel_joint">
-    <param name="motor_id">1</param>
-    <param name="operating_mode">1</param>
-
-    <command_interface name="velocity"/>
-    <!-- acceleration is optional for velocity mode.
-         With use_sync_write=true and proportional_acc_max != 0 (default): proportional acceleration always wins; this interface is ignored.
-         With use_sync_write=true and proportional_acc_max == 0: per-joint commanded acceleration is used.
-         With use_sync_write=false: per-joint commanded acceleration is always used. -->
-    <!-- <command_interface name="acceleration"/> -->
-
-    <!-- State interfaces (optional declarations for documentation) -->
-    <state_interface name="position"/>
-    <state_interface name="velocity"/>
-    <state_interface name="effort"/>
-    <state_interface name="temperature"/>
-    <!-- Optional: All 7 state interfaces can be enabled if needed -->
-  </joint>
-</ros2_control>
-```
-
-## Documentation
-
-- **[Quick Start guide](docs/quick-start.md)** - Detailed setup and usage instructions
-- **[Design documentation](docs/design.md)** - Implementation details and design decisions
-
 ## Hardware Parameters
 
 | Parameter | Type | Default | Description |
@@ -198,6 +159,45 @@ See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions o
 | `max_position` | double | 6.283 | Max position limit (2π radians, Mode 0 only) |
 | `max_velocity` | double | 5.22 | Max velocity limit (rad/s, Modes 0 and 1, optional) |
 | `max_effort` | double | 1.0 | Maximum allowed effort command ((0.0, 1.0], Mode 2 only). Safety limiter that restricts command range without scaling. |
+
+## Command Interfaces
+
+**Mode 0 (Position/Servo):**
+- `position` - Target position (radians)
+- `velocity` *(optional)* - Maximum speed for the position move (rad/s). Behaviour depends on `proportional_vel_max` and `use_sync_write`:
+  - `use_sync_write=true` and `proportional_vel_max != 0`: proportional velocity always wins; this command interface is ignored.
+  - `use_sync_write=true` and `proportional_vel_max == 0`: per-joint commanded max speed is used (0 = hardware max speed).
+  - `use_sync_write=false`: per-joint commanded max speed is always used directly, `proportional_vel_max` has no effect.
+- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). When omitted: ACC 0 (hardware default).
+
+**Mode 1 (Velocity):**
+- `velocity` - Target velocity (rad/s)
+- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). Behaviour depends on `proportional_acc_max` and `use_sync_write`:
+  - `use_sync_write=true` and `proportional_acc_max != 0` (default): proportional acceleration always wins; this command interface is ignored.
+  - `use_sync_write=true` and `proportional_acc_max == 0`: per-joint commanded acceleration is used.
+  - `use_sync_write=false`: per-joint commanded acceleration is always used directly, `proportional_acc_max` has no effect.
+
+**Mode 2 (PWM/Effort):**
+- `effort` - PWM duty cycle (unitless, -1.0 to +1.0 representing ±100% duty cycle)
+
+## State Interfaces
+
+The hardware always exports all 7 state interfaces for every joint (regardless of operating mode):
+
+- `position` - Current position (radians)
+- `velocity` - Current velocity (rad/s)
+- `effort` - Motor load percentage (-1.0 to +1.0, normalized)
+- `voltage` - Supply voltage (volts)
+- `temperature` - Internal temperature (°C)
+- `current` - Motor current draw (amperes)
+- `is_moving` - Motion status (1.0 = moving, 0.0 = stopped)
+
+**Note:** Unlike command interfaces (which must match the operating mode), all state interfaces are always exported regardless of URDF configuration. URDF state interface declarations are optional but recommended for documentation.
+
+## Documentation
+
+- **[Quick Start guide](docs/quick-start.md)** - Detailed setup and usage instructions
+- **[Design documentation](docs/design.md)** - Implementation details and design decisions
 
 ## Dependencies
 
