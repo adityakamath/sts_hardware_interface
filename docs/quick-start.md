@@ -530,8 +530,8 @@ colcon test-result --verbose
 
 | Test File | Type | Tests | What Is Covered |
 |---|---|---|---|
-| `test_conversions.cpp` | C++ unit | 49 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
-| `test_hardware_interface.cpp` | C++ unit | 103 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
+| `test_conversions.cpp` | C++ unit | 34 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
+| `test_hardware_interface.cpp` | C++ unit | 70 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
 | `test_single_motor.launch.py` | Launch integration | 6 | Full controller_manager stack — single velocity-mode motor in mock mode |
 | `test_mixed_mode.launch.py` | Launch integration | 6 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
 | `test_motor_diagnostics.launch.py` | Launch integration | 6 | Motor diagnostics node integration with hardware interface feedback |
