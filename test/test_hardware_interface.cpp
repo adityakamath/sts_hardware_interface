@@ -206,22 +206,20 @@ hardware_interface::HardwareInfo make_two_motor_info()
 
 // ---- on_init: success cases ----
 
-TEST(HardwareInterfaceInitTest, ValidSingleMotorVelocityMode) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-}
-
-TEST(HardwareInterfaceInitTest, ValidSingleMotorPositionMode) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_position_motor_info();
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-}
-
-TEST(HardwareInterfaceInitTest, ValidSingleMotorEffortMode) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_effort_motor_info();
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+TEST(HardwareInterfaceInitTest, ValidOperatingModes) {
+  // All three supported operating modes initialise successfully
+  {
+    sts_hardware_interface::STSHardwareInterface hw;
+    EXPECT_EQ(hw.on_init(make_valid_single_motor_info()), CallbackReturn::SUCCESS);
+  }
+  {
+    sts_hardware_interface::STSHardwareInterface hw;
+    EXPECT_EQ(hw.on_init(make_valid_position_motor_info()), CallbackReturn::SUCCESS);
+  }
+  {
+    sts_hardware_interface::STSHardwareInterface hw;
+    EXPECT_EQ(hw.on_init(make_valid_effort_motor_info()), CallbackReturn::SUCCESS);
+  }
 }
 
 // ---- on_init: serial_port validation ----
@@ -264,16 +262,14 @@ TEST(HardwareInterfaceInitTest, NoJointsReturnsError) {
 
 // ---- on_init: motor_id validation ----
 
-TEST(HardwareInterfaceInitTest, InvalidMotorIdZeroReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info("/dev/ttyACM0", "0");
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidMotorId254ReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info("/dev/ttyACM0", "254");
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+TEST(HardwareInterfaceInitTest, InvalidMotorIdBoundariesReturnError) {
+  // IDs 0 and 254 are outside the valid range [1, 253]
+  for (const char * id : {"0", "254"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    EXPECT_EQ(
+      hw.on_init(make_valid_single_motor_info("/dev/ttyACM0", id)),
+      CallbackReturn::ERROR) << "Motor ID " << id << " should be invalid";
+  }
 }
 
 TEST(HardwareInterfaceInitTest, ValidMotorIdBoundaries) {
@@ -615,55 +611,58 @@ TEST_F(HardwareInterfaceMockTest, ZeroVelocityCommandHoldsPosition) {
 // Additional lifecycle: on_shutdown (uses HardwareInterfaceLifecycleTest)
 // ============================================================
 
-TEST_F(HardwareInterfaceLifecycleTest, ShutdownFromConfiguredSucceeds) {
-  rclcpp_lifecycle::State unconfigured(
-    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
-  rclcpp_lifecycle::State inactive(
-    lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE, "inactive");
-  ASSERT_EQ(hw_->on_configure(unconfigured), CallbackReturn::SUCCESS);
-  EXPECT_EQ(hw_->on_shutdown(inactive), CallbackReturn::SUCCESS);
-}
-
-TEST_F(HardwareInterfaceLifecycleTest, ShutdownFromActiveSucceeds) {
+TEST_F(HardwareInterfaceLifecycleTest, ShutdownSucceedsInAnyState) {
   rclcpp_lifecycle::State unconfigured(
     lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
   rclcpp_lifecycle::State inactive(
     lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE, "inactive");
   rclcpp_lifecycle::State active(
     lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
-  ASSERT_EQ(hw_->on_configure(unconfigured), CallbackReturn::SUCCESS);
-  ASSERT_EQ(hw_->on_activate(inactive), CallbackReturn::SUCCESS);
-  EXPECT_EQ(hw_->on_shutdown(active), CallbackReturn::SUCCESS);
-}
 
-TEST_F(HardwareInterfaceLifecycleTest, ShutdownWithoutConfigureSucceeds) {
-  // Mock mode: on_shutdown should succeed even if on_configure was never called
-  rclcpp_lifecycle::State unconfigured(
-    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
+  // Without configure
   EXPECT_EQ(hw_->on_shutdown(unconfigured), CallbackReturn::SUCCESS);
+
+  // After configure
+  {
+    sts_hardware_interface::STSHardwareInterface hw;
+    ASSERT_EQ(hw.on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
+    EXPECT_EQ(hw.on_shutdown(inactive), CallbackReturn::SUCCESS);
+  }
+
+  // After activate
+  {
+    sts_hardware_interface::STSHardwareInterface hw;
+    ASSERT_EQ(hw.on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
+    ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
+    EXPECT_EQ(hw.on_shutdown(active), CallbackReturn::SUCCESS);
+  }
 }
 
 // ============================================================
 // Additional lifecycle: on_error (uses HardwareInterfaceLifecycleTest)
 // ============================================================
 
-TEST_F(HardwareInterfaceLifecycleTest, OnErrorInMockModeSucceeds) {
-  rclcpp_lifecycle::State unconfigured(
-    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
-  // on_error in mock mode returns SUCCESS (simulated emergency stop)
-  EXPECT_EQ(hw_->on_error(unconfigured), CallbackReturn::SUCCESS);
-}
-
-TEST_F(HardwareInterfaceLifecycleTest, OnErrorAfterActivateSucceeds) {
+TEST_F(HardwareInterfaceLifecycleTest, OnErrorSucceedsRegardlessOfState) {
   rclcpp_lifecycle::State unconfigured(
     lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
   rclcpp_lifecycle::State inactive(
     lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE, "inactive");
   rclcpp_lifecycle::State active(
     lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
-  ASSERT_EQ(hw_->on_configure(unconfigured), CallbackReturn::SUCCESS);
-  ASSERT_EQ(hw_->on_activate(inactive), CallbackReturn::SUCCESS);
-  EXPECT_EQ(hw_->on_error(active), CallbackReturn::SUCCESS);
+
+  // Before configure
+  EXPECT_EQ(hw_->on_error(unconfigured), CallbackReturn::SUCCESS);
+
+  // After activate
+  {
+    sts_hardware_interface::STSHardwareInterface hw;
+    ASSERT_EQ(hw.on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
+    ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
+    EXPECT_EQ(hw.on_error(active), CallbackReturn::SUCCESS);
+  }
 }
 
 // ============================================================
@@ -671,53 +670,34 @@ TEST_F(HardwareInterfaceLifecycleTest, OnErrorAfterActivateSucceeds) {
 // on_deactivate in mock mode: zeros hw_state_velocity_ and hw_state_effort_
 // ============================================================
 
-TEST_F(HardwareInterfaceMockTest, DeactivateClearsVelocityState) {
-  auto * vel_cmd = find_cmd("velocity");
-  auto * vel_state = find_state("velocity");
-  ASSERT_NE(vel_cmd, nullptr);
-  ASSERT_NE(vel_state, nullptr);
-
-  // Drive velocity state to non-zero
-  (void)vel_cmd->set_value(2.0);
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-  hw_->read(t, d);
-
-  double vel_val = 0.0;
-  (void)vel_state->get_value(vel_val, true);
-  ASSERT_NE(vel_val, 0.0) << "Pre-condition: velocity state must be non-zero before deactivate";
-
-  rclcpp_lifecycle::State active(
-    lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
-  ASSERT_EQ(hw_->on_deactivate(active), CallbackReturn::SUCCESS);
-
-  (void)vel_state->get_value(vel_val, true);
-  EXPECT_NEAR(vel_val, 0.0, 1e-9);
-}
-
-TEST_F(HardwareInterfaceMockTest, DeactivateClearsEffortState) {
-  auto * vel_cmd = find_cmd("velocity");
+TEST_F(HardwareInterfaceMockTest, DeactivateClearsMotionStates) {
+  auto * vel_cmd     = find_cmd("velocity");
+  auto * vel_state   = find_state("velocity");
   auto * effort_state = find_state("effort");
   ASSERT_NE(vel_cmd, nullptr);
+  ASSERT_NE(vel_state, nullptr);
   ASSERT_NE(effort_state, nullptr);
 
-  // Non-zero velocity produces a non-zero simulated effort (load) state
+  // Drive both velocity and effort states to non-zero
   (void)vel_cmd->set_value(2.0);
   rclcpp::Time t(0, 0, RCL_ROS_TIME);
   rclcpp::Duration d(0, 0);
   hw_->write(t, d);
   hw_->read(t, d);
 
-  double eff_val = 0.0;
+  double vel_val = 0.0, eff_val = 0.0;
+  (void)vel_state->get_value(vel_val, true);
   (void)effort_state->get_value(eff_val, true);
+  ASSERT_NE(vel_val, 0.0) << "Pre-condition: velocity state must be non-zero before deactivate";
   ASSERT_NE(eff_val, 0.0) << "Pre-condition: effort state must be non-zero before deactivate";
 
   rclcpp_lifecycle::State active(
     lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
   ASSERT_EQ(hw_->on_deactivate(active), CallbackReturn::SUCCESS);
 
+  (void)vel_state->get_value(vel_val, true);
   (void)effort_state->get_value(eff_val, true);
+  EXPECT_NEAR(vel_val, 0.0, 1e-9);
   EXPECT_NEAR(eff_val, 0.0, 1e-9);
 }
 
@@ -725,88 +705,45 @@ TEST_F(HardwareInterfaceMockTest, DeactivateClearsEffortState) {
 // Simulated state values — zero velocity produces baseline readings
 // ============================================================
 
-TEST_F(HardwareInterfaceMockTest, ZeroVelocityIsNotMoving) {
-  // Default velocity command = 0.0; read() should report is_moving = 0
-  auto * is_moving = find_state("is_moving");
-  ASSERT_NE(is_moving, nullptr);
-
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-  hw_->read(t, d);
-
-  double val = -1.0;
-  (void)is_moving->get_value(val, true);
-  EXPECT_NEAR(val, 0.0, 1e-9);
-}
-
-TEST_F(HardwareInterfaceMockTest, NonZeroVelocityIsMoving) {
-  auto * vel_cmd = find_cmd("velocity");
+TEST_F(HardwareInterfaceMockTest, IsMovingReflectsVelocityThreshold) {
+  auto * vel_cmd  = find_cmd("velocity");
   auto * is_moving = find_state("is_moving");
   ASSERT_NE(vel_cmd, nullptr);
   ASSERT_NE(is_moving, nullptr);
 
-  (void)vel_cmd->set_value(1.0);  // 1.0 rad/s >> 0.01 threshold
   rclcpp::Time t(0, 0, RCL_ROS_TIME);
   rclcpp::Duration d(0, 0);
+  double val = -1.0;
+
+  // Zero velocity (default) → not moving
+  (void)vel_cmd->set_value(0.0);
   hw_->write(t, d);
   hw_->read(t, d);
-
-  double val = -1.0;
   (void)is_moving->get_value(val, true);
-  EXPECT_NEAR(val, 1.0, 1e-9);
-}
+  EXPECT_NEAR(val, 0.0, 1e-9) << "Zero velocity should not be moving";
 
-TEST_F(HardwareInterfaceMockTest, VelocityBelowIsMovingThresholdIsNotMoving) {
-  auto * vel_cmd = find_cmd("velocity");
-  auto * is_moving = find_state("is_moving");
-  ASSERT_NE(vel_cmd, nullptr);
-  ASSERT_NE(is_moving, nullptr);
-
-  (void)vel_cmd->set_value(0.005);  // 0.005 rad/s < 0.01 threshold
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
+  // Above threshold (1.0 rad/s > 0.01) → moving
+  (void)vel_cmd->set_value(1.0);
   hw_->write(t, d);
   hw_->read(t, d);
-
-  double val = -1.0;
   (void)is_moving->get_value(val, true);
-  EXPECT_NEAR(val, 0.0, 1e-9);
+  EXPECT_NEAR(val, 1.0, 1e-9) << "1.0 rad/s should be moving";
+
+  // Below threshold (0.005 rad/s < 0.01) → not moving
+  (void)vel_cmd->set_value(0.005);
+  hw_->write(t, d);
+  hw_->read(t, d);
+  (void)is_moving->get_value(val, true);
+  EXPECT_NEAR(val, 0.0, 1e-9) << "0.005 rad/s (below threshold) should not be moving";
 }
 
-TEST_F(HardwareInterfaceMockTest, ZeroVelocityVoltageIsBaseline) {
-  // Zero velocity → zero simulated effort → no voltage drop → 12.0 V
-  auto * voltage = find_state("voltage");
+TEST_F(HardwareInterfaceMockTest, ZeroVelocityProducesBaselineSensors) {
+  // Zero velocity → no load → baseline voltage (12.0V), temperature (25°C), zero current
+  auto * voltage  = find_state("voltage");
+  auto * temp     = find_state("temperature");
+  auto * current  = find_state("current");
   ASSERT_NE(voltage, nullptr);
-
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-  hw_->read(t, d);
-
-  double val = 0.0;
-  (void)voltage->get_value(val, true);
-  EXPECT_NEAR(val, 12.0, 1e-6);
-}
-
-TEST_F(HardwareInterfaceMockTest, ZeroVelocityTemperatureIsBaseline) {
-  // Zero velocity → zero thermal load → ambient temperature = 25.0°C
-  auto * temp = find_state("temperature");
   ASSERT_NE(temp, nullptr);
-
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-  hw_->read(t, d);
-
-  double val = 0.0;
-  (void)temp->get_value(val, true);
-  EXPECT_NEAR(val, 25.0, 1e-6);
-}
-
-TEST_F(HardwareInterfaceMockTest, ZeroVelocityCurrentIsZero) {
-  // Zero velocity → zero simulated effort → zero current draw
-  auto * current = find_state("current");
   ASSERT_NE(current, nullptr);
 
   rclcpp::Time t(0, 0, RCL_ROS_TIME);
@@ -814,70 +751,26 @@ TEST_F(HardwareInterfaceMockTest, ZeroVelocityCurrentIsZero) {
   hw_->write(t, d);
   hw_->read(t, d);
 
-  double val = -1.0;
-  (void)current->get_value(val, true);
-  EXPECT_NEAR(val, 0.0, 1e-9);
+  double v = 0.0, tmp = 0.0, cur = -1.0;
+  (void)voltage->get_value(v, true);
+  (void)temp->get_value(tmp, true);
+  (void)current->get_value(cur, true);
+  EXPECT_NEAR(v, 12.0, 1e-6);
+  EXPECT_NEAR(tmp, 25.0, 1e-6);
+  EXPECT_NEAR(cur, 0.0, 1e-9);
 }
 
-TEST_F(HardwareInterfaceMockTest, NonZeroVelocityReducesVoltage) {
-  // Non-zero velocity → simulated load → voltage drop below 12 V
-  auto * vel_cmd = find_cmd("velocity");
-  auto * voltage = find_state("voltage");
+TEST_F(HardwareInterfaceMockTest, NonZeroVelocityDrivesAllSensorStates) {
+  // Non-zero velocity → simulated load → voltage drops, temperature rises, current and effort > 0
+  auto * vel_cmd  = find_cmd("velocity");
+  auto * voltage  = find_state("voltage");
+  auto * temp     = find_state("temperature");
+  auto * current  = find_state("current");
+  auto * effort   = find_state("effort");
   ASSERT_NE(vel_cmd, nullptr);
   ASSERT_NE(voltage, nullptr);
-
-  (void)vel_cmd->set_value(1.0);
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-  hw_->read(t, d);
-
-  double val = 0.0;
-  (void)voltage->get_value(val, true);
-  EXPECT_LT(val, 12.0);
-}
-
-TEST_F(HardwareInterfaceMockTest, NonZeroVelocityIncreasesTemperature) {
-  // Non-zero velocity → thermal load → temperature above ambient
-  auto * vel_cmd = find_cmd("velocity");
-  auto * temp = find_state("temperature");
-  ASSERT_NE(vel_cmd, nullptr);
   ASSERT_NE(temp, nullptr);
-
-  (void)vel_cmd->set_value(1.0);
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-  hw_->read(t, d);
-
-  double val = 0.0;
-  (void)temp->get_value(val, true);
-  EXPECT_GT(val, 25.0);
-}
-
-TEST_F(HardwareInterfaceMockTest, NonZeroVelocityCurrentIsPositive) {
-  // Non-zero velocity → simulated effort → current draw > 0
-  auto * vel_cmd = find_cmd("velocity");
-  auto * current = find_state("current");
-  ASSERT_NE(vel_cmd, nullptr);
   ASSERT_NE(current, nullptr);
-
-  (void)vel_cmd->set_value(1.0);
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-  hw_->read(t, d);
-
-  double val = 0.0;
-  (void)current->get_value(val, true);
-  EXPECT_GT(val, 0.0);
-}
-
-TEST_F(HardwareInterfaceMockTest, NonZeroVelocityEffortStateIsNonZero) {
-  // Non-zero velocity produces a non-zero simulated effort (load percentage / 100)
-  auto * vel_cmd = find_cmd("velocity");
-  auto * effort = find_state("effort");
-  ASSERT_NE(vel_cmd, nullptr);
   ASSERT_NE(effort, nullptr);
 
   (void)vel_cmd->set_value(1.0);
@@ -886,9 +779,15 @@ TEST_F(HardwareInterfaceMockTest, NonZeroVelocityEffortStateIsNonZero) {
   hw_->write(t, d);
   hw_->read(t, d);
 
-  double val = 0.0;
-  (void)effort->get_value(val, true);
-  EXPECT_NE(val, 0.0);
+  double v = 0.0, tmp = 0.0, cur = 0.0, eff = 0.0;
+  (void)voltage->get_value(v, true);
+  (void)temp->get_value(tmp, true);
+  (void)current->get_value(cur, true);
+  (void)effort->get_value(eff, true);
+  EXPECT_LT(v, 12.0);
+  EXPECT_GT(tmp, 25.0);
+  EXPECT_GT(cur, 0.0);
+  EXPECT_NE(eff, 0.0);
 }
 
 // ============================================================
@@ -942,62 +841,35 @@ protected:
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr estop_client_;
 };
 
-TEST_F(HardwareInterfaceEmergencyStopTest, ServiceIsAvailableAfterConfigure) {
-  EXPECT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
+TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopServiceFlow) {
+  // Service is available after configure; activate and release both succeed
+  ASSERT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
+  EXPECT_TRUE(call_estop(true));   // activate
+  EXPECT_TRUE(call_estop(false));  // release
 }
 
-TEST_F(HardwareInterfaceEmergencyStopTest, ActivateServiceCallSucceeds) {
-  ASSERT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
-  EXPECT_TRUE(call_estop(true));
-}
-
-TEST_F(HardwareInterfaceEmergencyStopTest, ReleaseServiceCallSucceeds) {
-  ASSERT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
-  ASSERT_TRUE(call_estop(true));
-  EXPECT_TRUE(call_estop(false));
-}
-
-TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopClearsVelocityCommand) {
-  // After emergency stop activation, write() must clear velocity command to 0
+TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopClearsMotionState) {
+  // After emergency stop, write() clears velocity command → is_moving = 0
   ASSERT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
 
-  auto * vel_cmd = find_cmd("velocity");
-  ASSERT_NE(vel_cmd, nullptr);
-  (void)vel_cmd->set_value(2.0);
-
-  // call_estop processes the service callback via read()'s spin_some
-  ASSERT_TRUE(call_estop(true));
-
-  // write() sees hw_cmd_emergency_stop_ > 0.5 → activates stop → clears commands
-  rclcpp::Time t(0, 0, RCL_ROS_TIME);
-  rclcpp::Duration d(0, 0);
-  hw_->write(t, d);
-
-  double vel_val = 999.0;
-  (void)vel_cmd->get_value(vel_val, true);
-  EXPECT_NEAR(vel_val, 0.0, 1e-9);
-}
-
-TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopHoldsIsMovingAtZero) {
-  // After emergency stop, velocity command is cleared → read() reports not moving
-  ASSERT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
-
-  auto * vel_cmd = find_cmd("velocity");
+  auto * vel_cmd   = find_cmd("velocity");
   auto * is_moving = find_state("is_moving");
   ASSERT_NE(vel_cmd, nullptr);
   ASSERT_NE(is_moving, nullptr);
-  (void)vel_cmd->set_value(2.0);
 
+  (void)vel_cmd->set_value(2.0);
   ASSERT_TRUE(call_estop(true));
 
   rclcpp::Time t(0, 0, RCL_ROS_TIME);
   rclcpp::Duration d(0, 0);
-  hw_->write(t, d);   // clears velocity command
+  hw_->write(t, d);   // activates stop → clears velocity command
   hw_->read(t, d);    // hw_state_velocity_ = hw_cmd_velocity_ = 0 → is_moving = 0
 
-  double val = -1.0;
-  (void)is_moving->get_value(val, true);
-  EXPECT_NEAR(val, 0.0, 1e-9);
+  double vel_val = 999.0, is_moving_val = -1.0;
+  (void)vel_cmd->get_value(vel_val, true);
+  (void)is_moving->get_value(is_moving_val, true);
+  EXPECT_NEAR(vel_val, 0.0, 1e-9);
+  EXPECT_NEAR(is_moving_val, 0.0, 1e-9);
 }
 
 TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopReleaseAllowsVelocityCommand) {
@@ -1050,19 +922,11 @@ protected:
   std::vector<hardware_interface::CommandInterface> cmd_ifaces_;
 };
 
-TEST_F(HardwareInterfaceMultiJointTest, TotalStateInterfaceCount) {
-  // 2 joints × 7 state interfaces each = 14 total
+TEST_F(HardwareInterfaceMultiJointTest, AllInterfacesPresent) {
+  // 2 joints × 7 state interfaces = 14; command interfaces: 2 + 1 = 3
   EXPECT_EQ(state_ifaces_.size(), 14u);
-}
-
-TEST_F(HardwareInterfaceMultiJointTest, TotalCommandInterfaceCount) {
-  // wheel_joint (vel mode): velocity + acceleration = 2
-  // arm_joint   (pos mode): position only = 1
-  // Total = 3
   EXPECT_EQ(cmd_ifaces_.size(), 3u);
-}
 
-TEST_F(HardwareInterfaceMultiJointTest, AllStateInterfaceNamesPresent) {
   const std::vector<std::string> expected_types = {
     "position", "velocity", "effort", "voltage", "temperature", "current", "is_moving"
   };
@@ -1136,66 +1000,19 @@ TEST(HardwareInterfaceInitTest, MissingMotorIdReturnsError) {
   EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
 }
 
-TEST(HardwareInterfaceInitTest, InvalidMotorIdStringReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.joints[0].parameters["motor_id"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidOperatingModeStringReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.joints[0].parameters["operating_mode"] = "bad_mode";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidBaudRateStringReturnsError) {
+TEST(HardwareInterfaceInitTest, InvalidHardwareParameterStringReturnsError) {
+  // Non-numeric string for a hardware-level parameter → RETURN_ERROR
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.hardware_parameters["baud_rate"] = "not_a_number";
   EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
 }
 
-TEST(HardwareInterfaceInitTest, InvalidCommunicationTimeoutStringReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["communication_timeout_ms"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidMaxVelocityStepsStringReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["max_velocity_steps"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidMinPositionStringReturnsError) {
+TEST(HardwareInterfaceInitTest, InvalidJointParameterStringReturnsError) {
+  // Non-numeric string for a joint-level parameter → RETURN_ERROR
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.joints[0].parameters["min_position"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidMaxPositionStringReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.joints[0].parameters["max_position"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidMaxVelocityStringReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.joints[0].parameters["max_velocity"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, InvalidMaxEffortStringReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_effort_motor_info();
-  info.joints[0].parameters["max_effort"] = "not_a_number";
   EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
 }
 
@@ -1590,65 +1407,48 @@ TEST(HardwareInterfaceInitTest, VelocityModeWithoutVelocityReturnsError) {
 // on_init: proportional_acc_deadband parameter validation
 // ============================================================
 
-TEST(HardwareInterfaceInitTest, NegativeProportionalAccDeadbandReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_acc_deadband"] = "-0.1";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+TEST(HardwareInterfaceInitTest, InvalidProportionalAccDeadbandReturnsError) {
+  // Negative value and non-numeric string both reject
+  for (const char * val : {"-0.1", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.hardware_parameters["proportional_acc_deadband"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
 }
 
-TEST(HardwareInterfaceInitTest, NonNumericProportionalAccDeadbandReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_acc_deadband"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, ZeroProportionalAccDeadbandSucceeds) {
-  // 0.0 disables the deadband — should be accepted
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_acc_deadband"] = "0.0";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-}
-
-TEST(HardwareInterfaceInitTest, PositiveProportionalAccDeadbandSucceeds) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_acc_deadband"] = "0.1";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+TEST(HardwareInterfaceInitTest, ValidProportionalAccDeadbandSucceeds) {
+  // Zero disables the deadband; positive value enables it — both valid
+  for (const char * val : {"0.0", "0.1"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.hardware_parameters["proportional_acc_deadband"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
 }
 
 // ============================================================
 // on_init: proportional_vel_deadband parameter validation
 // ============================================================
 
-TEST(HardwareInterfaceInitTest, NegativeProportionalVelDeadbandReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_vel_deadband"] = "-0.01";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+TEST(HardwareInterfaceInitTest, InvalidProportionalVelDeadbandReturnsError) {
+  // Negative value and non-numeric string both reject
+  for (const char * val : {"-0.01", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.hardware_parameters["proportional_vel_deadband"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
 }
 
-TEST(HardwareInterfaceInitTest, NonNumericProportionalVelDeadbandReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_vel_deadband"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, ZeroProportionalVelDeadbandSucceeds) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_vel_deadband"] = "0.0";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-}
-
-TEST(HardwareInterfaceInitTest, PositiveProportionalVelDeadbandSucceeds) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  info.hardware_parameters["proportional_vel_deadband"] = "0.05";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+TEST(HardwareInterfaceInitTest, ValidProportionalVelDeadbandSucceeds) {
+  // Zero disables the deadband; positive value enables it — both valid
+  for (const char * val : {"0.0", "0.05"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.hardware_parameters["proportional_vel_deadband"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
 }
 
 // ============================================================
@@ -1656,26 +1456,14 @@ TEST(HardwareInterfaceInitTest, PositiveProportionalVelDeadbandSucceeds) {
 // Valid range: [0, max_velocity_steps].  Default max_velocity_steps = 3400.
 // ============================================================
 
-TEST(HardwareInterfaceInitTest, ProportionalVelMaxNegativeReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_position_motor_info();
-  info.hardware_parameters["proportional_vel_max"] = "-1";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, ProportionalVelMaxExceedsMaxVelocityStepsReturnsError) {
-  // Default max_velocity_steps = 3400; 3401 exceeds it
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_position_motor_info();
-  info.hardware_parameters["proportional_vel_max"] = "3401";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
-}
-
-TEST(HardwareInterfaceInitTest, NonNumericProportionalVelMaxReturnsError) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_position_motor_info();
-  info.hardware_parameters["proportional_vel_max"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+TEST(HardwareInterfaceInitTest, InvalidProportionalVelMaxReturnsError) {
+  // Negative, exceeding max_velocity_steps (3400), and non-numeric → RETURN_ERROR
+  for (const char * val : {"-1", "3401", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_position_motor_info();
+    info.hardware_parameters["proportional_vel_max"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
 }
 
 TEST(HardwareInterfaceInitTest, ProportionalVelMaxZeroSucceeds) {
@@ -1698,24 +1486,6 @@ TEST(HardwareInterfaceInitTest, ProportionalVelMaxWithSingleServoJointWarnsButSu
 // ============================================================
 // export_command_interfaces: servo mode optional interface exports
 // ============================================================
-
-TEST(HardwareInterfaceExportTest, CommandInterfacesServoModeWithVelocity) {
-  // Mode 0 with position + velocity in URDF → exports 2 command interfaces
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_servo_info_with_velocity();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-
-  auto cmd_ifaces = hw.export_command_interfaces();
-  EXPECT_EQ(cmd_ifaces.size(), 2u);
-
-  std::vector<std::string> names;
-  for (const auto & iface : cmd_ifaces) {
-    names.push_back(iface.get_interface_name());
-  }
-  EXPECT_NE(std::find(names.begin(), names.end(), "position"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
-  EXPECT_EQ(std::find(names.begin(), names.end(), "acceleration"), names.end());
-}
 
 TEST(HardwareInterfaceExportTest, CommandInterfacesServoModeWithVelocityAndAcc) {
   // Mode 0 with position + velocity + acceleration in URDF → exports 3 command interfaces
