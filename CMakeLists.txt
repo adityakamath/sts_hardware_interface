@@ -168,8 +168,11 @@ if(BUILD_TESTING)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   )
 
-  # Python launch tests: single motor example with use_mock:=true
-  add_launch_test(test/test_single_motor.launch.py)
+  # Python launch tests: single motor velocity example with use_mock:=true
+  add_launch_test(test/test_single_motor_velocity.launch.py)
+
+  # Python launch tests: single motor position example with use_mock:=true
+  add_launch_test(test/test_single_motor_position.launch.py)
 
   # Python launch tests: motor diagnostics integration
   add_launch_test(test/test_motor_diagnostics.launch.py)

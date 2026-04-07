@@ -41,7 +41,7 @@ def generate_test_description():
 
     pkg_share = get_package_share_directory('sts_hardware_interface')
     diagnostics_launch = os.path.join(pkg_share, 'launch', 'motor_diagnostics.launch.py')
-    single_motor_launch = os.path.join(pkg_share, 'launch', 'single_motor.launch.py')
+    single_motor_launch = os.path.join(pkg_share, 'launch', 'single_motor_velocity.launch.py')
 
     diagnostics = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(diagnostics_launch),
