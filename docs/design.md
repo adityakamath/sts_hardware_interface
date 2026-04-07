@@ -453,10 +453,18 @@ This hardware interface is compatible with any ros2_control controller that uses
 
 ### Single Motor (Velocity Mode)
 
-See [config/single_motor.urdf.xacro](../config/single_motor.urdf.xacro):
+See [config/single_motor_velocity.urdf.xacro](../config/single_motor_velocity.urdf.xacro):
 - One motor in velocity mode
 - Disabled SyncWrite (single motor)
 - Configurable motor ID via launch argument
+
+### Single Motor (Position Mode)
+
+See [config/single_motor_position.urdf.xacro](../config/single_motor_position.urdf.xacro):
+- One motor in position (servo) mode
+- Disabled SyncWrite (single motor)
+- Configurable motor ID via launch argument
+- Position limited to 0–2π radians
 
 ### Mixed Mode (Multi-Motor)
 
@@ -489,9 +497,10 @@ The package ships with a comprehensive test suite covering unit conversion math,
 test/
 ├── test_conversions.cpp              # Pure unit tests — zero ROS dependency
 ├── test_hardware_interface.cpp       # Mock-mode hardware interface tests
-├── test_single_motor.launch.py       # Integration: single motor (velocity mode)
-├── test_mixed_mode.launch.py         # Integration: six motors in mixed modes
-└── test_motor_diagnostics.launch.py  # Integration: motor diagnostics node
+├── test_single_motor_velocity.launch.py  # Integration: single motor (velocity mode)
+├── test_single_motor_position.launch.py  # Integration: single motor (position mode)
+├── test_mixed_mode.launch.py             # Integration: six motors in mixed modes
+└── test_motor_diagnostics.launch.py      # Integration: motor diagnostics node
 ```
 
 **Separation of concerns:**
@@ -570,9 +579,9 @@ Each transition is asserted to return `CallbackReturn::SUCCESS`. The `reset_stat
 
 ---
 
-### Integration Tests: `test_single_motor.launch.py`
+### Integration Tests: `test_single_motor_velocity.launch.py`
 
-Spins up the `single_motor` example launch configuration in mock mode and validates:
+Spins up the `single_motor_velocity` example launch configuration in mock mode and validates:
 
 | Test | What Is Checked |
 |---|---|
@@ -587,6 +596,24 @@ Spins up the `single_motor` example launch configuration in mock mode and valida
 
 - `test_velocity_controller_active` uses a **polling loop** (100 ms intervals, 30 s deadline) rather than a fixed sleep, making it robust to system load variation.
 - `test_emergency_stop_introspection_topic` triggers a service call to generate an introspection event, then waits for the `/_service_event` topic to respond. It wraps the `ServiceEvent` import in a `try/except` and calls `self.skipTest()` if the message type is not available in the installed ROS 2 distribution, preventing an import error from failing the entire test suite.
+
+---
+
+### Integration Tests: `test_single_motor_position.launch.py`
+
+Spins up the `single_motor_position` example launch configuration in mock mode and validates:
+
+| Test | What Is Checked |
+|---|---|
+| `test_joint_states_published` | `/joint_states` topic publishes `sensor_msgs/JointState` messages |
+| `test_joint_state_has_arm_joint` | `/joint_states` message contains `arm_joint` in the name list |
+| `test_controller_manager_available` | `/controller_manager/list_controllers` service is reachable |
+| `test_arm_controller_active` | `arm_controller` reaches `active` state (polled up to 30 s) |
+| `test_emergency_stop_service_available` | `/emergency_stop` service is reachable |
+
+**Notable implementation details:**
+
+- `test_arm_controller_active` uses the same **polling loop** pattern (100 ms intervals, 30 s deadline) as the velocity test, since `JointTrajectoryController` may take slightly longer to activate than a simple group controller.
 
 ---
 
@@ -607,7 +634,7 @@ Spins up the `mixed_mode` example in mock mode (six motors: two position, two ve
 
 ### Integration Tests: `test_motor_diagnostics.launch.py`
 
-Spins up the `motor_diagnostics` and `single_motor` launch files together in mock mode and validates:
+Spins up the `motor_diagnostics` and `single_motor_velocity` launch files together in mock mode and validates:
 
 | Test | What Is Checked |
 |---|---|
@@ -643,7 +670,7 @@ colcon test --packages-select sts_hardware_interface \
 
 # Run only the launch integration tests
 colcon test --packages-select sts_hardware_interface \
-  --ctest-args -R "test_single_motor|test_mixed_mode"
+  --ctest-args -R "test_single_motor_velocity|test_single_motor_position|test_mixed_mode|test_motor_diagnostics"
 ```
 
 **Prerequisites:**

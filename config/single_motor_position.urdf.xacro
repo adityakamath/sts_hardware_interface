@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="single_motor_position">
+
+  <!-- Arguments -->
+  <xacro:arg name="serial_port" default="/dev/ttyACM0"/>
+  <xacro:arg name="motor_id" default="1"/>
+  <xacro:arg name="baud_rate" default="1000000"/>
+  <xacro:arg name="use_mock" default="false"/>
+
+  <!-- Robot description -->
+  <link name="base_link"/>
+
+  <link name="arm_link"/>
+
+  <joint name="arm_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="arm_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="0.0" upper="6.283" effort="1.0" velocity="5.0"/>
+  </joint>
+
+  <!-- ros2_control hardware interface -->
+  <ros2_control name="sts_system" type="system">
+    <hardware>
+      <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+
+      <!-- Required Parameters -->
+      <param name="serial_port">$(arg serial_port)</param>  <!-- Serial port path (e.g., /dev/ttyACM0) -->
+
+      <!-- Optional Hardware Parameters (with defaults shown) -->
+      <param name="baud_rate">$(arg baud_rate)</param>  <!-- Baud rate: 9600-1000000 (default: 1000000) -->
+      <param name="communication_timeout_ms">100</param>  <!-- Serial timeout: 1-1000 ms (default: 100) -->
+      <param name="use_sync_write">false</param>  <!-- Enable SyncWrite for multi-motor setups (default: true, disabled for single motor) -->
+      <param name="enable_mock_mode">$(arg use_mock)</param>  <!-- Simulation mode without hardware (default: false) -->
+      <param name="max_velocity_steps">3400</param>  <!-- Max motor velocity in steps/s: STS3215=3400, STS3032=2900 (default: 3400) -->
+      <param name="reset_states_on_activate">true</param>  <!-- Reset position/velocity to zero on activation (default: true) -->
+    </hardware>
+
+    <joint name="arm_joint">
+      <!-- Required Joint Parameters -->
+      <param name="motor_id">$(arg motor_id)</param>  <!-- Motor ID on serial bus: 1-253 -->
+
+      <!-- Optional Joint Parameters (with defaults shown) -->
+      <param name="operating_mode">0</param>  <!-- 0=Position (servo), 1=Velocity (wheel), 2=PWM (effort) [default: 1] -->
+      <param name="min_position">0.0</param>  <!-- Min position limit in radians (default: 0.0) -->
+      <param name="max_position">6.283</param>  <!-- Max position limit in radians (default: 6.283, 2π) -->
+      <param name="max_velocity">5.22</param>  <!-- Max velocity limit in rad/s (default: 5.22, STS3215 max) -->
+
+      <!-- Command Interfaces (Mode 0: Position) -->
+      <command_interface name="position"/>  <!-- Target position in radians -->
+      <command_interface name="velocity"/>  <!-- Max speed in rad/s -->
+      <command_interface name="acceleration"/>  <!-- Acceleration value: 0-254 (unitless protocol value) -->
+
+      <!-- State Interfaces (always exported, declarations optional but recommended) -->
+      <state_interface name="position"/>  <!-- Current position (radians) -->
+      <state_interface name="velocity"/>  <!-- Current velocity (rad/s) -->
+      <state_interface name="effort"/>  <!-- Motor load (-1.0 to +1.0, normalized) -->
+      <state_interface name="voltage"/>  <!-- Supply voltage (volts) -->
+      <state_interface name="temperature"/>  <!-- Internal temperature (°C) -->
+      <state_interface name="current"/>  <!-- Motor current draw (amperes) -->
+      <state_interface name="is_moving"/>  <!-- Motion status (1.0=moving, 0.0=stopped) -->
+    </joint>
+  </ros2_control>
+
+</robot>

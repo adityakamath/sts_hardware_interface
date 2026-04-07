@@ -13,10 +13,10 @@
 # limitations under the License.
 
 """
-Launch test for single_motor example in mock mode.
+Launch test for single_motor_position example in mock mode.
 
 Verifies that the complete ros2_control stack starts successfully
-with a single velocity-mode motor in mock mode (no hardware required).
+with a single position-mode motor in mock mode (no hardware required).
 """
 
 import os
@@ -34,16 +34,17 @@ import rclpy
 @pytest.mark.launch_test
 @launch_testing.markers.keep_alive
 def generate_test_description():
-    """Generate launch description for the single motor integration test."""
+    """Generate launch description for the single motor position integration test."""
     from launch.actions import IncludeLaunchDescription
     from launch.launch_description_sources import PythonLaunchDescriptionSource
     from ament_index_python.packages import get_package_share_directory
 
     pkg_share = get_package_share_directory('sts_hardware_interface')
-    single_motor_launch = os.path.join(pkg_share, 'launch', 'single_motor.launch.py')
+    single_motor_position_launch = os.path.join(
+        pkg_share, 'launch', 'single_motor_position.launch.py')
 
-    single_motor = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(single_motor_launch),
+    single_motor_position = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(single_motor_position_launch),
         launch_arguments={
             'use_mock': 'true',
             'gui': 'false',
@@ -51,13 +52,13 @@ def generate_test_description():
     )
 
     return launch.LaunchDescription([
-        single_motor,
+        single_motor_position,
         launch_testing.actions.ReadyToTest(),
     ])
 
 
-class TestSingleMotorLaunch(unittest.TestCase):
-    """Test that single motor stack launches and basic topics are available."""
+class TestSingleMotorPositionLaunch(unittest.TestCase):
+    """Test that single motor position stack launches and basic topics are available."""
 
     @classmethod
     def setUpClass(cls):
@@ -68,7 +69,7 @@ class TestSingleMotorLaunch(unittest.TestCase):
         rclpy.shutdown()
 
     def setUp(self):
-        self.node = rclpy.create_node('test_single_motor_node')
+        self.node = rclpy.create_node('test_single_motor_position_node')
 
     def tearDown(self):
         self.node.destroy_node()
@@ -97,8 +98,8 @@ class TestSingleMotorLaunch(unittest.TestCase):
             '/joint_states not received within 30 seconds'
         )
 
-    def test_joint_state_has_wheel_joint(self):
-        """Verify /joint_states contains wheel_joint."""
+    def test_joint_state_has_arm_joint(self):
+        """Verify /joint_states contains arm_joint."""
         from sensor_msgs.msg import JointState
         received = []
 
@@ -111,7 +112,7 @@ class TestSingleMotorLaunch(unittest.TestCase):
 
         self.node.destroy_subscription(sub)
         self.assertTrue(received, '/joint_states not received')
-        self.assertIn('wheel_joint', received[0].name)
+        self.assertIn('arm_joint', received[0].name)
 
     def test_controller_manager_available(self):
         """Verify /controller_manager/list_controllers service is reachable."""
@@ -123,14 +124,13 @@ class TestSingleMotorLaunch(unittest.TestCase):
         )
         self.node.destroy_client(client)
 
-    def test_velocity_controller_active(self):
-        """Verify velocity_controller is in 'active' state."""
+    def test_arm_controller_active(self):
+        """Verify arm_controller is in 'active' state."""
         from controller_manager_msgs.srv import ListControllers
         client = self.node.create_client(ListControllers, '/controller_manager/list_controllers')
         self.assertTrue(client.wait_for_service(timeout_sec=30.0))
 
-        # Poll until velocity_controller reaches 'active' state or timeout.
-        # The spawner may still be configuring/activating when the service first responds.
+        # Poll until arm_controller reaches 'active' state or timeout.
         deadline = time.time() + 30.0
         controller_states = {}
         while time.time() < deadline:
@@ -140,16 +140,16 @@ class TestSingleMotorLaunch(unittest.TestCase):
                 rclpy.spin_once(self.node, timeout_sec=0.1)
             if future.done():
                 controller_states = {c.name: c.state for c in future.result().controller}
-                if controller_states.get('velocity_controller') == 'active':
+                if controller_states.get('arm_controller') == 'active':
                     break
             time.sleep(0.5)
 
         self.node.destroy_client(client)
-        self.assertIn('velocity_controller', controller_states,
-                      f'velocity_controller not found. '
+        self.assertIn('arm_controller', controller_states,
+                      f'arm_controller not found. '
                       f'Available: {list(controller_states.keys())}')
-        self.assertEqual(controller_states['velocity_controller'], 'active',
-                         f'velocity_controller state: {controller_states["velocity_controller"]}')
+        self.assertEqual(controller_states['arm_controller'], 'active',
+                         f'arm_controller state: {controller_states["arm_controller"]}')
 
     def test_emergency_stop_service_available(self):
         """Verify /emergency_stop service is reachable."""
@@ -160,31 +160,3 @@ class TestSingleMotorLaunch(unittest.TestCase):
             '/emergency_stop service not available'
         )
         self.node.destroy_client(client)
-
-    def test_emergency_stop_introspection_topic(self):
-        """Verify /emergency_stop/_service_event topic is published after a service call."""
-        try:
-            from rcl_interfaces.msg import ServiceEvent
-        except ImportError:
-            self.skipTest('ServiceEvent not available in this ROS 2 version')
-        from std_srvs.srv import SetBool
-
-        received = []
-        sub = self.node.create_subscription(
-            ServiceEvent, '/emergency_stop/_service_event', received.append, 10)
-
-        # Trigger the service to generate introspection events
-        client = self.node.create_client(SetBool, '/emergency_stop')
-        client.wait_for_service(timeout_sec=10.0)
-
-        req = SetBool.Request()
-        req.data = True
-        client.call_async(req)
-
-        deadline = time.time() + 10.0
-        while time.time() < deadline and not received:
-            rclpy.spin_once(self.node, timeout_sec=0.1)
-
-        self.node.destroy_subscription(sub)
-        self.node.destroy_client(client)
-        self.assertTrue(received, '/emergency_stop/_service_event not received after call')

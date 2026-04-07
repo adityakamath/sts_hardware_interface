@@ -30,6 +30,7 @@ import launch_testing.actions
 import launch_testing.markers
 import pytest
 import rclpy
+from rclpy.qos import qos_profile_sensor_data
 
 
 @pytest.mark.launch_test
@@ -41,7 +42,7 @@ def generate_test_description():
 
     pkg_share = get_package_share_directory('sts_hardware_interface')
     diagnostics_launch = os.path.join(pkg_share, 'launch', 'motor_diagnostics.launch.py')
-    single_motor_launch = os.path.join(pkg_share, 'launch', 'single_motor.launch.py')
+    single_motor_launch = os.path.join(pkg_share, 'launch', 'single_motor_velocity.launch.py')
 
     diagnostics = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(diagnostics_launch),
@@ -82,7 +83,7 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
         """Wait for any /diagnostics message."""
         received = []
         sub = self.node.create_subscription(
-            DiagnosticArray, '/diagnostics', received.append, 10)
+            DiagnosticArray, '/diagnostics', received.append, qos_profile_sensor_data)
         deadline = time.time() + timeout_sec
         while time.time() < deadline and not received:
             rclpy.spin_once(self.node, timeout_sec=0.1)
@@ -99,7 +100,8 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
                 if s.level == expected_level and keyword in s.message:
                     matched.append(s)
 
-        sub = self.node.create_subscription(DiagnosticArray, '/diagnostics', on_diag, 10)
+        sub = self.node.create_subscription(
+            DiagnosticArray, '/diagnostics', on_diag, qos_profile_sensor_data)
         pub = self.node.create_publisher(DynamicJointState, '/dynamic_joint_states', 10)
 
         msg = DynamicJointState()
