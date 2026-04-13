@@ -33,3 +33,6 @@ ament_index/
 *~
 *.egg-info/
 *.pyo
+
+# graphify
+graphify-out/
