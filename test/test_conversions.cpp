@@ -48,8 +48,9 @@ TEST(ConversionsTest, RadiansToRawPosition_Zero) {
 }
 
 TEST(ConversionsTest, RadiansToRawPosition_StaysInRange) {
-  // 2π, large positive, and negative inputs all normalise to [0, 4095]
-  for (double rad : {2.0 * M_PI, 100.0, -1.0}) {
+  // 2π, large positive, negative, and ±∞ all clamp to [0, 4095]
+  const double inf = std::numeric_limits<double>::infinity();
+  for (double rad : {2.0 * M_PI, 100.0, -1.0, inf, -inf}) {
     int result = radians_to_raw_position(rad);
     EXPECT_GE(result, 0) << "out of range for rad=" << rad;
     EXPECT_LE(result, 4095) << "out of range for rad=" << rad;
@@ -91,25 +92,24 @@ TEST(ConversionsTest, RadSToRawVelocity_SignInversion) {
 }
 
 TEST(ConversionsTest, RadSToRawVelocity_Clamps) {
-  // Very high values are clamped symmetrically to ±max_velocity_steps
+  // Very high values and ±∞ are clamped symmetrically to ±max_velocity_steps
   EXPECT_EQ(rad_s_to_raw_velocity(-1000.0, 500), 500);
   EXPECT_EQ(rad_s_to_raw_velocity(1000.0, 500), -500);
+  const double inf = std::numeric_limits<double>::infinity();
+  for (double v : {inf, -inf}) {
+    int result = rad_s_to_raw_velocity(v, 500);
+    EXPECT_GE(result, -500) << "out of range for v=" << v;
+    EXPECT_LE(result, 500) << "out of range for v=" << v;
+  }
 }
 
 // ---- effort_to_raw_pwm ----
 
-TEST(ConversionsTest, EffortToRawPwm_Zero) {
+TEST(ConversionsTest, EffortToRawPwm_KnownValues) {
+  // 0 → 0; ±1.0 → ±1000 (STS_MAX_PWM); ±0.5 → ±500
   EXPECT_EQ(effort_to_raw_pwm(0.0), 0);
-}
-
-TEST(ConversionsTest, EffortToRawPwm_Boundaries) {
-  // ±1.0 effort → ±STS_MAX_PWM (1000)
   EXPECT_EQ(effort_to_raw_pwm(1.0), 1000);
   EXPECT_EQ(effort_to_raw_pwm(-1.0), -1000);
-}
-
-TEST(ConversionsTest, EffortToRawPwm_Midpoints) {
-  // ±0.5 effort → ±500
   EXPECT_EQ(effort_to_raw_pwm(0.5), 500);
   EXPECT_EQ(effort_to_raw_pwm(-0.5), -500);
 }
@@ -122,21 +122,15 @@ TEST(ConversionsTest, EffortToRawPwm_Clamps) {
 
 // ---- clamp_acceleration ----
 
-TEST(ConversionsTest, ClampAcceleration_Zero) {
+TEST(ConversionsTest, ClampAcceleration_KnownValues) {
+  // 0 → 0; STS_MAX_ACCELERATION (254) → 254
   EXPECT_EQ(clamp_acceleration(0.0), 0);
-}
-
-TEST(ConversionsTest, ClampAcceleration_Max) {
-  // STS_MAX_ACCELERATION = 254
   EXPECT_EQ(clamp_acceleration(254.0), 254);
 }
 
-TEST(ConversionsTest, ClampAcceleration_ClampsAboveMax) {
-  EXPECT_EQ(clamp_acceleration(300.0), 254);
-}
-
-TEST(ConversionsTest, ClampAcceleration_ClampsNegative) {
-  EXPECT_EQ(clamp_acceleration(-10.0), 0);
+TEST(ConversionsTest, ClampAcceleration_Clamps) {
+  EXPECT_EQ(clamp_acceleration(300.0), 254);  // above max → max
+  EXPECT_EQ(clamp_acceleration(-10.0), 0);    // negative → 0
 }
 
 // ---- normalize_effort ----
@@ -149,12 +143,9 @@ TEST(ConversionsTest, NormalizeEffort_NoLimit_PassThrough) {
   EXPECT_NEAR(normalize_effort(5.0, 1.0, false), 5.0, 1e-9);
 }
 
-TEST(ConversionsTest, NormalizeEffort_WithLimit_Zero) {
+TEST(ConversionsTest, NormalizeEffort_WithLimit_InBounds) {
+  // Zero and in-range values are returned unchanged
   EXPECT_NEAR(normalize_effort(0.0, 1.0, true), 0.0, 1e-9);
-}
-
-TEST(ConversionsTest, NormalizeEffort_WithLimit_PassesThrough) {
-  // Values at or within [-max_effort, max_effort] are returned unchanged
   EXPECT_NEAR(normalize_effort(1.0, 1.0, true), 1.0, 1e-9);
   EXPECT_NEAR(normalize_effort(0.5, 1.0, true), 0.5, 1e-9);
 }
@@ -187,12 +178,9 @@ TEST(ConversionsTest, ApplyLimit_WithinBounds) {
   EXPECT_NEAR(apply_limit(10.0, 0.0, 10.0, true), 10.0, 1e-9);
 }
 
-TEST(ConversionsTest, ApplyLimit_BelowMin_Clamped) {
-  EXPECT_NEAR(apply_limit(-1.0, 0.0, 10.0, true), 0.0, 1e-9);
-}
-
-TEST(ConversionsTest, ApplyLimit_AboveMax_Clamped) {
-  EXPECT_NEAR(apply_limit(15.0, 0.0, 10.0, true), 10.0, 1e-9);
+TEST(ConversionsTest, ApplyLimit_OutOfBounds_Clamped) {
+  EXPECT_NEAR(apply_limit(-1.0, 0.0, 10.0, true), 0.0, 1e-9);   // below min → min
+  EXPECT_NEAR(apply_limit(15.0, 0.0, 10.0, true), 10.0, 1e-9);  // above max → max
 }
 
 TEST(ConversionsTest, ApplyLimit_NoLimit_PassThrough) {
@@ -220,12 +208,6 @@ TEST(ConversionsTest, RadSToRawSpeed_Zero) {
   EXPECT_EQ(rad_s_to_raw_speed(0.0, TEST_MAX_VEL_STEPS), 0);
 }
 
-TEST(ConversionsTest, RadSToRawSpeed_Positive) {
-  // Positive speed magnitude → positive raw (no sign inversion)
-  int result = rad_s_to_raw_speed(1.0, TEST_MAX_VEL_STEPS);
-  EXPECT_GT(result, 0);
-}
-
 TEST(ConversionsTest, RadSToRawSpeed_NegativeClampsToZero) {
   // Negative magnitude (direction-less: magnitudes are unsigned) → clamped to 0
   int result = rad_s_to_raw_speed(-1.0, TEST_MAX_VEL_STEPS);
@@ -233,9 +215,14 @@ TEST(ConversionsTest, RadSToRawSpeed_NegativeClampsToZero) {
 }
 
 TEST(ConversionsTest, RadSToRawSpeed_ClampsToMax) {
-  // Very high speed → clamped to max_velocity_steps
-  int result = rad_s_to_raw_speed(10000.0, 500);
-  EXPECT_EQ(result, 500);
+  // Very high speed and ±∞ clamp to [0, max_velocity_steps]
+  EXPECT_EQ(rad_s_to_raw_speed(10000.0, 500), 500);
+  const double inf = std::numeric_limits<double>::infinity();
+  for (double v : {inf, -inf}) {
+    int result = rad_s_to_raw_speed(v, 500);
+    EXPECT_GE(result, 0) << "out of range for v=" << v;
+    EXPECT_LE(result, 500) << "out of range for v=" << v;
+  }
 }
 
 TEST(ConversionsTest, RadSToRawSpeed_NoSignInversionContrastWithVelocity) {

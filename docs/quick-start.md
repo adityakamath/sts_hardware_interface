@@ -267,11 +267,11 @@ ros2 topic echo /diagnostics
 
 | Argument | Type | Default | Available In | Description |
 | --- | --- | --- | --- | --- |
-| `serial_port` | string | `/dev/ttyACM0` | Both | Serial port path |
-| `baud_rate` | int | `1000000` | Both | Communication baud rate |
-| `use_mock` | bool | `false` | Both | Enable mock mode (no hardware) |
+| `serial_port` | string | `/dev/ttyACM0` | All | Serial port path |
+| `baud_rate` | int | `1000000` | All | Communication baud rate |
+| `use_mock` | bool | `false` | All | Enable mock mode (no hardware) |
 | `motor_id` | int | `1` | single_motor_velocity, single_motor_position | Motor ID on serial bus |
-| `gui` | bool | `false` | Both | Launch joint_state_publisher_gui for manual control (optional, requires desktop environment with display) |
+| `gui` | bool | `false` | All | Launch joint_state_publisher_gui for manual control (optional, requires desktop environment with display) |
 
 ---
 
@@ -533,8 +533,8 @@ colcon test-result --verbose
 
 | Test File | Type | Tests | What Is Covered |
 |---|---|---|---|
-| `test_conversions.cpp` | C++ unit | 34 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
-| `test_hardware_interface.cpp` | C++ unit | 70 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
+| `test_conversions.cpp` | C++ unit | 29 | All unit conversion math (steps↔radians with configurable center, velocity, effort, speed, acceleration, clamping, ±∞ edge cases) |
+| `test_hardware_interface.cpp` | C++ unit | 71 | Mock-mode lifecycle, parameter validation (including `position_center_steps`), read/write behavior for all three operating modes, emergency stop |
 | `test_single_motor_velocity.launch.py` | Launch integration | 6 | Full controller_manager stack — single velocity-mode motor in mock mode |
 | `test_single_motor_position.launch.py` | Launch integration | 5 | Full controller_manager stack — single position-mode motor in mock mode |
 | `test_mixed_mode.launch.py` | Launch integration | 6 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |

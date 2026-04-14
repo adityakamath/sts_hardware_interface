@@ -411,47 +411,41 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsIgnoredInNonServoModes) {
 
 // ---- export_state_interfaces ----
 
-TEST(HardwareInterfaceExportTest, StateInterfacesCount) {
-  // Each joint always exports 7 state interfaces:
-  // position, velocity, effort, voltage, temperature, current, is_moving
+TEST(HardwareInterfaceExportTest, StateInterfaces) {
+  // Each joint always exports exactly 7 state interfaces with the correct names
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
 
   auto state_ifaces = hw.export_state_interfaces();
   EXPECT_EQ(state_ifaces.size(), 7u);
-}
 
-TEST(HardwareInterfaceExportTest, StateInterfaceNames) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-
-  auto state_ifaces = hw.export_state_interfaces();
   std::vector<std::string> names;
   for (const auto & iface : state_ifaces) {
     names.push_back(iface.get_interface_name());
   }
-
-  EXPECT_NE(std::find(names.begin(), names.end(), "position"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "effort"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "voltage"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "temperature"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "current"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "is_moving"), names.end());
+  for (const auto & expected : {"position", "velocity", "effort", "voltage", "temperature", "current", "is_moving"}) {
+    EXPECT_NE(std::find(names.begin(), names.end(), expected), names.end()) << "Missing: " << expected;
+  }
 }
 
 // ---- export_command_interfaces ----
 
 TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityMode) {
-  // Mode 1: velocity + acceleration = 2 command interfaces
+  // Mode 1: velocity + acceleration = 2 command interfaces with correct names
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
 
   auto cmd_ifaces = hw.export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 2u);
+
+  std::vector<std::string> names;
+  for (const auto & iface : cmd_ifaces) {
+    names.push_back(iface.get_interface_name());
+  }
+  EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
+  EXPECT_NE(std::find(names.begin(), names.end(), "acceleration"), names.end());
 }
 
 TEST(HardwareInterfaceExportTest, CommandInterfacesPositionMode) {
@@ -472,20 +466,6 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesEffortMode) {
 
   auto cmd_ifaces = hw.export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 1u);
-}
-
-TEST(HardwareInterfaceExportTest, CommandInterfaceNamesVelocityMode) {
-  sts_hardware_interface::STSHardwareInterface hw;
-  auto info = make_valid_single_motor_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-
-  auto cmd_ifaces = hw.export_command_interfaces();
-  std::vector<std::string> names;
-  for (const auto & iface : cmd_ifaces) {
-    names.push_back(iface.get_interface_name());
-  }
-  EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
-  EXPECT_NE(std::find(names.begin(), names.end(), "acceleration"), names.end());
 }
 
 // ---- on_configure / on_activate / on_deactivate / on_cleanup ----
