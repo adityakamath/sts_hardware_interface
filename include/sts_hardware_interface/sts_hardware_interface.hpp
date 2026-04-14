@@ -77,6 +77,9 @@ namespace sts_hardware_interface
  * - operating_mode: 0=servo, 1=velocity, 2=PWM (default: 1)
  * - min_position: Minimum position limit in radians (default: 0.0)
  * - max_position: Maximum position limit in radians (default: 6.283, 2π)
+ * - position_center_steps: Raw encoder step that maps to 0 rad, 0-4095 or -1 for default
+ *                          (default: 4095). Only used in position mode (mode 0). Set to your
+ *                          servo's calibrated center; e.g. 2048 for [-π, +π] range.
  * - max_velocity: Maximum velocity limit in rad/s (default: 5.22, STS3215 max: 3400 steps/s)
  *                 NOTE: Adjust this for other STS motors (e.g., STS3032 max: 2900 steps/s)
  * - max_effort: Maximum effort limit, 0-1 for PWM mode (default: 1.0)
@@ -218,6 +221,7 @@ private:
   std::vector<bool> has_position_limits_;
   std::vector<bool> has_velocity_limits_;
   std::vector<bool> has_effort_limits_;
+  std::vector<int> position_center_;  // Raw step for 0 rad per joint (default: STS_DEFAULT_CENTER=4095)
 
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;

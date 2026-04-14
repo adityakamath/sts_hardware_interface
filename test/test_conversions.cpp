@@ -32,9 +32,7 @@ TEST(ConversionsTest, RawPositionToRadians_KnownValues) {
 }
 
 TEST(ConversionsTest, RawPositionToRadians_Roundtrip) {
-  // raw_position_to_radians uses STS_MAX_POSITION=4095 while radians_to_raw_position
-  // uses STEPS_PER_REVOLUTION=4096, producing a systematic +1 offset on the inverse path.
-  // The roundtrip is therefore lossy by exactly 1 step for most values.
+  // With the unified formula, roundtrip error is ≤1 step (quantization only).
   for (int raw = 0; raw <= 4095; raw += 100) {
     double rad = raw_position_to_radians(raw);
     int recovered = radians_to_raw_position(rad);
@@ -45,8 +43,8 @@ TEST(ConversionsTest, RawPositionToRadians_Roundtrip) {
 // ---- radians_to_raw_position ----
 
 TEST(ConversionsTest, RadiansToRawPosition_Zero) {
-  // 0 radians → raw=0: fmod(-0.0, 2π)=0, so 0 * RAD_TO_STEPS = 0
-  EXPECT_EQ(radians_to_raw_position(0.0), 0);
+  // 0 rad maps to center step (4095 by default)
+  EXPECT_EQ(radians_to_raw_position(0.0), 4095);
 }
 
 TEST(ConversionsTest, RadiansToRawPosition_StaysInRange) {
@@ -250,6 +248,41 @@ TEST(ConversionsTest, RadSToRawSpeed_NoSignInversionContrastWithVelocity) {
   EXPECT_LT(vel_raw, 0);          // velocity: sign-inverted → negative
   EXPECT_GT(spd_raw, 0);          // speed: unsigned magnitude → positive
   EXPECT_EQ(-vel_raw, spd_raw);   // same magnitude
+}
+
+// ---- custom center ----
+
+TEST(ConversionsTest, CustomCenter_KnownValues) {
+  // read: center=2048 maps step 2048 → 0 rad
+  EXPECT_NEAR(raw_position_to_radians(2048, 2048), 0.0, 1e-6);
+  EXPECT_NEAR(raw_position_to_radians(0,    2048), 2048.0 * (2.0 * M_PI / 4096.0), 1e-6);
+  EXPECT_NEAR(raw_position_to_radians(4095, 2048), -2047.0 * (2.0 * M_PI / 4096.0), 1e-6);
+  // write: 0 rad → step 2048
+  EXPECT_EQ(radians_to_raw_position(0.0, 2048), 2048);
+  EXPECT_NEAR(radians_to_raw_position( 2.0, 2048), 744,  1);
+  EXPECT_NEAR(radians_to_raw_position(-2.0, 2048), 3352, 1);
+  // -0.1 rad → step 2113 (short path from center, NOT wrapping around)
+  EXPECT_NEAR(radians_to_raw_position(-0.1, 2048), 2113, 1);
+  EXPECT_EQ(  radians_to_raw_position( M_PI, 2048), 0);     // clamped
+  EXPECT_EQ(  radians_to_raw_position(-M_PI, 2048), 4095);  // clamped
+}
+
+TEST(ConversionsTest, CustomCenter_RoundtripAndClamping) {
+  // roundtrip with center=2048
+  for (double rad : {-2.0, -1.0, -0.1, 0.0, 0.1, 1.0, 2.0}) {
+    int raw = radians_to_raw_position(rad, 2048);
+    double recovered = raw_position_to_radians(raw, 2048);
+    EXPECT_NEAR(recovered, rad, 2.0 * M_PI / 4096.0 + 1e-9)
+      << "Roundtrip error too large at rad=" << rad;
+  }
+  // output always clamped to [0, 4095] for any center
+  for (int center : {0, 1000, 2048, 3000, 4095}) {
+    for (double rad : {-M_PI, 0.0, M_PI, 100.0, -100.0}) {
+      int result = radians_to_raw_position(rad, center);
+      EXPECT_GE(result, 0) << "out of range for center=" << center << ", rad=" << rad;
+      EXPECT_LE(result, 4095) << "out of range for center=" << center << ", rad=" << rad;
+    }
+  }
 }
 
 int main(int argc, char ** argv)

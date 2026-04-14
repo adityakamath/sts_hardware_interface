@@ -353,6 +353,56 @@ TEST(HardwareInterfaceInitTest, ZeroMaxEffortReturnsError) {
   EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
 }
 
+// ---- on_init: position_center_steps validation ----
+
+TEST(HardwareInterfaceInitTest, PositionCenterStepsValidValues) {
+  // center=2048 in servo mode succeeds
+  sts_hardware_interface::STSHardwareInterface hw1;
+  auto info1 = make_valid_position_motor_info();
+  info1.joints[0].parameters["position_center_steps"] = "2048";
+  EXPECT_EQ(hw1.on_init(info1), CallbackReturn::SUCCESS);
+
+  // -1 (explicit legacy default) also succeeds
+  sts_hardware_interface::STSHardwareInterface hw2;
+  auto info2 = make_valid_position_motor_info();
+  info2.joints[0].parameters["position_center_steps"] = "-1";
+  EXPECT_EQ(hw2.on_init(info2), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, PositionCenterStepsInvalidValues) {
+  // out of range (> 4095)
+  sts_hardware_interface::STSHardwareInterface hw1;
+  auto info1 = make_valid_position_motor_info();
+  info1.joints[0].parameters["position_center_steps"] = "5000";
+  EXPECT_EQ(hw1.on_init(info1), CallbackReturn::ERROR);
+
+  // out of range (< -1)
+  sts_hardware_interface::STSHardwareInterface hw2;
+  auto info2 = make_valid_position_motor_info();
+  info2.joints[0].parameters["position_center_steps"] = "-2";
+  EXPECT_EQ(hw2.on_init(info2), CallbackReturn::ERROR);
+
+  // non-numeric string
+  sts_hardware_interface::STSHardwareInterface hw3;
+  auto info3 = make_valid_position_motor_info();
+  info3.joints[0].parameters["position_center_steps"] = "abc";
+  EXPECT_EQ(hw3.on_init(info3), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, PositionCenterStepsIgnoredInNonServoModes) {
+  // velocity mode (1): succeeds with warning
+  sts_hardware_interface::STSHardwareInterface hw1;
+  auto info1 = make_valid_single_motor_info("/dev/ttyACM0", "1", "1");
+  info1.joints[0].parameters["position_center_steps"] = "2048";
+  EXPECT_EQ(hw1.on_init(info1), CallbackReturn::SUCCESS);
+
+  // PWM mode (2): succeeds with warning
+  sts_hardware_interface::STSHardwareInterface hw2;
+  auto info2 = make_valid_effort_motor_info();
+  info2.joints[0].parameters["position_center_steps"] = "2048";
+  EXPECT_EQ(hw2.on_init(info2), CallbackReturn::SUCCESS);
+}
+
 // ---- export_state_interfaces ----
 
 TEST(HardwareInterfaceExportTest, StateInterfacesCount) {
