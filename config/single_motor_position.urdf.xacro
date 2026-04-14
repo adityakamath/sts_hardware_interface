@@ -46,6 +46,7 @@
       <param name="min_position">0.0</param>  <!-- Min position limit in radians (default: 0.0) -->
       <param name="max_position">6.283</param>  <!-- Max position limit in radians (default: 6.283, 2π) -->
       <param name="max_velocity">5.22</param>  <!-- Max velocity limit in rad/s (default: 5.22, STS3215 max) -->
+      <!-- <param name="position_center_steps">4095</param> -->  <!-- Motor step mapped to 0 rad: 0-4095 (default: 4095 → [0, 2π); set to 2048 for [−π, +π]) -->
 
       <!-- Command Interfaces (Mode 0: Position) -->
       <command_interface name="position"/>  <!-- Target position in radians -->

@@ -167,7 +167,7 @@ ros2 launch sts_hardware_interface single_motor_position.launch.py use_mock:=tru
 
 **What it does:**
 
-1. Loads robot description with one revolute joint (`arm_joint`) limited to 0–2π radians
+1. Loads robot description with one revolute joint (`arm_joint`) limited to 0–2π radians (default range; set `position_center_steps: 2048` in the URDF for a ±π range)
 2. Starts `ros2_control` node with joint trajectory controller
 3. Spawns `joint_state_broadcaster` and `arm_controller`
 
@@ -534,7 +534,7 @@ colcon test-result --verbose
 | Test File | Type | Tests | What Is Covered |
 |---|---|---|---|
 | `test_conversions.cpp` | C++ unit | 29 | All unit conversion math (steps↔radians with configurable center, velocity, effort, speed, acceleration, clamping, ±∞ edge cases) |
-| `test_hardware_interface.cpp` | C++ unit | 71 | Mock-mode lifecycle, parameter validation (including `position_center_steps`), read/write behavior for all three operating modes, emergency stop |
+| `test_hardware_interface.cpp` | C++ unit | 71 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
 | `test_single_motor_velocity.launch.py` | Launch integration | 6 | Full controller_manager stack — single velocity-mode motor in mock mode |
 | `test_single_motor_position.launch.py` | Launch integration | 5 | Full controller_manager stack — single position-mode motor in mock mode |
 | `test_mixed_mode.launch.py` | Launch integration | 6 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
