@@ -14,12 +14,11 @@ both real hardware and mock/simulation mode for testing without motors.
 
 Example usage:
     ros2 launch sts_hardware_interface single_motor_position.launch.py serial_port:=/dev/ttyACM0
-    ros2 launch sts_hardware_interface single_motor_position.launch.py use_mock:=true gui:=true
+    ros2 launch sts_hardware_interface single_motor_position.launch.py use_mock:=true
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -72,19 +71,11 @@ def generate_launch_description():
     )
 
     declared_arguments.append(
-        DeclareLaunchArgument(
-            'gui',
-            default_value='false',
-            description='Start joint_state_publisher_gui for manual control'
-        )
-    )
-
     # Initialize Arguments
     serial_port = LaunchConfiguration('serial_port')
     motor_id = LaunchConfiguration('motor_id')
     baud_rate = LaunchConfiguration('baud_rate')
     use_mock = LaunchConfiguration('use_mock')
-    gui = LaunchConfiguration('gui')
 
     # Get URDF via xacro
     robot_description_content = Command(
@@ -144,19 +135,11 @@ def generate_launch_description():
         arguments=['arm_controller', '--controller-manager', '/controller_manager'],
     )
 
-    # Joint state publisher GUI (optional)
-    joint_state_publisher_gui_node = Node(
-        package='joint_state_publisher_gui',
-        executable='joint_state_publisher_gui',
-        condition=IfCondition(gui),
-    )
-
     nodes = [
         robot_state_publisher_node,
         controller_manager_node,
         joint_state_broadcaster_spawner,
         arm_controller_spawner,
-        joint_state_publisher_gui_node,
     ]
 
     return LaunchDescription(declared_arguments + nodes)

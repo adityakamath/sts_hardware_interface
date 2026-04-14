@@ -17,12 +17,11 @@ The configuration showcases:
 Example usage:
     ros2 launch sts_hardware_interface mixed_mode.launch.py serial_port:=/dev/ttyACM0
     ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true
-    ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true gui:=true
+    ros2 launch sts_hardware_interface mixed_mode.launch.py use_mock:=true
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -67,21 +66,10 @@ def generate_launch_description():
     )
 
     declared_arguments.append(
-        DeclareLaunchArgument(
-            'gui',
-            default_value='false',
-            description=(
-                'Start joint_state_publisher_gui for manual control'
-                ' (requires desktop environment)'
-            )
-        )
-    )
-
     # Initialize Arguments
     serial_port = LaunchConfiguration('serial_port')
     baud_rate = LaunchConfiguration('baud_rate')
     use_mock = LaunchConfiguration('use_mock')
-    gui = LaunchConfiguration('gui')
 
     # Get URDF via xacro
     robot_description_content = Command(
@@ -152,13 +140,6 @@ def generate_launch_description():
         arguments=['gripper_controller', '--controller-manager', '/controller_manager'],
     )
 
-    # Joint state publisher GUI (optional)
-    joint_state_publisher_gui_node = Node(
-        package='joint_state_publisher_gui',
-        executable='joint_state_publisher_gui',
-        condition=IfCondition(gui),
-    )
-
     nodes = [
         robot_state_publisher_node,
         controller_manager_node,
@@ -166,7 +147,6 @@ def generate_launch_description():
         arm_controller_spawner,
         wheel_controller_spawner,
         gripper_controller_spawner,
-        joint_state_publisher_gui_node,
     ]
 
     return LaunchDescription(declared_arguments + nodes)

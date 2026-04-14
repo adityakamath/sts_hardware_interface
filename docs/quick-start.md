@@ -89,21 +89,13 @@ ros2 launch sts_hardware_interface single_motor_velocity.launch.py serial_port:=
 
 # In mock mode (no hardware required)
 ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true
-
-# With GUI for manual control (optional)
-ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true gui:=true
 ```
 
-**GUI Requirements (Optional):**
-
-The **optional** `gui:=true` argument launches `joint_state_publisher_gui`, which provides a graphical interface with sliders for manual motor control. This requires:
-
-- **Desktop environment** (Ubuntu Desktop, not Ubuntu Server)
-- **Display/Monitor** connected to your system
-- **X11 or Wayland** display server running
-- **Not supported** over SSH without X11 forwarding
-
-If you're running on a headless system (SSH connection, server edition), omit the `gui:=true` option and control the motor via ROS 2 topics instead (see "Test the motor" section below).
+> **Note:** `joint_state_publisher_gui` is **not** used with these launch files. When the
+> `ros2_control` stack is running, `joint_state_broadcaster` already publishes to `/joint_states`
+> and drives `robot_state_publisher`. Adding `joint_state_publisher_gui` on top would conflict
+> with that and have no effect. Use `joint_state_publisher_gui` only when launching
+> `robot_state_publisher` alone (no `ros2_control`), e.g. for pure URDF visualization.
 
 **What it does:**
 
@@ -271,7 +263,6 @@ ros2 topic echo /diagnostics
 | `baud_rate` | int | `1000000` | All | Communication baud rate |
 | `use_mock` | bool | `false` | All | Enable mock mode (no hardware) |
 | `motor_id` | int | `1` | single_motor_velocity, single_motor_position | Motor ID on serial bus |
-| `gui` | bool | `false` | All | Launch joint_state_publisher_gui for manual control (optional, requires desktop environment with display) |
 
 ---
 
