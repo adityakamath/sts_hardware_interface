@@ -270,7 +270,7 @@ ros2 topic echo /diagnostics
 | `serial_port` | string | `/dev/ttyACM0` | Both | Serial port path |
 | `baud_rate` | int | `1000000` | Both | Communication baud rate |
 | `use_mock` | bool | `false` | Both | Enable mock mode (no hardware) |
-| `motor_id` | int | `1` | single_motor, single_motor_position | Motor ID on serial bus |
+| `motor_id` | int | `1` | single_motor_velocity, single_motor_position | Motor ID on serial bus |
 | `gui` | bool | `false` | Both | Launch joint_state_publisher_gui for manual control (optional, requires desktop environment with display) |
 
 ---
