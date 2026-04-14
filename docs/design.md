@@ -61,12 +61,21 @@ Each motor can be configured independently in one of three modes:
 **Configuration Example:**
 
 ```xml
-<!-- Mode 0: Position/Servo -->
+<!-- Mode 0: Position/Servo, default range [0, 2π) -->
 <joint name="arm_joint">
   <param name="motor_id">1</param>
   <param name="operating_mode">0</param>
   <param name="min_position">0.0</param>
   <param name="max_position">6.283</param>
+</joint>
+
+<!-- Mode 0: Position/Servo with center=2048 for [−π, +π] range -->
+<joint name="pan_joint">
+  <param name="motor_id">4</param>
+  <param name="operating_mode">0</param>
+  <param name="position_center_steps">2048</param>
+  <param name="min_position">-2.0</param>
+  <param name="max_position">2.0</param>
 </joint>
 
 <!-- Mode 1: Velocity -->
@@ -382,17 +391,22 @@ The STS motors use step-based units internally. The hardware interface converts 
 
 **Critical Implementation Detail:** STS motors use clockwise-positive rotation, while ROS 2 follows [REP-103](https://www.ros.org/reps/rep-0103.html) which specifies counter-clockwise positive rotation. The hardware interface automatically inverts the direction for **position** and **velocity** to ensure REP-103 compliance:
 
-- **Position:** Motor position is inverted: `inverted_position = STS_MAX_POSITION - raw_position`
+- **Position:** Motor position is inverted relative to a configurable center: `radians = (center - raw_position) × (2π / 4096)`, where `center` defaults to 4095 and is configurable per joint via `position_center_steps`
 - **Velocity:** Motor velocity sign is negated during conversion
 - **Effort/PWM:** Currently NOT inverted (Mode 2 untested - may require inversion)
 
 This inversion is transparent to controllers - they always work with REP-103 compliant values.
 
 ### Position Conversion
+
+The position conversion uses a configurable center parameter — the raw encoder step that maps to 0 radians.
+
+**Why a configurable center?** The original implementation hardcoded step 4095 as 0 rad, giving a [0, 2π) range. This caused two problems for joints needing a [−π, +π] range (such as pan-tilt mechanisms): (1) feedback was always reported as a positive angle even when the servo was on the negative side of center, and (2) negative angle commands used `fmod`-based wrapping that silently mapped them to the wrong end of the encoder, causing the servo to traverse nearly a full revolution instead of moving the short way. The configurable center fixes both by unifying read and write into a single consistent formula.
+
 - **Motor units:** 0-4095 steps (12-bit resolution)
 - **ROS 2 units:** Depends on `position_center_steps`: default (4095) gives [0, 2π), center=2048 gives approximately [−π, +π]
 - **Conversion:** `radians = (center - steps) × (2π / 4096)` — includes REP-103 direction inversion; `center` defaults to 4095 (configurable per joint via `position_center_steps`)
-- **Note:** Commands outside the encoder range are clamped to [0, 4095] steps (not wrapped)
+- **Note:** Commands outside the encoder range are clamped to [0, 4095] steps (not wrapped). A center of 2048 produces a slight asymmetry: the range is approximately (not exactly) [−π, +π] because 4096 steps cover exactly 2π but the encoder has only 4096 discrete positions (0–4095), leaving one encoder step of asymmetry at the ±π boundary.
 
 ### Velocity Conversion
 - **Motor units:** ±3400 steps/s maximum
