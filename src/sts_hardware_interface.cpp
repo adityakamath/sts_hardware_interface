@@ -431,7 +431,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       "SyncWrite requires >1 joints in the same mode; proportional_vel_max has no effect.",
       proportional_vel_max_, servo_motor_indices_.size());
   }
-  if (proportional_acc_max_ != 0 && velocity_motor_indices_.size() <= 1) {
+  if (proportional_acc_max_ != 0 && velocity_motor_indices_.size() == 0) {
+    // No velocity joints at all — proportional_acc_max is meaningless; silence it automatically
+    // so the URDF does not need to explicitly set proportional_acc_max=0 for position-only configs.
+    RCLCPP_DEBUG(logger_,
+      "proportional_acc_max=%d has no effect (no velocity joints configured); auto-disabling.",
+      proportional_acc_max_);
+    proportional_acc_max_ = 0;
+  } else if (proportional_acc_max_ != 0 && velocity_motor_indices_.size() == 1) {
     RCLCPP_WARN(logger_,
       "proportional_acc_max=%d is set but only %zu velocity joint(s) configured. "
       "SyncWrite requires >1 joints in the same mode; proportional_acc_max has no effect.",
