@@ -211,6 +211,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   has_position_limits_.resize(num_joints, false);
   has_velocity_limits_.resize(num_joints, false);
   has_effort_limits_.resize(num_joints, false);
+  position_center_.resize(num_joints, conversions::STS_DEFAULT_CENTER);  // 4095 = legacy default
 
   // Parse each joint
   for (size_t i = 0; i < num_joints; ++i) {
@@ -284,6 +285,27 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       RCLCPP_ERROR(logger_, "Joint '%s': min_position (%.3f) must be less than max_position (%.3f)",
         joint.name.c_str(), position_min_[i], position_max_[i]);
       return hardware_interface::CallbackReturn::ERROR;
+    }
+
+    if (joint.parameters.count("position_center_steps")) {
+      if (operating_modes_[i] != MODE_SERVO) {
+        RCLCPP_WARN(logger_, "Joint '%s': position_center_steps is ignored in operating mode %d (only used in position mode %d)",
+          joint.name.c_str(), operating_modes_[i], MODE_SERVO);
+      } else {
+        try {
+          int center = std::stoi(joint.parameters.at("position_center_steps"));
+          if (center < 0 || center > conversions::STS_MAX_POSITION) {
+            RCLCPP_ERROR(logger_, "Joint '%s': position_center_steps %d out of range [0, 4095]",
+              joint.name.c_str(), center);
+            return hardware_interface::CallbackReturn::ERROR;
+          }
+          position_center_[i] = center;
+        } catch (const std::exception &) {
+          RCLCPP_ERROR(logger_, "Joint '%s': Invalid position_center_steps value: '%s'",
+            joint.name.c_str(), joint.parameters.at("position_center_steps").c_str());
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+      }
     }
 
     if (joint.parameters.count("max_velocity")) {
@@ -764,7 +786,7 @@ hardware_interface::return_type STSHardwareInterface::read(
 
     // Read all state interfaces
     int raw_position = servo_->ReadPos(-1);
-    hw_state_position_[i] = conversions::raw_position_to_radians(raw_position);
+    hw_state_position_[i] = conversions::raw_position_to_radians(raw_position, position_center_[i]);
 
     int raw_velocity = servo_->ReadSpeed(-1);
     hw_state_velocity_[i] = conversions::raw_velocity_to_rad_s(raw_velocity);
@@ -866,7 +888,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
         size_t idx = servo_motor_indices_[j];
         double target_position = conversions::apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
-        servo_sync_positions_[j] = conversions::radians_to_raw_position(target_position);
+        servo_sync_positions_[j] = conversions::radians_to_raw_position(target_position, position_center_[idx]);
         servo_sync_deltas_[j] = std::abs(target_position - hw_state_position_[idx]);
         max_delta_rad = std::max(max_delta_rad, servo_sync_deltas_[j]);
         servo_sync_accelerations_[j] = static_cast<u8>(conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
@@ -905,7 +927,7 @@ hardware_interface::return_type STSHardwareInterface::write(
         double target_position = conversions::apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
         double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
 
-        int raw_position = conversions::radians_to_raw_position(target_position);
+        int raw_position = conversions::radians_to_raw_position(target_position, position_center_[idx]);
         // rad_s_to_raw_speed: unsigned magnitude conversion for position mode — no sign inversion.
         // hw_cmd_velocity_ == 0.0 (not declared / not written) → raw 0 = STS protocol max speed.
         int raw_max_speed = conversions::rad_s_to_raw_speed(

@@ -395,9 +395,10 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
    <param name="max_velocity">5.22</param>   <!-- rad/s, optional -->
    ```
 
-2. **Check for position wrapping:**
-   - STS motors wrap at 2π radians (4096 steps)
-   - Ensure mechanism doesn't require >2π range
+2. **Check position range:**
+   - Default range is [0, 2π) radians (center at step 4095)
+   - For [−π, +π] range, set `position_center_steps: 2048` in joint parameters
+   - Commands outside the encoder range are clamped (not wrapped)
 
 3. **Monitor encoder values:**
    ```bash

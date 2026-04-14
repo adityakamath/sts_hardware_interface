@@ -23,34 +23,33 @@ constexpr double STEPS_PER_REVOLUTION = 4096.0;
 constexpr double STEPS_TO_RAD = (2.0 * M_PI) / STEPS_PER_REVOLUTION;
 constexpr double RAD_TO_STEPS = STEPS_PER_REVOLUTION / (2.0 * M_PI);
 constexpr int    STS_MAX_POSITION     = 4095;   // 12-bit encoder
+constexpr int    STS_DEFAULT_CENTER   = 4095;   // Default: 0 rad at step 4095, range [0, 2π)
 constexpr int    STS_MAX_PWM          = 1000;   // ±100% duty cycle
 constexpr int    STS_MAX_ACCELERATION = 254;    // protocol constant
 
 /**
- * @brief Convert motor steps [0, 4095] to radians [0, 2π] with direction inversion.
+ * @brief Convert motor steps [0, 4095] to radians with configurable center.
  *
  * STS motors increment clockwise; ROS 2 uses counter-clockwise positive (REP-103).
- * Direction is inverted by mapping: raw 0 → ~2π, raw 4095 → 0.
+ * `center` is the raw encoder step that maps to 0 rad (default: STS_DEFAULT_CENTER = 4095).
  */
-inline double raw_position_to_radians(int raw_position)
+inline double raw_position_to_radians(int raw_position, int center = STS_DEFAULT_CENTER)
 {
-  return static_cast<double>(STS_MAX_POSITION - raw_position) * STEPS_TO_RAD;
+  return static_cast<double>(center - raw_position) * STEPS_TO_RAD;
 }
 
 /**
- * @brief Convert radians [0, 2π] to motor steps [0, 4095] with direction inversion.
+ * @brief Convert radians to motor steps [0, 4095] with configurable center.
  *
- * Wraps the input modulo 2π before converting. The negative sign inside fmod
- * implements the same direction inversion as raw_position_to_radians.
+ * `center` is the raw encoder step that maps to 0 rad (default: STS_DEFAULT_CENTER = 4095).
+ * Values outside the physical encoder range are clamped (not wrapped) to [0, 4095].
+ * Clamping is intentional: the old fmod-based wrapping silently mapped negative
+ * angles to the wrong end of the encoder, causing full-revolution traversals.
  */
-inline int radians_to_raw_position(double position_rad)
+inline int radians_to_raw_position(double position_rad, int center = STS_DEFAULT_CENTER)
 {
-  double normalized = std::fmod(-position_rad, 2.0 * M_PI);
-  if (normalized < 0.0) {
-    normalized += 2.0 * M_PI;
-  }
-  int raw = static_cast<int>(normalized * RAD_TO_STEPS);
-  return std::clamp(raw, 0, STS_MAX_POSITION);
+  double steps = std::round(static_cast<double>(center) - position_rad * RAD_TO_STEPS);
+  return static_cast<int>(std::clamp(steps, 0.0, static_cast<double>(STS_MAX_POSITION)));
 }
 
 /**
