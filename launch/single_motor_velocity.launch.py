@@ -13,8 +13,8 @@ The launch file accepts command-line arguments for hardware configuration and su
 both real hardware and mock/simulation mode for testing without motors.
 
 Example usage:
-    ros2 launch sts_hardware_interface single_motor.launch.py serial_port:=/dev/ttyACM0
-    ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true gui:=true
+    ros2 launch sts_hardware_interface single_motor_velocity.launch.py serial_port:=/dev/ttyACM0
+    ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true gui:=true
 """
 
 from launch import LaunchDescription
@@ -92,7 +92,7 @@ def generate_launch_description():
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
             PathJoinSubstitution(
-                [FindPackageShare('sts_hardware_interface'), 'config', 'single_motor.urdf.xacro']
+                [FindPackageShare('sts_hardware_interface'), 'config', 'single_motor_velocity.urdf.xacro']
             ),
             ' ',
             'serial_port:=', serial_port,
@@ -118,7 +118,7 @@ def generate_launch_description():
 
     # Controller configuration
     controller_config = PathJoinSubstitution(
-        [FindPackageShare('sts_hardware_interface'), 'config', 'velocity_controller.yaml']
+        [FindPackageShare('sts_hardware_interface'), 'config', 'single_motor_velocity_controllers.yaml']
     )
 
     # Controller manager

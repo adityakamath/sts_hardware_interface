@@ -74,24 +74,24 @@ The simplest example with one motor in velocity mode.
 
 **What it includes:**
 
-- URDF: [config/single_motor.urdf.xacro](../config/single_motor.urdf.xacro)
-- Controllers: [config/velocity_controller.yaml](../config/velocity_controller.yaml)
-- Launch file: [launch/single_motor.launch.py](../launch/single_motor.launch.py)
+- URDF: [config/single_motor_velocity.urdf.xacro](../config/single_motor_velocity.urdf.xacro)
+- Controllers: [config/single_motor_velocity_controllers.yaml](../config/single_motor_velocity_controllers.yaml)
+- Launch file: [launch/single_motor_velocity.launch.py](../launch/single_motor_velocity.launch.py)
 
 **How to run:**
 
 ```bash
 # With real hardware
-ros2 launch sts_hardware_interface single_motor.launch.py serial_port:=/dev/ttyACM0
+ros2 launch sts_hardware_interface single_motor_velocity.launch.py serial_port:=/dev/ttyACM0
 
 # With custom motor ID (default is 1)
-ros2 launch sts_hardware_interface single_motor.launch.py serial_port:=/dev/ttyACM0 motor_id:=5
+ros2 launch sts_hardware_interface single_motor_velocity.launch.py serial_port:=/dev/ttyACM0 motor_id:=5
 
 # In mock mode (no hardware required)
-ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
+ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true
 
 # With GUI for manual control (optional)
-ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true gui:=true
+ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true gui:=true
 ```
 
 **GUI Requirements (Optional):**
@@ -139,7 +139,64 @@ ros2 topic echo /diagnostics
   rqt_robot_monitor
 ```
 
-### Example 2: Mixed Mode (Multiple Motors)
+### Example 2: Single Motor (Position Mode)
+
+The simplest example with one motor in position (servo) mode, using a joint trajectory controller for precise angle targeting.
+
+**What it includes:**
+
+- URDF: [config/single_motor_position.urdf.xacro](../config/single_motor_position.urdf.xacro)
+- Controllers: [config/single_motor_position_controllers.yaml](../config/single_motor_position_controllers.yaml)
+- Launch file: [launch/single_motor_position.launch.py](../launch/single_motor_position.launch.py)
+
+**How to run:**
+
+```bash
+# With real hardware
+ros2 launch sts_hardware_interface single_motor_position.launch.py serial_port:=/dev/ttyACM0
+
+# With custom motor ID (default is 1)
+ros2 launch sts_hardware_interface single_motor_position.launch.py serial_port:=/dev/ttyACM0 motor_id:=5
+
+# In mock mode (no hardware required)
+ros2 launch sts_hardware_interface single_motor_position.launch.py use_mock:=true
+
+# With GUI for manual control (optional)
+ros2 launch sts_hardware_interface single_motor_position.launch.py use_mock:=true gui:=true
+```
+
+**What it does:**
+
+1. Loads robot description with one revolute joint (`arm_joint`) limited to 0–2π radians
+2. Starts `ros2_control` node with joint trajectory controller
+3. Spawns `joint_state_broadcaster` and `arm_controller`
+
+**Test the motor:**
+
+```bash
+# Command a position trajectory (radians)
+ros2 action send_goal /arm_controller/follow_joint_trajectory \
+  control_msgs/action/FollowJointTrajectory "{
+    trajectory: {
+      joint_names: ['arm_joint'],
+      points: [{positions: [1.57], time_from_start: {sec: 2}}]
+    }
+  }"
+
+# Monitor joint state
+ros2 topic echo /joint_states
+
+# Monitor additional state (voltage, temperature, current, is_moving)
+ros2 topic echo /dynamic_joint_states
+
+# (Optional) Monitor motor diagnostics in real time
+ros2 launch sts_hardware_interface motor_diagnostics.launch.py
+ros2 topic echo /diagnostics
+  # Or view in rqt:
+  rqt_robot_monitor
+```
+
+### Example 3: Mixed Mode (Multiple Motors)
 
 Demonstrates six motors (two per mode) in different operating modes on the same serial bus.
 
@@ -213,7 +270,7 @@ ros2 topic echo /diagnostics
 | `serial_port` | string | `/dev/ttyACM0` | Both | Serial port path |
 | `baud_rate` | int | `1000000` | Both | Communication baud rate |
 | `use_mock` | bool | `false` | Both | Enable mock mode (no hardware) |
-| `motor_id` | int | `1` | single_motor only | Motor ID on serial bus |
+| `motor_id` | int | `1` | single_motor_velocity, single_motor_position | Motor ID on serial bus |
 | `gui` | bool | `false` | Both | Launch joint_state_publisher_gui for manual control (optional, requires desktop environment with display) |
 
 ---
@@ -337,7 +394,7 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
 
 4. **Test in mock mode:**
    ```bash
-   ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
+   ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true
    ```
    If mock mode works, issue is hardware/communication related.
 
@@ -434,7 +491,7 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
 
 1. **Verify mock mode is enabled:**
    ```bash
-   ros2 launch sts_hardware_interface single_motor.launch.py use_mock:=true
+   ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true
    ```
 
 2. **Check for conflicting hardware:**
@@ -478,7 +535,8 @@ colcon test-result --verbose
 |---|---|---|---|
 | `test_conversions.cpp` | C++ unit | 34 | All unit conversion math (steps↔radians, velocity, effort, voltage, temperature, current, clamping) |
 | `test_hardware_interface.cpp` | C++ unit | 70 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
-| `test_single_motor.launch.py` | Launch integration | 6 | Full controller_manager stack — single velocity-mode motor in mock mode |
+| `test_single_motor_velocity.launch.py` | Launch integration | 6 | Full controller_manager stack — single velocity-mode motor in mock mode |
+| `test_single_motor_position.launch.py` | Launch integration | 5 | Full controller_manager stack — single position-mode motor in mock mode |
 | `test_mixed_mode.launch.py` | Launch integration | 6 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
 | `test_motor_diagnostics.launch.py` | Launch integration | 6 | Motor diagnostics node integration with hardware interface feedback |
 
@@ -491,7 +549,7 @@ colcon test --packages-select sts_hardware_interface \
 
 # Launch integration tests only
 colcon test --packages-select sts_hardware_interface \
-  --ctest-args -R "test_single_motor|test_mixed_mode|test_motor_diagnostics"
+  --ctest-args -R "test_single_motor_velocity|test_single_motor_position|test_mixed_mode|test_motor_diagnostics"
 ```
 
 ### Interpreting Results
