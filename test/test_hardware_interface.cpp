@@ -362,11 +362,17 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsValidValues) {
   info1.joints[0].parameters["position_center_steps"] = "2048";
   EXPECT_EQ(hw1.on_init(info1), CallbackReturn::SUCCESS);
 
-  // -1 (explicit legacy default) also succeeds
+  // boundary: 0 succeeds
   sts_hardware_interface::STSHardwareInterface hw2;
   auto info2 = make_valid_position_motor_info();
-  info2.joints[0].parameters["position_center_steps"] = "-1";
+  info2.joints[0].parameters["position_center_steps"] = "0";
   EXPECT_EQ(hw2.on_init(info2), CallbackReturn::SUCCESS);
+
+  // boundary: 4095 succeeds
+  sts_hardware_interface::STSHardwareInterface hw3;
+  auto info3 = make_valid_position_motor_info();
+  info3.joints[0].parameters["position_center_steps"] = "4095";
+  EXPECT_EQ(hw3.on_init(info3), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, PositionCenterStepsInvalidValues) {
@@ -376,10 +382,10 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsInvalidValues) {
   info1.joints[0].parameters["position_center_steps"] = "5000";
   EXPECT_EQ(hw1.on_init(info1), CallbackReturn::ERROR);
 
-  // out of range (< -1)
+  // negative value
   sts_hardware_interface::STSHardwareInterface hw2;
   auto info2 = make_valid_position_motor_info();
-  info2.joints[0].parameters["position_center_steps"] = "-2";
+  info2.joints[0].parameters["position_center_steps"] = "-1";
   EXPECT_EQ(hw2.on_init(info2), CallbackReturn::ERROR);
 
   // non-numeric string

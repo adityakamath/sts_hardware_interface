@@ -294,16 +294,12 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       } else {
         try {
           int center = std::stoi(joint.parameters.at("position_center_steps"));
-          if (center < -1 || center > conversions::STS_MAX_POSITION) {
-            RCLCPP_ERROR(logger_, "Joint '%s': position_center_steps %d out of range (-1 to disable, or [0, 4095])",
+          if (center < 0 || center > conversions::STS_MAX_POSITION) {
+            RCLCPP_ERROR(logger_, "Joint '%s': position_center_steps %d out of range [0, 4095]",
               joint.name.c_str(), center);
             return hardware_interface::CallbackReturn::ERROR;
           }
-          if (center == -1) {
-            position_center_[i] = conversions::STS_DEFAULT_CENTER;  // -1 explicitly means legacy 4095
-          } else {
-            position_center_[i] = center;
-          }
+          position_center_[i] = center;
         } catch (const std::exception &) {
           RCLCPP_ERROR(logger_, "Joint '%s': Invalid position_center_steps value: '%s'",
             joint.name.c_str(), joint.parameters.at("position_center_steps").c_str());

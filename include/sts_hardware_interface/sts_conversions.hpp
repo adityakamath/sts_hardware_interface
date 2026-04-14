@@ -42,12 +42,14 @@ inline double raw_position_to_radians(int raw_position, int center = STS_DEFAULT
  * @brief Convert radians to motor steps [0, 4095] with configurable center.
  *
  * `center` is the raw encoder step that maps to 0 rad (default: STS_DEFAULT_CENTER = 4095).
- * Values outside the physical encoder range are clamped to [0, 4095].
+ * Values outside the physical encoder range are clamped (not wrapped) to [0, 4095].
+ * Clamping is intentional: the old fmod-based wrapping silently mapped negative
+ * angles to the wrong end of the encoder, causing full-revolution traversals.
  */
 inline int radians_to_raw_position(double position_rad, int center = STS_DEFAULT_CENTER)
 {
-  int raw = static_cast<int>(std::round(center - position_rad * RAD_TO_STEPS));
-  return std::clamp(raw, 0, STS_MAX_POSITION);
+  double steps = std::round(static_cast<double>(center) - position_rad * RAD_TO_STEPS);
+  return static_cast<int>(std::clamp(steps, 0.0, static_cast<double>(STS_MAX_POSITION)));
 }
 
 /**
