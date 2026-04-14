@@ -172,6 +172,7 @@ Configure these per `<joint>` in your URDF:
 | `operating_mode` | int | 1 | 0, 1, 2 | 0=Position, 1=Velocity, 2=PWM |
 | `min_position` | double | 0.0 | any | Min position limit (radians, Mode 0 only) |
 | `max_position` | double | 6.283 | any | Max position limit (radians, Mode 0 only) |
+| `position_center_steps` | int | 4095 | 0–4095 | Raw encoder step mapped to 0 rad (Mode 0 only). Default gives [0, 2π) range; set to 2048 for approximately [−π, +π] range. |
 | `max_velocity` | double | 5.22 | > 0.0 | Max velocity limit (rad/s, Modes 0 and 1) |
 | `max_effort` | double | 1.0 | (0.0, 1.0] | Maximum allowed effort command (Mode 2 only). Limits command range without scaling. |
 
@@ -389,9 +390,9 @@ This inversion is transparent to controllers - they always work with REP-103 com
 
 ### Position Conversion
 - **Motor units:** 0-4095 steps (12-bit resolution)
-- **ROS 2 units:** 0-2π radians (one full revolution)
-- **Conversion:** `radians = (4095 - steps) × (2π / 4096)` — includes REP-103 direction inversion (raw 0 → ~2π, raw 4095 → 0)
-- **Note:** Position wraps at 2π (4096 steps)
+- **ROS 2 units:** Depends on `position_center_steps`: default (4095) gives [0, 2π), center=2048 gives approximately [−π, +π]
+- **Conversion:** `radians = (center - steps) × (2π / 4096)` — includes REP-103 direction inversion; `center` defaults to 4095 (configurable per joint via `position_center_steps`)
+- **Note:** Commands outside the encoder range are clamped to [0, 4095] steps (not wrapped)
 
 ### Velocity Conversion
 - **Motor units:** ±3400 steps/s maximum

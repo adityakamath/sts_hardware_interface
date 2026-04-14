@@ -23,7 +23,7 @@ constexpr double STEPS_PER_REVOLUTION = 4096.0;
 constexpr double STEPS_TO_RAD = (2.0 * M_PI) / STEPS_PER_REVOLUTION;
 constexpr double RAD_TO_STEPS = STEPS_PER_REVOLUTION / (2.0 * M_PI);
 constexpr int    STS_MAX_POSITION     = 4095;   // 12-bit encoder
-constexpr int    STS_DEFAULT_CENTER   = 4095;   // Default: 0 rad at step 4095, range [0, 2π]
+constexpr int    STS_DEFAULT_CENTER   = 4095;   // Default: 0 rad at step 4095, range [0, 2π)
 constexpr int    STS_MAX_PWM          = 1000;   // ±100% duty cycle
 constexpr int    STS_MAX_ACCELERATION = 254;    // protocol constant
 

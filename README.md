@@ -157,6 +157,7 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `operating_mode` | int | 1 | 0=Position (closed-loop), 1=Velocity (closed-loop), 2=PWM (open-loop) |
 | `min_position` | double | 0.0 | Min position limit (radians, Mode 0 only) |
 | `max_position` | double | 6.283 | Max position limit (2π radians, Mode 0 only) |
+| `position_center_steps` | int | 4095 | Raw encoder step mapped to 0 rad, 0–4095 (Mode 0 only). Default gives [0, 2π) range; set to 2048 for approximately [−π, +π] range. |
 | `max_velocity` | double | 5.22 | Max velocity limit (rad/s, Modes 0 and 1, optional) |
 | `max_effort` | double | 1.0 | Maximum allowed effort command ((0.0, 1.0], Mode 2 only). Safety limiter that restricts command range without scaling. |
 
