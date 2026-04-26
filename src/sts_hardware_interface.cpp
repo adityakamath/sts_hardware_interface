@@ -795,6 +795,13 @@ hardware_interface::return_type STSHardwareInterface::read(
     int raw_position = servo_->ReadPos(-1);
     hw_state_position_[i] = conversions::raw_position_to_radians(raw_position, position_center_[i]);
 
+    // While torque is off (estop active), the joint can drift past software limits under gravity.
+    // Clamp the reported position so JointSaturationLimiter doesn't throw and deactivate the
+    // controller. write() already skips all commands during estop, so clamping here is safe.
+    if (emergency_stop_active_ && has_position_limits_[i]) {
+      hw_state_position_[i] = std::clamp(hw_state_position_[i], position_min_[i], position_max_[i]);
+    }
+
     int raw_velocity = servo_->ReadSpeed(-1);
     hw_state_velocity_[i] = conversions::raw_velocity_to_rad_s(raw_velocity);
 
