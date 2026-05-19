@@ -65,7 +65,6 @@ def generate_launch_description():
         )
     )
 
-    declared_arguments.append(
     # Initialize Arguments
     serial_port = LaunchConfiguration('serial_port')
     baud_rate = LaunchConfiguration('baud_rate')

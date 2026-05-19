@@ -70,7 +70,6 @@ def generate_launch_description():
         )
     )
 
-    declared_arguments.append(
     # Initialize Arguments
     serial_port = LaunchConfiguration('serial_port')
     motor_id = LaunchConfiguration('motor_id')
