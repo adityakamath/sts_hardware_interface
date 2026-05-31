@@ -1,7 +1,9 @@
 #ifndef STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 #define STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 
+#include <expected>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <chrono>
@@ -24,6 +26,9 @@
 
 namespace sts_hardware_interface
 {
+
+/// Return type for SDK operations: void on success, error string on failure.
+using Result = std::expected<void, std::string>;
 
 /**
  * @brief ros2_control SystemInterface for Feetech STS series servo motors (single or chain)
@@ -70,6 +75,16 @@ namespace sts_hardware_interface
  * - enable_mock_mode: Enable simulation mode without hardware (default: false)
  * - max_velocity_steps: Maximum motor velocity in steps/s (default: 3400, STS3215 spec)
  *                       Adjust for other models: STS3032=2900, STS3235=3400
+ * - proportional_vel_max: SyncWrite only. Velocity [0–max_velocity_steps] assigned to the joint
+ *                         with the largest |target_position - current_position| delta; all others
+ *                         scaled proportionally. Set to 0 to disable. (default: 0)
+ * - proportional_vel_deadband: SyncWrite only. Min max-delta (rad) below which all joints revert
+ *                              to their commanded velocity (steady-state hold). (default: 0.01)
+ * - proportional_acc_max: SyncWrite only. Acceleration [0–254] assigned to the wheel with the
+ *                         largest |target_velocity - current_velocity| delta; others scaled
+ *                         proportionally. Set to 0 to disable. (default: 100)
+ * - proportional_acc_deadband: SyncWrite only. Min max-delta (rad/s) below which ACC 0 is sent
+ *                              to all wheels (steady-state cruise). (default: 0.05)
  * - reset_states_on_activate: Reset position/velocity states to zero on activation (default: true)
  *
  * JOINT PARAMETERS (from ros2_control URDF, per joint):
@@ -84,6 +99,12 @@ namespace sts_hardware_interface
  * - max_velocity: Maximum velocity limit in rad/s (default: 5.22, STS3215 max: 3400 steps/s)
  *                 NOTE: Adjust this for other STS motors (e.g., STS3032 max: 2900 steps/s)
  * - max_effort: Maximum effort limit, 0-1 for PWM mode (default: 1.0)
+ * - p_coefficient: Proportional gain written to EEPROM (0-255, optional — omit to preserve existing value)
+ *                  Mode 0 → addr 21 (SMS_STS_MODE0_P_COEF); Mode 1 → addr 37 (SMS_STS_MODE1_P_COEF); Mode 2: ignored
+ * - d_coefficient: Derivative gain written to EEPROM   (0-255, optional — omit to preserve existing value)
+ *                  Mode 0 → addr 22 (SMS_STS_MODE0_D_COEF); Mode 1: ignored (PI only); Mode 2: ignored
+ * - i_coefficient: Integral gain written to EEPROM     (0-255, optional — omit to preserve existing value)
+ *                  Mode 0 → addr 23 (SMS_STS_MODE0_I_COEF); Mode 1 → addr 39 (SMS_STS_MODE1_I_COEF); Mode 2: ignored
 **/
 class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
@@ -224,6 +245,11 @@ private:
   std::vector<bool> has_effort_limits_;
   std::vector<int> position_center_;  // Raw step for 0 rad per joint (default: STS_DEFAULT_CENTER=4095)
 
+  // ===== PER-JOINT PID COEFFICIENTS (optional, written to EEPROM in on_configure) =====
+  std::vector<std::optional<int>> p_coefficient_;  // Proportional gain (0-255): Mode 0 → SMS_STS_MODE0_P_COEF (addr 21); Mode 1 → SMS_STS_MODE1_P_COEF (addr 37)
+  std::vector<std::optional<int>> d_coefficient_;  // Derivative gain   (0-255): Mode 0 → SMS_STS_MODE0_D_COEF (addr 22) only; Mode 1/2: ignored
+  std::vector<std::optional<int>> i_coefficient_;  // Integral gain     (0-255): Mode 0 → SMS_STS_MODE0_I_COEF (addr 23); Mode 1 → SMS_STS_MODE1_I_COEF (addr 39)
+
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;
   int consecutive_write_errors_;
@@ -256,8 +282,8 @@ private:
   /** @brief Stop a motor based on its operating mode */
   int stop_motor(size_t idx, int acceleration = 0);
 
-  /** @brief Handle write operation errors with logging and recovery */
-  bool handle_write_error(int result, size_t idx, const char* operation);
+  /** @brief Check a write SDK return code; logs, tracks recovery, returns error on failure */
+  [[nodiscard]] Result check_write(int result, size_t idx, const char* operation);
 
   /** @brief Parse a boolean hardware parameter with default value */
   bool parse_bool_param(const std::string& key, bool default_value) const;
