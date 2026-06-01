@@ -33,8 +33,10 @@ jobs:
       - name: Install clang-tidy
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy-18
+          sudo apt-get install -y clang-18 clang++-18 clang-tidy-18
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
 
       - name: Setup ROS 2 Jazzy
         uses: ros-tooling/setup-ros@v0.7
@@ -64,7 +66,9 @@ jobs:
             --packages-select sts_hardware_interface \
             --cmake-args \
               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-              -DCMAKE_BUILD_TYPE=Debug
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_C_COMPILER=clang-18 \
+              -DCMAKE_CXX_COMPILER=clang++-18
 
       - name: Run clang-tidy
         shell: bash
