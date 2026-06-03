@@ -19,7 +19,7 @@
 #include "std_srvs/srv/set_bool.hpp"
 
 // SCServo SDK
-#include "SMS_STS.h"
+#include <scservo/SMS_STS.h>
 
 // Conversion utilities
 #include "sts_hardware_interface/sts_conversions.hpp"

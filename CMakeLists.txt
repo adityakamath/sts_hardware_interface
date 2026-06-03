@@ -43,7 +43,7 @@ find_package(control_msgs REQUIRED)
 add_subdirectory(external/SCServo_Linux)
 
 # SCServo library configuration
-set(SCSERVO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SCServo_Linux/src)
+set(SCSERVO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SCServo_Linux/include)
 set(SCSERVO_LIBRARY SCServo)
 
 # STS Hardware Interface (ros2_control plugin)
@@ -122,7 +122,7 @@ install(
 
 # Install SCServo headers for downstream packages
 install(
-  DIRECTORY ${SCSERVO_INCLUDE_DIR}/
+  DIRECTORY ${SCSERVO_INCLUDE_DIR}/scservo/
   DESTINATION include/${PROJECT_NAME}/scservo
   FILES_MATCHING PATTERN "*.h"
 )
