@@ -1,7 +1,6 @@
 #ifndef STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 #define STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
 
-#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,8 +26,8 @@
 namespace sts_hardware_interface
 {
 
-/// Return type for SDK operations: void on success, error string on failure.
-using Result = std::expected<void, std::string>;
+/// Return type for SDK operations: nullopt on success, error string on failure.
+using Result = std::optional<std::string>;
 
 /**
  * @brief ros2_control SystemInterface for Feetech STS series servo motors (single or chain)
