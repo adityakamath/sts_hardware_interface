@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <expected>
 #include <limits>
 #include <memory>
 #include <string>
@@ -19,9 +18,9 @@ namespace {
 /// SDK convention: 1 = success, 0 or negative = failure.
 [[nodiscard]] Result check(int ret, std::string_view ctx) {
   if (ret != 1) {
-    return std::unexpected(std::string(ctx) + " failed (code " + std::to_string(ret) + ")");
+    return std::string(ctx) + " failed (code " + std::to_string(ret) + ")";
   }
-  return {};
+  return std::nullopt;
 }
 }  // namespace
 
@@ -587,35 +586,35 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     if (!has_p && !has_d && !has_i) continue;
 
     int id = motor_ids_[i];
-    if (auto r = check(servo_->unLockEeprom(id), "unLockEeprom"); !r) {
-      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r.error().c_str());
+    if (auto r = check(servo_->unLockEeprom(id), "unLockEeprom"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
     if (has_p) {
       int addr = (operating_modes_[i] == MODE_SERVO) ? SMS_STS_MODE0_P_COEF : SMS_STS_MODE1_P_COEF;
-      if (auto r = check(servo_->writeByte(id, addr, static_cast<u8>(p_coefficient_[i].value())), "writeByte P_COEF"); !r) {
-        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r.error().c_str());
+      if (auto r = check(servo_->writeByte(id, addr, static_cast<u8>(p_coefficient_[i].value())), "writeByte P_COEF"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
         servo_->LockEeprom(id);
         return hardware_interface::CallbackReturn::ERROR;
       }
     }
     if (has_d) {  // only set for MODE_SERVO (guaranteed by on_init)
-      if (auto r = check(servo_->writeByte(id, SMS_STS_MODE0_D_COEF, static_cast<u8>(d_coefficient_[i].value())), "writeByte D_COEF"); !r) {
-        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r.error().c_str());
+      if (auto r = check(servo_->writeByte(id, SMS_STS_MODE0_D_COEF, static_cast<u8>(d_coefficient_[i].value())), "writeByte D_COEF"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
         servo_->LockEeprom(id);
         return hardware_interface::CallbackReturn::ERROR;
       }
     }
     if (has_i) {
       int addr = (operating_modes_[i] == MODE_SERVO) ? SMS_STS_MODE0_I_COEF : SMS_STS_MODE1_I_COEF;
-      if (auto r = check(servo_->writeByte(id, addr, static_cast<u8>(i_coefficient_[i].value())), "writeByte I_COEF"); !r) {
-        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r.error().c_str());
+      if (auto r = check(servo_->writeByte(id, addr, static_cast<u8>(i_coefficient_[i].value())), "writeByte I_COEF"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
         servo_->LockEeprom(id);
         return hardware_interface::CallbackReturn::ERROR;
       }
     }
-    if (auto r = check(servo_->LockEeprom(id), "LockEeprom"); !r) {
-      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r.error().c_str());
+    if (auto r = check(servo_->LockEeprom(id), "LockEeprom"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
     RCLCPP_INFO(logger_, "Motor %d (joint '%s'): wrote PID coefficients P=%s D=%s I=%s",
@@ -660,9 +659,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
 
   // Initialize all motors
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1), "InitMotor"); !r) {
+    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1), "InitMotor"); r.has_value()) {
       RCLCPP_ERROR(logger_, "Motor %d (joint '%s') in mode %d: %s",
-        motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i], r.error().c_str());
+        motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i], r->c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
 
@@ -964,14 +963,14 @@ hardware_interface::return_type STSHardwareInterface::write(
   // Check for broadcast emergency stop (stops ALL motors)
   if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
     RCLCPP_WARN(logger_, "Emergency stop activated - stopping ALL motors and disabling torque");
-    if (auto r = check(servo_->WriteSpe(STS_BROADCAST_ID, 0, STS_MAX_ACCELERATION), "broadcast stop"); !r) {
-      RCLCPP_WARN(logger_, "Broadcast emergency stop: %s", r.error().c_str());
+    if (auto r = check(servo_->WriteSpe(STS_BROADCAST_ID, 0, STS_MAX_ACCELERATION), "broadcast stop"); r.has_value()) {
+      RCLCPP_WARN(logger_, "Broadcast emergency stop: %s", r->c_str());
     }
 
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); !r) {
+      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); r.has_value()) {
         RCLCPP_WARN(logger_, "Motor %d (joint '%s'): disable torque during emergency stop: %s",
-          motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+          motor_ids_[i], joint_names_[i].c_str(), r->c_str());
       }
     }
 
@@ -984,9 +983,9 @@ hardware_interface::return_type STSHardwareInterface::write(
 
     // Re-enable torque on all motors
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 1), "EnableTorque"); !r) {
+      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 1), "EnableTorque"); r.has_value()) {
         RCLCPP_WARN(logger_, "Motor %d (joint '%s'): enable torque after emergency stop release: %s",
-          motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+          motor_ids_[i], joint_names_[i].c_str(), r->c_str());
       }
     }
 
@@ -1053,7 +1052,7 @@ hardware_interface::return_type STSHardwareInterface::write(
           std::max(0.0, max_speed), max_velocity_steps_);
         int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
 
-        if (auto r = check_write(servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration), idx, "position"); !r) {
+        if (auto r = check_write(servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration), idx, "position"); r.has_value()) {
           return hardware_interface::return_type::ERROR;
         }
       }
@@ -1112,7 +1111,7 @@ hardware_interface::return_type STSHardwareInterface::write(
         int raw_velocity = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_);
         int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
 
-        if (auto r = check_write(servo_->WriteSpe(motor_ids_[idx], raw_velocity, acceleration), idx, "velocity"); !r) {
+        if (auto r = check_write(servo_->WriteSpe(motor_ids_[idx], raw_velocity, acceleration), idx, "velocity"); r.has_value()) {
           return hardware_interface::return_type::ERROR;
         }
       }
@@ -1136,7 +1135,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       for (size_t idx : pwm_motor_indices_) {
         int raw_pwm = conversions::effort_to_raw_pwm(
           conversions::normalize_effort(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx]));
-        if (auto r = check_write(servo_->WritePwm(motor_ids_[idx], raw_pwm), idx, "PWM"); !r) {
+        if (auto r = check_write(servo_->WritePwm(motor_ids_[idx], raw_pwm), idx, "PWM"); r.has_value()) {
           return hardware_interface::return_type::ERROR;
         }
       }
@@ -1170,15 +1169,15 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
 
   // Stop all motors based on current operating mode
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    if (auto r = check(stop_motor(i, 0), "stop_motor"); !r) {
+    if (auto r = check(stop_motor(i, 0), "stop_motor"); r.has_value()) {
       RCLCPP_WARN(logger_, "Motor %d (joint '%s'): stop during deactivation: %s",
-        motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+        motor_ids_[i], joint_names_[i].c_str(), r->c_str());
     }
 
     // Disable torque
-    if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); !r) {
+    if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); r.has_value()) {
       RCLCPP_WARN(logger_, "Motor %d (joint '%s'): disable torque during deactivation: %s",
-        motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+        motor_ids_[i], joint_names_[i].c_str(), r->c_str());
     }
 
     RCLCPP_INFO(logger_, "Motor %d (joint '%s') stopped and torque disabled",
@@ -1197,9 +1196,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
   // Disable torque on all motors before closing connection (skip in mock mode)
   if (servo_ && !enable_mock_mode_) {
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); !r) {
+      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); r.has_value()) {
         RCLCPP_WARN(logger_, "Motor %d (joint '%s'): disable torque during cleanup: %s",
-          motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+          motor_ids_[i], joint_names_[i].c_str(), r->c_str());
       }
     }
     RCLCPP_INFO(logger_, "All motor torques disabled");
@@ -1233,13 +1232,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
   } else if (servo_) {
     // Real hardware: stop all motors and disable torque
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      if (auto r = check(stop_motor(i, 0), "stop_motor"); !r) {
+      if (auto r = check(stop_motor(i, 0), "stop_motor"); r.has_value()) {
         RCLCPP_WARN(logger_, "Motor %d (joint '%s'): stop during shutdown: %s",
-          motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+          motor_ids_[i], joint_names_[i].c_str(), r->c_str());
       }
-      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); !r) {
+      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); r.has_value()) {
         RCLCPP_WARN(logger_, "Motor %d (joint '%s'): disable torque during shutdown: %s",
-          motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+          motor_ids_[i], joint_names_[i].c_str(), r->c_str());
       }
       RCLCPP_INFO(logger_, "Motor %d (joint '%s') shutdown complete - torque disabled",
         motor_ids_[i], joint_names_[i].c_str());
@@ -1279,15 +1278,15 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
 
   // Emergency stop: set all motors to safe state and disable torque
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    if (auto r = check(stop_motor(i, 254), "stop_motor"); !r) {
+    if (auto r = check(stop_motor(i, 254), "stop_motor"); r.has_value()) {
       RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): emergency stop command: %s",
-        motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+        motor_ids_[i], joint_names_[i].c_str(), r->c_str());
     }
 
     // Disable torque for safety
-    if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); !r) {
+    if (auto r = check(servo_->EnableTorque(motor_ids_[i], 0), "EnableTorque"); r.has_value()) {
       RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): disable torque during error: %s",
-        motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+        motor_ids_[i], joint_names_[i].c_str(), r->c_str());
     } else {
       RCLCPP_INFO(logger_, "Motor %d (joint '%s') emergency stopped and torque disabled",
         motor_ids_[i], joint_names_[i].c_str());
@@ -1326,9 +1325,9 @@ Result STSHardwareInterface::check_write(int result, size_t idx, const char* ope
         consecutive_write_errors_ = 0;
       }
     }
-    return std::unexpected(std::string(operation) + " failed on motor " + std::to_string(motor_ids_[idx]));
+    return std::string(operation) + " failed on motor " + std::to_string(motor_ids_[idx]);
   }
-  return {};
+  return std::nullopt;
 }
 
 /** @brief Stop a motor based on its operating mode */
@@ -1379,9 +1378,9 @@ bool STSHardwareInterface::attempt_error_recovery()
       return false;
     }
 
-    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1), "InitMotor"); !r) {
+    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1), "InitMotor"); r.has_value()) {
       RCLCPP_ERROR(logger_, "Failed to reinitialize motor %d (joint '%s') after recovery: %s",
-        motor_ids_[i], joint_names_[i].c_str(), r.error().c_str());
+        motor_ids_[i], joint_names_[i].c_str(), r->c_str());
       return false;
     }
   }
@@ -1413,4 +1412,3 @@ void STSHardwareInterface::emergency_stop_callback(
 PLUGINLIB_EXPORT_CLASS(
   sts_hardware_interface::STSHardwareInterface,
   hardware_interface::SystemInterface)
-
