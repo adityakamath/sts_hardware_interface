@@ -1,0 +1,68 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor":        "#E7E9E1",
+    "primaryBorderColor":  "#AEB3A6",
+    "primaryTextColor":    "#1B1D18",
+    "lineColor":           "#929690",
+    "secondaryColor":      "#F2FAF4",
+    "secondaryBorderColor":"#AEDABB",
+    "secondaryTextColor":  "#207A38",
+    "tertiaryColor":       "#FEF0E2",
+    "tertiaryBorderColor": "#C65A00",
+    "tertiaryTextColor":   "#893C00",
+    "background":          "#F1F3EE",
+    "mainBkg":             "#FAFAF8",
+    "clusterBkg":          "#FAFAF8",
+    "clusterBorder":       "#D2D5CA",
+    "titleColor":          "#6D706A",
+    "edgeLabelBackground": "#FAFAF8",
+    "fontFamily":          "ui-monospace, SF Mono, Menlo, Consolas, monospace"
+  }
+} }%%
+flowchart TD
+
+    classDef state   fill:#FAFAF8,stroke:#D2D5CA,color:#6D706A,rx:20
+    classDef fn      fill:#E7E9E1,stroke:#AEB3A6,color:#1B1D18
+    classDef fn_ok   fill:#F2FAF4,stroke:#AEDABB,color:#207A38
+    classDef fn_warn fill:#FFF3F3,stroke:#F5BABA,color:#9B1A14
+
+    UNINIT(["UNCONFIGURED\n(plugin loaded)"])
+    INACTIVE(["INACTIVE"])
+    ACTIVE(["ACTIVE"])
+    FINAL(["FINALIZED"])
+
+    on_init["on_init()<br/>· parse URDF: motor_id, operating_mode, limits, EEPROM params per joint<br/>· read-only detection: joints with no &lt;command_interface&gt; entries<br/>  → torque=0, excluded from write() completely<br/>· build servo / velocity / PWM mode index groups (read-only excluded)<br/>· resize all internal state and command vectors"]
+
+    on_configure["on_configure()<br/>· create /emergency_stop service (std_srvs/SetBool) — even in mock mode<br/>· open serial port at baud_rate / communication_timeout_ms<br/>· ping all motors to verify communication<br/>· per joint with EEPROM params: unlockEeprom → write PID coefficients<br/>  (pos→addr 21/22/23, vel→addr 37/39) + protection_current (addr 28/29) +<br/>  overload_torque (addr 36) + return_delay (addr 7) → lockEeprom<br/>  (omit any param to preserve current EEPROM value)"]
+
+    on_activate["on_activate()<br/>· InitMotor(motor_id, mode, torque) per joint — writes mode to EEPROM<br/>· commanded joints: torque=1  (motor energized, actively driven)<br/>· read-only joints:  torque=0  (no command interface — moved by hand, state still reported)<br/>· reset position/velocity states to 0 if reset_states_on_activate=true"]
+
+    active_cycle["Active control cycle  (per ros2_control period)<br/>read():  FeedBack(motor_id) per joint → 7 state interfaces (pos·vel·effort·voltage·temp·current·is_moving)<br/>write(): SyncWrite per mode group when use_sync_write=true and &gt;1 joint/group;<br/>         else individual WritePosEx / WriteSpe / WritePwm per joint<br/>         read-only joints excluded from all mode groups<br/>e-stop:  SetBool(true) → cmd=0·torque=0 all joints | SetBool(false) → torque=1 commanded only"]
+
+    on_deactivate["on_deactivate()<br/>· stop_motor() per joint (individual writes):<br/>  velocity/PWM → 0 | servo → hold current position<br/>· EnableTorque(id, 0) for all joints<br/>  (read-only motors: torque was already 0 — call is harmless)"]
+
+    on_cleanup["on_cleanup()<br/>· disable torque all joints · close serial port · reset ROS 2 node and service<br/>→ return to UNCONFIGURED  (may re-configure and restart)"]
+
+    on_shutdown["on_shutdown()<br/>· disable torque all joints · close serial port<br/>→ FINALIZED  (called from any state)"]
+
+    UNINIT  --> on_init
+    on_init --> on_configure
+    on_configure --> INACTIVE
+    INACTIVE --> on_activate
+    on_activate --> ACTIVE
+    ACTIVE --> active_cycle
+    active_cycle --> ACTIVE
+    ACTIVE --> on_deactivate
+    on_deactivate --> INACTIVE
+    INACTIVE --> on_cleanup
+    on_cleanup --> UNINIT
+    INACTIVE --> on_shutdown
+    ACTIVE   --> on_shutdown
+    UNINIT   --> on_shutdown
+    on_shutdown --> FINAL
+
+    class UNINIT,INACTIVE,ACTIVE,FINAL state
+    class on_init,on_configure,on_cleanup fn
+    class on_activate,active_cycle fn_ok
+    class on_deactivate fn_warn

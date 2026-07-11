@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 428" width="780" height="428"
+     font-family="ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace">
+  <defs>
+    <marker id="ah"    markerWidth="7" markerHeight="5" refX="6.5" refY="2.5" orient="auto"><polygon points="0,0 7,2.5 0,5" fill="#585B54"/></marker>
+    <marker id="ah-ok" markerWidth="7" markerHeight="5" refX="6.5" refY="2.5" orient="auto"><polygon points="0,0 7,2.5 0,5" fill="#3A8A52"/></marker>
+    <marker id="ah-hi" markerWidth="7" markerHeight="5" refX="6.5" refY="2.5" orient="auto"><polygon points="0,0 7,2.5 0,5" fill="#A04000"/></marker>
+  </defs>
+  <rect width="780" height="428" fill="#ECEEE8"/>
+<g transform="translate(12,8)">
+
+        <!-- ── STEP 1: on_init() ── -->
+        <rect x="0" y="0" width="756" height="48" rx="3"
+              fill="#D8DDD3" stroke="#7C8076" stroke-width="1"/>
+        <line x1="168" y1="0" x2="168" y2="48" stroke="#7C8076" stroke-width="0.75"/>
+        <text x="84" y="17" text-anchor="middle" font-size="10" font-weight="700" fill="#141612">on_init()</text>
+        <text x="84" y="33" text-anchor="middle" font-size="8"  fill="#404340">→ UNCONFIGURED</text>
+        <text x="180" y="14" font-size="8.5" fill="#404340">· parse URDF params per joint: motor_id, operating_mode, limits, EEPROM params</text>
+        <text x="180" y="27" font-size="8.5" fill="#404340">· read-only detection: joints with no &lt;command_interface&gt; → torque=0, excluded from write()</text>
+        <text x="180" y="40" font-size="8.5" fill="#404340">· build servo/velocity/PWM mode index groups (read-only excluded); resize all vectors</text>
+
+        <!-- arrow 1→2 -->
+        <line x1="84" y1="49" x2="84" y2="68" stroke="#585B54" stroke-width="1.5" marker-end="url(#ah)"/>
+
+        <!-- ── STEP 2: on_configure() ── -->
+        <rect x="0" y="70" width="756" height="61" rx="3"
+              fill="#D8DDD3" stroke="#7C8076" stroke-width="1"/>
+        <line x1="168" y1="70" x2="168" y2="131" stroke="#7C8076" stroke-width="0.75"/>
+        <text x="84" y="87" text-anchor="middle" font-size="10" font-weight="700" fill="#141612">on_configure()</text>
+        <text x="84" y="103" text-anchor="middle" font-size="8"  fill="#404340">→ INACTIVE</text>
+        <text x="180" y="84"  font-size="8.5" fill="#404340">· create /emergency_stop service (even in mock mode)</text>
+        <text x="180" y="97"  font-size="8.5" fill="#404340">· open serial port; ping all motors to verify communication</text>
+        <text x="180" y="110" font-size="8.5" fill="#404340">· per joint w/ EEPROM params: unlockEeprom → write PID + protection_current +</text>
+        <text x="180" y="123" font-size="8.5" fill="#404340">  overload_torque + return_delay → lockEeprom  (omit any param to preserve)</text>
+
+        <!-- arrow 2→3 -->
+        <line x1="84" y1="132" x2="84" y2="151" stroke="#585B54" stroke-width="1.5" marker-end="url(#ah)"/>
+
+        <!-- ── STEP 3: on_activate() ── -->
+        <rect x="0" y="153" width="756" height="48" rx="3"
+              fill="#D4EFDC" stroke="#3A8A52" stroke-width="1"/>
+        <!-- left badge overlay -->
+        <rect x="1" y="154" width="166" height="46" rx="2" fill="#D4EFDC" stroke="none"/>
+        <line x1="168" y1="153" x2="168" y2="201" stroke="#3A8A52" stroke-width="0.75"/>
+        <text x="84" y="170" text-anchor="middle" font-size="10" font-weight="700" fill="#0C5022">on_activate()</text>
+        <text x="84" y="186" text-anchor="middle" font-size="8"  fill="#0C5022">→ ACTIVE</text>
+        <text x="180" y="167" font-size="8.5" fill="#141612">· InitMotor(motor_id, mode, torque) per joint — mode register written to EEPROM</text>
+        <text x="180" y="180" font-size="8.5" fill="#0C5022">· commanded joints: torque=1  (motor energized, actively driven)</text>
+        <text x="180" y="193" font-size="8.5" fill="#622800">· read-only joints: torque=0  (no command interface — moved by hand, state still read)</text>
+
+        <!-- arrow 3→4 -->
+        <line x1="84" y1="202" x2="84" y2="221" stroke="#585B54" stroke-width="1.5" marker-end="url(#ah)"/>
+
+        <!-- ── STEP 4: ACTIVE CYCLE ── -->
+        <rect x="0" y="223" width="756" height="74" rx="3"
+              fill="#D4EFDC" stroke="#3A8A52" stroke-width="1"/>
+        <line x1="168" y1="223" x2="168" y2="297" stroke="#3A8A52" stroke-width="0.75"/>
+        <text x="84" y="254" text-anchor="middle" font-size="10" font-weight="700" fill="#0C5022">active cycle</text>
+        <text x="84" y="270" text-anchor="middle" font-size="8"  fill="#0C5022">ACTIVE state</text>
+        <text x="180" y="237" font-size="8.5" fill="#141612">· read():  FeedBack() per joint → pos · vel · effort · voltage · temp · current · is_moving</text>
+        <text x="180" y="250" font-size="8.5" fill="#141612">· write(): SyncWrite per mode group when use_sync_write=true and &gt;1 joint per group;</text>
+        <text x="180" y="263" font-size="8.5" fill="#141612">           else individual writes per joint  ·  read-only motors excluded from all groups</text>
+        <text x="180" y="279" font-size="8.5" fill="#404340">· e-stop:  SetBool(true) → cmd=0 · torque=0 all joints | SetBool(false) → torque=1 commanded only</text>
+        <text x="180" y="292" font-size="8.5" fill="#404340">· mock:    all serial calls bypassed; state simulated in software</text>
+
+        <!-- arrow 4→5 -->
+        <line x1="84" y1="298" x2="84" y2="317" stroke="#585B54" stroke-width="1.5" marker-end="url(#ah)"/>
+
+        <!-- ── STEP 5: on_deactivate() ── -->
+        <rect x="0" y="319" width="756" height="48" rx="3"
+              fill="#FAE0E0" stroke="#C04444" stroke-width="1"/>
+        <line x1="168" y1="319" x2="168" y2="367" stroke="#C04444" stroke-width="0.75"/>
+        <text x="84" y="336" text-anchor="middle" font-size="10" font-weight="700" fill="#6C0E0E">on_deactivate()</text>
+        <text x="84" y="352" text-anchor="middle" font-size="8"  fill="#6C0E0E">→ INACTIVE</text>
+        <text x="180" y="333" font-size="8.5" fill="#141612">· stop_motor() per joint (individual writes): vel→0, PWM→0, servo→hold current position</text>
+        <text x="180" y="346" font-size="8.5" fill="#141612">· EnableTorque(id, 0) all joints — read-only motors: torque was already 0</text>
+        <text x="180" y="359" font-size="8.5" fill="#404340">· return INACTIVE; may call on_activate() to restart or on_cleanup() to close serial</text>
+
+        <!-- arrow 5→6 -->
+        <line x1="84" y1="368" x2="84" y2="387" stroke="#585B54" stroke-width="1.5" marker-end="url(#ah)"/>
+
+        <!-- ── STEP 6: on_cleanup / on_shutdown ── -->
+        <rect x="0" y="389" width="756" height="18" rx="3"
+              fill="#D8DDD3" stroke="#7C8076" stroke-width="1"/>
+        <line x1="168" y1="389" x2="168" y2="407" stroke="#7C8076" stroke-width="0.75"/>
+        <text x="84" y="402" text-anchor="middle" font-size="8.5" font-weight="700" fill="#404340">on_cleanup() / on_shutdown()</text>
+        <text x="180" y="402" font-size="8.5" fill="#404340">· disable torque · close serial port — on_cleanup() → UNCONFIGURED; on_shutdown() → FINALIZED</text>
+
+      </g>
+</svg>

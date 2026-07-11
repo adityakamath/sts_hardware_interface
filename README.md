@@ -20,7 +20,8 @@
 - **Multi-Motor Coordination**: Efficient SyncWrite for chains of motors
 - **Safety Features**: Broadcast emergency stop, hardware limits, automatic error recovery
 - **Full State Feedback**: Position, velocity, load, voltage, temperature, current, motion status
-- **Per-joint PID Configuration**: Optional position PID (Mode 0) and velocity PI (Mode 1) coefficients written to servo EEPROM at startup
+- **Per-joint EEPROM Configuration**: Optional PID coefficients (Mode 0/1) and hardware protection parameters (all modes) written to servo EEPROM at startup
+- **Readonly Joints**: Joints with no `<command_interface>` entries have torque disabled and are excluded from all write loops, but still report full state feedback — enables teleoperation leader arms on the same serial bus as follower arms
 - **Mock Mode**: Hardware-free simulation for development and testing
 - **Motor Diagnostics Node**: Real-time health/stall/voltage/current/temperature monitoring for STS motors
 
@@ -161,6 +162,11 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `p_coefficient` | int | *(omit)* | Proportional gain written to servo EEPROM on startup (0–255). Mode 0 → position P (addr 21); Mode 1 → velocity P (addr 37); Mode 2 → ignored. Omit to preserve existing EEPROM value. |
 | `d_coefficient` | int | *(omit)* | Derivative gain written to servo EEPROM on startup (0–255). Mode 0 only → position D (addr 22); Mode 1/2 → ignored (velocity controller is PI only). Omit to preserve existing EEPROM value. |
 | `i_coefficient` | int | *(omit)* | Integral gain written to servo EEPROM on startup (0–255). Mode 0 → position I (addr 23); Mode 1 → velocity I (addr 39); Mode 2 → ignored. Omit to preserve existing EEPROM value. |
+| `protection_current` | int | *(omit)* | Hardware current cutoff written to EEPROM (0–65535, 6.5 mA/unit; e.g. 462 ≈ 3.0 A). When exceeded, the servo firmware cuts torque independently of ROS. All modes, addr 28/29. Omit to preserve existing EEPROM value. |
+| `overload_torque` | int | *(omit)* | Load percentage threshold that triggers overload protection, written to EEPROM (0–254). All modes, addr 36. Omit to preserve existing EEPROM value. |
+| `return_delay` | int | *(omit)* | Servo response delay written to EEPROM (0–254, 2 µs/unit). All modes, addr 7. Omit to preserve existing EEPROM value. |
+
+**Readonly joints:** A joint with **no `<command_interface>` entries** is treated as readonly. It still requires `motor_id` and `operating_mode` (the mode register is written to EEPROM so state feedback is interpreted correctly), but torque is disabled at activation and the joint is excluded from all write loops. All 7 state interfaces are still exported and read every cycle.
 
 ## Command Interfaces
 

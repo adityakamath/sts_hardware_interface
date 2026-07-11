@@ -1,23 +1,63 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor":        "#E7E9E1",
+    "primaryBorderColor":  "#AEB3A6",
+    "primaryTextColor":    "#1B1D18",
+    "lineColor":           "#929690",
+    "secondaryColor":      "#F2FAF4",
+    "secondaryBorderColor":"#AEDABB",
+    "secondaryTextColor":  "#207A38",
+    "tertiaryColor":       "#FEF0E2",
+    "tertiaryBorderColor": "#C65A00",
+    "tertiaryTextColor":   "#893C00",
+    "background":          "#F1F3EE",
+    "mainBkg":             "#FAFAF8",
+    "clusterBkg":          "#FAFAF8",
+    "clusterBorder":       "#D2D5CA",
+    "titleColor":          "#6D706A",
+    "edgeLabelBackground": "#FAFAF8",
+    "fontFamily":          "ui-monospace, SF Mono, Menlo, Consolas, monospace"
+  }
+} }%%
 flowchart TB
-    subgraph ROS2["ROS 2 Controllers"]
-        C1[Position Controller]
-        C2[Velocity Controller]
-        C3[Effort Controller]
+
+    classDef default  fill:#E7E9E1,stroke:#AEB3A6,color:#1B1D18
+    classDef ok       fill:#F2FAF4,stroke:#AEDABB,color:#207A38
+    classDef readonly fill:#FEF0E2,stroke:#C65A00,color:#893C00
+    classDef warn     fill:#FFF3F3,stroke:#F5BABA,color:#9B1A14
+    classDef dashed   fill:#FAFAF8,stroke:#AEB3A6,color:#6D706A,stroke-dasharray:5 3
+
+    subgraph ros2["ROS 2 CONTROL"]
+        ctrl["JointTrajectoryController (mode 0)<br/>JointGroupVelocityController (mode 1)<br/>JointGroupEffortController (mode 2)"]
+        estop["/emergency_stop<br/>std_srvs/SetBool<br/>all motors stop · torque disabled"]
+        diag["joint_state_broadcaster<br/>→ /joint_states · /dynamic_joint_states<br/>motor_diagnostics_node → /diagnostics"]
     end
 
-    subgraph HWI["STS Hardware Interface"]
-        SI[SystemInterface Plugin]
+    subgraph hw["STS HARDWARE INTERFACE"]
+        cfg["on_configure()<br/>· /emergency_stop service (even in mock mode)<br/>· open serial port; ping all motors<br/>· per joint: unlockEeprom → write PID +<br/>  protection_current + overload_torque +<br/>  return_delay → lockEeprom"]
+        rd["read()<br/>FeedBack() per joint (incl. read-only motors)<br/>→ pos · vel · effort · voltage · temp · current · is_moving"]
+        wr["write()<br/>SyncWrite per mode group<br/>(use_sync_write + &gt;1/group; else individual):<br/>mode 0 (servo_motor_indices_)<br/>mode 1 (velocity_motor_indices_)<br/>mode 2 (pwm_motor_indices_)<br/>read-only joints excluded from all groups"]
+        act["on_activate()<br/>InitMotor(id, mode, torque) per joint<br/>commanded: torque=1<br/>read-only: torque=0"]
+        deact["on_deactivate()<br/>stop_motor() per joint (individual writes)<br/>EnableTorque(id, 0) all joints"]
+        mock["Mock Mode<br/>enable_mock_mode=true<br/>all serial I/O bypassed<br/>state simulated in software"]
     end
 
-    subgraph Hardware["Physical Motors"]
-        M1[Motor 1 - Position Mode]
-        M2[Motor 2 - Velocity Mode]
-        M3[Motor 3 - PWM Mode]
+    subgraph phys["PHYSICAL HARDWARE  ·  TTL half-duplex serial bus  ·  up to 253 motors"]
+        ser["/dev/ttyACM0<br/>USB → TTL serial · 1 Mbaud"]
+        m1["Motor 1<br/>mode 0 · position"]
+        m2["Motor 2<br/>mode 1 · velocity"]
+        m3["Motor 3<br/>mode 2 · PWM"]
+        mn["Motor N · read-only<br/>no command interface<br/>torque=0 · state reported each cycle"]
     end
 
-    C1 --> SI
-    C2 --> SI
-    C3 --> SI
-    SI <--> M1
-    SI <--> M2
-    SI <--> M3
+    ros2 -- "command interfaces" --> hw
+    hw  -- "state interfaces"    --> ros2
+    hw  -- "SCServo SDK"         --> phys
+
+    class ctrl,estop,cfg,rd,wr,ser,m1,m2,m3 default
+    class diag default
+    class act ok
+    class mn readonly
+    class deact warn
+    class mock dashed

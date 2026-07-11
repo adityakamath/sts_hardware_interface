@@ -38,6 +38,22 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 
 ---
 
+## Lifecycle State Machine
+
+<div align="center">
+  <img src="assets/img/lifecycle.svg" alt="Lifecycle State Machine" width="700"/>
+</div>
+
+**Key transitions:**
+- **on_init()** → parses URDF params; detects read-only joints (no `<command_interface>` entries → `torque=0`, excluded from all write loops); builds servo/velocity/PWM mode index groups
+- **on_configure()** → creates `/emergency_stop` service (even in mock mode); opens serial port; pings all motors; writes optional EEPROM params (PID coefficients, `protection_current`, `overload_torque`, `return_delay`) per joint
+- **on_activate()** → `InitMotor(motor_id, mode, torque)` per joint — commanded joints: `torque=1`; read-only joints: `torque=0`
+- **Active cycle** → `read()` calls `FeedBack(motor_id)` per joint (individual reads, 7 state interfaces); `write()` uses SyncWrite per mode group when `use_sync_write=true` and >1 joint/group, else individual writes; read-only joints excluded from all write groups
+- **on_deactivate()** → `stop_motor()` per joint (individual writes), `EnableTorque(0)` all joints; returns to INACTIVE — may call `on_activate()` again or `on_cleanup()` to close serial
+- **on_cleanup() / on_shutdown()** → disables torque, closes serial port
+
+---
+
 ## Operating Modes
 
 Each motor can be configured independently in one of three modes:
@@ -91,6 +107,45 @@ Each motor can be configured independently in one of three modes:
   <param name="max_effort">0.8</param>
 </joint>
 ```
+
+---
+
+## Readonly Joints
+
+A joint with **no `<command_interface>` entries** in the URDF is treated as a readonly joint. This enables teleoperation leader arms, passive sensing joints, or any motor that should only report state without being commanded.
+
+**Behaviour:**
+
+- Torque is disabled at `on_activate()` via `InitMotor(id, mode, 0)` and remains disabled for the entire session, including after emergency stop release.
+- The joint is excluded from all mode-grouped write loops (`servo_motor_indices_`, `velocity_motor_indices_`, `pwm_motor_indices_`), so `write()` requires zero per-joint guards.
+- All 7 state interfaces are still exported and the motor is still read every cycle — readonly joints appear in `/joint_states` and `/dynamic_joint_states` normally.
+- No command interfaces are exported, so no controller can claim the joint for commanding.
+- `motor_id` and `operating_mode` are still required — `InitMotor` writes the mode register to EEPROM so feedback data (position, velocity) is interpreted correctly.
+- EEPROM parameters (`p/d/i_coefficient`, `protection_current`, `overload_torque`, `return_delay`) are still parsed and written if present — this protects the motor even if torque is enabled externally.
+
+**URDF Example (teleoperation leader arm):**
+
+```xml
+<!-- Readonly joint: moved by hand, reports position only -->
+<joint name="shoulder_pan_leader">
+  <param name="motor_id">1</param>
+  <param name="operating_mode">0</param>  <!-- position mode for encoder feedback -->
+  <!-- no <command_interface> entries -->
+  <state_interface name="position"/>
+  <state_interface name="velocity"/>
+</joint>
+
+<!-- Commanded follower joint on the same bus -->
+<joint name="shoulder_pan_follower">
+  <param name="motor_id">7</param>
+  <param name="operating_mode">0</param>
+  <command_interface name="position"/>
+  <state_interface name="position"/>
+  <state_interface name="velocity"/>
+</joint>
+```
+
+A teleoperation node subscribes to `/joint_states`, reads the leader joint positions, and publishes them as commands to the follower arm's controller. Both arms share a single hardware interface and serial bus.
 
 ---
 
@@ -184,6 +239,19 @@ Configure these per `<joint>` in your URDF:
 | `position_center_steps` | int | 4095 | 0–4095 | Raw encoder step mapped to 0 rad (Mode 0 only). Default gives [0, 2π) range; set to 2048 for approximately [−π, +π] range. |
 | `max_velocity` | double | 5.22 | > 0.0 | Max velocity limit (rad/s, Modes 0 and 1) |
 | `max_effort` | double | 1.0 | (0.0, 1.0] | Maximum allowed effort command (Mode 2 only). Limits command range without scaling. |
+| `p_coefficient` | int | *(omit)* | 0–255 | P gain written to EEPROM at startup. Mode 0 → addr 21; Mode 1 → addr 37; Mode 2: ignored. Omit to preserve existing EEPROM value. |
+| `d_coefficient` | int | *(omit)* | 0–255 | D gain written to EEPROM at startup. Mode 0 → addr 22 only; Mode 1 and 2: ignored. Omit to preserve existing EEPROM value. |
+| `i_coefficient` | int | *(omit)* | 0–255 | I gain written to EEPROM at startup. Mode 0 → addr 23; Mode 1 → addr 39; Mode 2: ignored. Omit to preserve existing EEPROM value. |
+| `protection_current` | int | *(omit)* | 0–65535 | Hardware current cutoff written to EEPROM (6.5 mA/unit; e.g. 462 ≈ 3.0 A). When exceeded, the servo firmware itself cuts torque, independently of ROS. All modes, addr 28/29 (uint16). Omit to preserve existing EEPROM value. |
+| `overload_torque` | int | *(omit)* | 0–254 | Load percentage threshold that triggers overload protection, written to EEPROM. All modes, addr 36. Omit to preserve existing EEPROM value. |
+| `return_delay` | int | *(omit)* | 0–254 | Servo response delay written to EEPROM (2 µs/unit). All modes, addr 7. Omit to preserve existing EEPROM value. |
+
+**Notes on EEPROM parameters (`p/d/i_coefficient`, `protection_current`, `overload_torque`, `return_delay`):**
+
+- All six are optional. Omitting a parameter leaves the servo's existing EEPROM value unchanged — there is no software default that gets written.
+- Each EEPROM write requires an unlock/lock cycle (`unLockEeprom` → write → `LockEeprom`). PID and protection writes happen in two separate passes in `on_configure()`, once per motor that has any of those parameters set.
+- PID coefficients are filtered by mode at `on_init()` time: `d_coefficient` is only stored for Mode 0 joints, and no PID coefficients are stored for Mode 2 joints, so `on_configure()` does not need mode checks.
+- `protection_current` uses `writeWord` (two bytes at addrs 28/29 atomically); all other EEPROM params use `writeByte`.
 
 ---
 
@@ -286,8 +354,9 @@ The hardware interface creates a ROS 2 node and service server during `on_config
 **Torque Management:**
 
 Motor torque is managed as follows:
-- **Enabled during:** Normal operation (after `on_activate()`)
+- **Enabled during:** Normal operation (after `on_activate()`) — commanded joints only
 - **Disabled during:** Emergency stop, deactivation (`on_deactivate()`), cleanup (`on_cleanup()`), shutdown (`on_shutdown()`), and error states (`on_error()`)
+- **Readonly joints:** Torque is never enabled — not on activation, not after emergency stop release. `on_deactivate()` still sends `EnableTorque(id, 0)` which is a harmless no-op.
 - **Purpose:** Disabling torque makes motors freely movable by hand, enabling safe manual intervention during emergency stops or when the system is not operational
 
 **Note:** The broadcast uses a velocity-zero command, which the STS protocol applies regardless of the motor's configured operating mode. The error handler (`on_error`) uses per-motor mode-specific stop commands instead.
@@ -307,7 +376,7 @@ The hardware interface automatically recovers from communication failures:
 2. Reopen serial connection
 3. Ping all motors to verify presence
 4. Reinitialize each motor with configured operating mode
-5. Re-enable torque on all motors
+5. Re-enable torque on commanded joints (readonly joints remain torque-disabled)
 
 **Recovery Failure:**
 - If recovery fails, hardware interface transitions to ERROR state

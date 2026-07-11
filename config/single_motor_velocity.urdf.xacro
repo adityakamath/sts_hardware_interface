@@ -49,6 +49,13 @@
       <!-- PWM/Effort limits (Mode 2 only): -->
       <!-- <param name="max_effort">1.0</param>      Max effort command, 0.0 to 1.0 (default: 1.0) -->
 
+      <!-- Optional EEPROM parameters (omit any line to preserve the existing EEPROM value): -->
+      <!-- <param name="p_coefficient">1</param> -->    <!-- P gain (0-255): addr 37 (Mode 1); d_coefficient ignored in Mode 1 -->
+      <!-- <param name="i_coefficient">0</param> -->    <!-- I gain (0-255): addr 39 (Mode 1) -->
+      <!-- <param name="protection_current">462</param> -->  <!-- Hardware current cutoff (0-65535, 6.5mA units; 462 ≈ 3.0A): addr 28/29 -->
+      <!-- <param name="overload_torque">80</param> -->      <!-- Load threshold for overload protection (0-254): addr 36 -->
+      <!-- <param name="return_delay">0</param> -->          <!-- Response delay (0-254, 2µs units): addr 7 -->
+
       <!-- Command Interfaces (Mode 1: Velocity) -->
       <command_interface name="velocity"/>  <!-- Target velocity in rad/s -->
       <command_interface name="acceleration"/>  <!-- Acceleration value: 0-254 (unitless protocol value) -->

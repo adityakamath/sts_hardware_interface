@@ -58,6 +58,14 @@ using Result = std::optional<std::string>;
  * Mode 1: velocity (rad/s) [required], acceleration (0-254) [optional]
  * Mode 2: effort (PWM duty cycle, -1.0 to +1.0) [required]
  *
+ * READONLY JOINTS:
+ * A joint with no <command_interface> entries in the URDF is treated as readonly.
+ * Readonly joints have torque disabled at activation and are excluded from all write
+ * loops, but are read every cycle and export all 7 state interfaces normally.
+ * Intended for teleoperation leader arms: the arm is moved by hand, its joint positions
+ * flow out through /joint_states, and a teleoperation node forwards them as commands
+ * to a follower arm. Both arms can coexist in a single ros2_control system / URDF.
+ *
  * EMERGENCY STOP:
  * Emergency stop functionality is triggered via ROS 2 service (not a command interface):
  *    Service: /emergency_stop (std_srvs/SetBool)
@@ -104,6 +112,13 @@ using Result = std::optional<std::string>;
  *                  Mode 0 → addr 22 (SMS_STS_MODE0_D_COEF); Mode 1: ignored (PI only); Mode 2: ignored
  * - i_coefficient: Integral gain written to EEPROM     (0-255, optional — omit to preserve existing value)
  *                  Mode 0 → addr 23 (SMS_STS_MODE0_I_COEF); Mode 1 → addr 39 (SMS_STS_MODE1_I_COEF); Mode 2: ignored
+ * - protection_current: Hardware current cutoff written to EEPROM (0-65535, 6.5mA units, optional — omit to preserve
+ *                       existing value). When the servo exceeds this current for longer than the overload time, the
+ *                       servo firmware itself cuts torque. All modes. addr 28/29 (uint16, writeWord).
+ * - overload_torque: Load percentage threshold that triggers overload protection (0-254, optional — omit to preserve
+ *                   existing value). All modes. addr 36 (uint8, writeByte).
+ * - return_delay: Delay before the servo sends a response to each command (0-254, 2µs units, optional — omit to
+ *                preserve existing value). All modes. addr 7 (uint8, writeByte).
 **/
 class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
@@ -198,9 +213,10 @@ private:
   std::map<std::string, size_t> joint_name_to_index_;  // Quick lookup
 
   // ===== PRE-COMPUTED MOTOR GROUPINGS (set once in on_init) =====
-  std::vector<size_t> servo_motor_indices_;     // MODE_SERVO joint indices
-  std::vector<size_t> velocity_motor_indices_;  // MODE_VELOCITY joint indices
-  std::vector<size_t> pwm_motor_indices_;       // MODE_PWM joint indices
+  std::vector<bool> is_readonly_;               // True if joint has no command interfaces (torque disabled, excluded from write loops)
+  std::vector<size_t> servo_motor_indices_;     // MODE_SERVO joint indices (readonly joints excluded)
+  std::vector<size_t> velocity_motor_indices_;  // MODE_VELOCITY joint indices (readonly joints excluded)
+  std::vector<size_t> pwm_motor_indices_;       // MODE_PWM joint indices (readonly joints excluded)
 
   // ===== PRE-ALLOCATED SYNCWRITE BUFFERS (sized once, values updated each cycle) =====
   std::vector<u8> servo_sync_ids_;
@@ -248,6 +264,11 @@ private:
   std::vector<std::optional<int>> p_coefficient_;  // Proportional gain (0-255): Mode 0 → SMS_STS_MODE0_P_COEF (addr 21); Mode 1 → SMS_STS_MODE1_P_COEF (addr 37)
   std::vector<std::optional<int>> d_coefficient_;  // Derivative gain   (0-255): Mode 0 → SMS_STS_MODE0_D_COEF (addr 22) only; Mode 1/2: ignored
   std::vector<std::optional<int>> i_coefficient_;  // Integral gain     (0-255): Mode 0 → SMS_STS_MODE0_I_COEF (addr 23); Mode 1 → SMS_STS_MODE1_I_COEF (addr 39)
+
+  // ===== PER-JOINT HARDWARE PROTECTION PARAMETERS (optional, written to EEPROM in on_configure) =====
+  std::vector<std::optional<int>> protection_current_;  // Hardware current cutoff (0-65535, 6.5mA/unit): addr 28/29 (uint16, writeWord); all modes
+  std::vector<std::optional<int>> overload_torque_;     // Load threshold triggering overload protection (0-254): addr 36 (uint8, writeByte); all modes
+  std::vector<std::optional<int>> return_delay_;        // Response delay (0-254, 2µs/unit): addr 7 (uint8, writeByte); all modes
 
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;

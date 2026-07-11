@@ -224,9 +224,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   has_velocity_limits_.resize(num_joints, false);
   has_effort_limits_.resize(num_joints, false);
   position_center_.resize(num_joints, conversions::STS_DEFAULT_CENTER);  // 4095 = legacy default
+  is_readonly_.resize(num_joints, false);
   p_coefficient_.resize(num_joints, std::nullopt);
   d_coefficient_.resize(num_joints, std::nullopt);
   i_coefficient_.resize(num_joints, std::nullopt);
+  protection_current_.resize(num_joints, std::nullopt);
+  overload_torque_.resize(num_joints, std::nullopt);
+  return_delay_.resize(num_joints, std::nullopt);
 
   // Parse each joint
   for (size_t i = 0; i < num_joints; ++i) {
@@ -355,45 +359,52 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       has_effort_limits_[i] = true;
     }
 
-    // Validate command interfaces match operating mode.
+    // A joint with no command interfaces is readonly: torque disabled at activation,
+    // excluded from all write loops, state still read every cycle.
+    is_readonly_[i] = joint.command_interfaces.empty();
+
+    // Validate command interfaces match operating mode (skipped for readonly joints).
     // For MODE_SERVO: only position is required. velocity (max speed for the move) and
     //   acceleration are optional — when omitted, speed 0 (= hardware max) and ACC 0
     //   (= hardware default) are used. proportional_vel_max drives velocity internally
     //   during SyncWrite when != 0.
     // For MODE_VELOCITY: only velocity is required. acceleration is optional — when omitted,
     //   proportional_acc_max drives ACC internally during SyncWrite, or ACC 0 otherwise.
-    std::vector<std::string> required_cmd_interfaces;
-    switch (operating_modes_[i]) {
-      case MODE_SERVO:
-        required_cmd_interfaces = {"position"};
-        break;
-      case MODE_VELOCITY:
-        required_cmd_interfaces = {"velocity"};
-        break;
-      case MODE_PWM:
-        required_cmd_interfaces = {"effort"};
-        break;
-    }
-
-    for (const auto & required_interface : required_cmd_interfaces) {
-      bool found = false;
-      for (const auto & cmd_interface : joint.command_interfaces) {
-        if (cmd_interface.name == required_interface) {
-          found = true;
+    if (!is_readonly_[i]) {
+      std::vector<std::string> required_cmd_interfaces;
+      switch (operating_modes_[i]) {
+        case MODE_SERVO:
+          required_cmd_interfaces = {"position"};
           break;
+        case MODE_VELOCITY:
+          required_cmd_interfaces = {"velocity"};
+          break;
+        case MODE_PWM:
+          required_cmd_interfaces = {"effort"};
+          break;
+      }
+
+      for (const auto & required_interface : required_cmd_interfaces) {
+        bool found = false;
+        for (const auto & cmd_interface : joint.command_interfaces) {
+          if (cmd_interface.name == required_interface) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          RCLCPP_ERROR(
+            logger_,
+            "Joint '%s': Missing required command interface '%s' for operating mode %d",
+            joint.name.c_str(), required_interface.c_str(), operating_modes_[i]);
+          return hardware_interface::CallbackReturn::ERROR;
         }
       }
-      if (!found) {
-        RCLCPP_ERROR(
-          logger_,
-          "Joint '%s': Missing required command interface '%s' for operating mode %d",
-          joint.name.c_str(), required_interface.c_str(), operating_modes_[i]);
-        return hardware_interface::CallbackReturn::ERROR;
-      }
     }
 
-    RCLCPP_INFO(logger_, "Joint '%s': motor_id=%d, mode=%d, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f]",
+    RCLCPP_INFO(logger_, "Joint '%s': motor_id=%d, mode=%d, readonly=%s, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f]",
       joint.name.c_str(), motor_ids_[i], operating_modes_[i],
+      is_readonly_[i] ? "true" : "false",
       position_min_[i], position_max_[i], velocity_max_[i], effort_max_[i]);
 
     // Parse optional PID coefficients (0-255; absent = do not write, preserve EEPROM value).
@@ -438,6 +449,32 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
         }
       }
     }
+
+    // Parse optional protection parameters (all modes; absent = do not write, preserve EEPROM value).
+    // protection_current: uint16 raw value in 6.5mA units (e.g. 462 ≈ 3.0A); addr 28/29.
+    // overload_torque: load percentage threshold for overload cutoff; addr 36.
+    // return_delay: response delay in 2µs units; addr 7.
+    auto parse_eeprom_param = [&](const char* param_name, std::vector<std::optional<int>>& target, int min_val, int max_val) {
+      if (!joint.parameters.count(param_name)) return true;
+      int val = 0;
+      try {
+        val = std::stoi(joint.parameters.at(param_name));
+      } catch (const std::exception &) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid %s value: '%s' (must be a valid integer)",
+          joint.name.c_str(), param_name, joint.parameters.at(param_name).c_str());
+        return false;
+      }
+      if (val < min_val || val > max_val) {
+        RCLCPP_ERROR(logger_, "Joint '%s': %s=%d out of range [%d, %d]",
+          joint.name.c_str(), param_name, val, min_val, max_val);
+        return false;
+      }
+      target[i] = val;
+      return true;
+    };
+    if (!parse_eeprom_param("protection_current", protection_current_, 0, 65535)) return hardware_interface::CallbackReturn::ERROR;
+    if (!parse_eeprom_param("overload_torque",    overload_torque_,    0, 254))   return hardware_interface::CallbackReturn::ERROR;
+    if (!parse_eeprom_param("return_delay",       return_delay_,       0, 254))   return hardware_interface::CallbackReturn::ERROR;
   }
 
   // Check for duplicate motor IDs
@@ -451,8 +488,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     }
   }
 
-  // Pre-compute motor groupings by operating mode (static after init)
+  // Pre-compute motor groupings by operating mode (static after init).
+  // Readonly joints are excluded — they are never written in the control loop.
   for (size_t i = 0; i < num_joints; ++i) {
+    if (is_readonly_[i]) continue;
     switch (operating_modes_[i]) {
       case MODE_SERVO:
         servo_motor_indices_.push_back(i);
@@ -507,8 +546,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   consecutive_read_errors_ = 0;
   consecutive_write_errors_ = 0;
 
-  RCLCPP_INFO(logger_, "Initialization complete: %zu joints, port=%s, baud=%d, sync_write=%s, mock=%s",
-    num_joints, serial_port_.c_str(), baud_rate_,
+  size_t readonly_count = std::count(is_readonly_.begin(), is_readonly_.end(), true);
+  RCLCPP_INFO(logger_, "Initialization complete: %zu joints (%zu readonly), port=%s, baud=%d, sync_write=%s, mock=%s",
+    num_joints, readonly_count, serial_port_.c_str(), baud_rate_,
     use_sync_write_ ? "true" : "false",
     enable_mock_mode_ ? "true" : "false");
 
@@ -624,6 +664,50 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
       has_i ? std::to_string(i_coefficient_[i].value()).c_str() : "(unchanged)");
   }
 
+  // Write per-joint hardware protection parameters to EEPROM (only for joints that have them set).
+  for (size_t i = 0; i < motor_ids_.size(); ++i) {
+    bool has_pc = protection_current_[i].has_value();
+    bool has_ot = overload_torque_[i].has_value();
+    bool has_rd = return_delay_[i].has_value();
+    if (!has_pc && !has_ot && !has_rd) continue;
+
+    int id = motor_ids_[i];
+    if (auto r = check(servo_->unLockEeprom(id), "unLockEeprom"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    if (has_pc) {
+      if (auto r = check(servo_->writeWord(id, SMS_STS_PROTECTION_CURRENT_L, static_cast<u16>(protection_current_[i].value())), "writeWord PROTECTION_CURRENT"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    if (has_ot) {
+      if (auto r = check(servo_->writeByte(id, SMS_STS_OVERLOAD_TORQUE, static_cast<u8>(overload_torque_[i].value())), "writeByte OVERLOAD_TORQUE"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    if (has_rd) {
+      if (auto r = check(servo_->writeByte(id, SMS_STS_RETURN_DELAY, static_cast<u8>(return_delay_[i].value())), "writeByte RETURN_DELAY"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    if (auto r = check(servo_->LockEeprom(id), "LockEeprom"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    RCLCPP_INFO(logger_, "Motor %d (joint '%s'): wrote protection params PC=%s OT=%s RD=%s",
+      id, joint_names_[i].c_str(),
+      has_pc ? std::to_string(protection_current_[i].value()).c_str() : "(unchanged)",
+      has_ot ? std::to_string(overload_torque_[i].value()).c_str() : "(unchanged)",
+      has_rd ? std::to_string(return_delay_[i].value()).c_str() : "(unchanged)");
+  }
+
   RCLCPP_INFO(logger_, "Configuration complete");
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -657,16 +741,18 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
     return hardware_interface::CallbackReturn::SUCCESS;
   }
 
-  // Initialize all motors
+  // Initialize all motors. Readonly joints get torque disabled and are never commanded.
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1), "InitMotor"); r.has_value()) {
+    u8 enable_torque = is_readonly_[i] ? 0 : 1;
+    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], enable_torque), "InitMotor"); r.has_value()) {
       RCLCPP_ERROR(logger_, "Motor %d (joint '%s') in mode %d: %s",
         motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i], r->c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
 
-    RCLCPP_INFO(logger_, "Motor %d (joint '%s') initialized in mode %d with torque enabled",
-      motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i]);
+    RCLCPP_INFO(logger_, "Motor %d (joint '%s') initialized in mode %d, torque %s",
+      motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i],
+      is_readonly_[i] ? "disabled (readonly)" : "enabled");
   }
 
   // Zero position and velocity for all joints to initialize odometry (if enabled)
@@ -737,6 +823,7 @@ STSHardwareInterface::export_command_interfaces()
   std::vector<hardware_interface::CommandInterface> command_interfaces;
 
   for (size_t i = 0; i < joint_names_.size(); ++i) {
+    if (is_readonly_[i]) continue;  // readonly joint — no command interfaces exported
     const std::string & joint_name = joint_names_[i];
 
     // Mode-dependent command interfaces (per joint)
@@ -981,8 +1068,9 @@ hardware_interface::return_type STSHardwareInterface::write(
   if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
     RCLCPP_INFO(logger_, "Emergency stop released - re-enabling torque");
 
-    // Re-enable torque on all motors
+    // Re-enable torque on commanded joints only; readonly joints keep torque disabled
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
+      if (is_readonly_[i]) continue;
       if (auto r = check(servo_->EnableTorque(motor_ids_[i], 1), "EnableTorque"); r.has_value()) {
         RCLCPP_WARN(logger_, "Motor %d (joint '%s'): enable torque after emergency stop release: %s",
           motor_ids_[i], joint_names_[i].c_str(), r->c_str());
@@ -1378,7 +1466,8 @@ bool STSHardwareInterface::attempt_error_recovery()
       return false;
     }
 
-    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], 1), "InitMotor"); r.has_value()) {
+    u8 enable_torque = is_readonly_[i] ? 0 : 1;
+    if (auto r = check(servo_->InitMotor(motor_ids_[i], operating_modes_[i], enable_torque), "InitMotor"); r.has_value()) {
       RCLCPP_ERROR(logger_, "Failed to reinitialize motor %d (joint '%s') after recovery: %s",
         motor_ids_[i], joint_names_[i].c_str(), r->c_str());
       return false;
