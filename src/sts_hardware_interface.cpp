@@ -402,7 +402,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       }
     }
 
-    RCLCPP_INFO(logger_, "Joint '%s': motor_id=%d, mode=%d, readonly=%s, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f]",
+    RCLCPP_INFO(logger_, "Joint '%s': motor_id=%d, mode=%d, read-only=%s, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f]",
       joint.name.c_str(), motor_ids_[i], operating_modes_[i],
       is_readonly_[i] ? "true" : "false",
       position_min_[i], position_max_[i], velocity_max_[i], effort_max_[i]);
@@ -547,7 +547,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   consecutive_write_errors_ = 0;
 
   size_t readonly_count = std::count(is_readonly_.begin(), is_readonly_.end(), true);
-  RCLCPP_INFO(logger_, "Initialization complete: %zu joints (%zu readonly), port=%s, baud=%d, sync_write=%s, mock=%s",
+  RCLCPP_INFO(logger_, "Initialization complete: %zu joints (%zu read-only), port=%s, baud=%d, sync_write=%s, mock=%s",
     num_joints, readonly_count, serial_port_.c_str(), baud_rate_,
     use_sync_write_ ? "true" : "false",
     enable_mock_mode_ ? "true" : "false");
@@ -752,7 +752,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
 
     RCLCPP_INFO(logger_, "Motor %d (joint '%s') initialized in mode %d, torque %s",
       motor_ids_[i], joint_names_[i].c_str(), operating_modes_[i],
-      is_readonly_[i] ? "disabled (readonly)" : "enabled");
+      is_readonly_[i] ? "disabled (read-only)" : "enabled");
   }
 
   // Zero position and velocity for all joints to initialize odometry (if enabled)
@@ -1031,7 +1031,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       RCLCPP_WARN(logger_, "Emergency stop activated - ALL motors stopped, torque disabled (mock mode)");
     } else if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
       emergency_stop_active_ = false;
-      RCLCPP_INFO(logger_, "Emergency stop released - torque enabled (mock mode)");
+      RCLCPP_INFO(logger_, "Emergency stop released - torque re-enabled (mock mode)");
     }
 
     // Continuously clear all commands while emergency stop is active
