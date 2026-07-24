@@ -27,14 +27,20 @@ jobs:
             ros-kilted-ament-lint-auto \
             ros-kilted-ament-lint-common \
             ros-kilted-control-msgs \
+            ros-kilted-controller-manager \
             ros-kilted-diagnostic-msgs \
+            ros-kilted-effort-controllers \
             ros-kilted-hardware-interface \
+            ros-kilted-joint-state-broadcaster \
+            ros-kilted-joint-trajectory-controller \
             ros-kilted-launch-testing-ament-cmake \
             ros-kilted-launch-testing-ros \
             ros-kilted-pluginlib \
             ros-kilted-rclcpp \
             ros-kilted-rclcpp-lifecycle \
-            ros-kilted-std-srvs
+            ros-kilted-robot-state-publisher \
+            ros-kilted-std-srvs \
+            ros-kilted-velocity-controllers
 
       # gtest (test_conversions, test_hardware_interface) and the launch tests
       # (single_motor_velocity, single_motor_position, motor_diagnostics, mixed_mode) all run
