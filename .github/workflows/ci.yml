@@ -1,29 +1,13 @@
-name: clang-tidy
+name: CI
 
 on:
-  pull_request:
-    paths:
-      - '**.cpp'
-      - '**.hpp'
-      - '**.h'
-      - 'CMakeLists.txt'
-      - '.clang-tidy'
   push:
-    branches:
-      - main
-      - develop
-    paths:
-      - '**.cpp'
-      - '**.hpp'
-      - '**.h'
-      - 'CMakeLists.txt'
-      - '.clang-tidy'
-  workflow_dispatch:
+  pull_request:
 
 jobs:
-  clang-tidy-check:
+  lint:
+    name: clang-tidy
     runs-on: ubuntu-24.04
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -76,10 +60,8 @@ jobs:
           source /opt/ros/kilted/setup.bash
           cd ~/ros2_ws/src/sts_hardware_interface
 
-          # Create results directory
           mkdir -p clang-tidy-results
 
-          # Run clang-tidy on all C++ files
           EXIT_CODE=0
 
           echo "Running clang-tidy on source files..."
@@ -91,10 +73,8 @@ jobs:
               > clang-tidy-results/$(basename $file).txt 2>&1 || EXIT_CODE=1
           done
 
-          # Combine all results
           cat clang-tidy-results/*.txt > clang-tidy-results/full-report.txt
 
-          # Display summary
           echo "================================"
           echo "clang-tidy Summary"
           echo "================================"
@@ -125,7 +105,6 @@ jobs:
             }
             report += '\n```';
 
-            // Truncate if too long (GitHub has comment size limits)
             if (report.length > 65000) {
               report = report.substring(0, 65000) + '\n... (truncated)';
             }
@@ -136,3 +115,59 @@ jobs:
               repo: context.repo.repo,
               body: report
             });
+
+  test:
+    name: colcon test (ros:kilted)
+    runs-on: ubuntu-latest
+    container: ros:kilted
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          path: src/sts_hardware_interface
+
+      - name: Install ROS dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            ros-kilted-ament-cmake-gtest \
+            ros-kilted-ament-lint-auto \
+            ros-kilted-ament-lint-common \
+            ros-kilted-control-msgs \
+            ros-kilted-controller-manager \
+            ros-kilted-diagnostic-msgs \
+            ros-kilted-effort-controllers \
+            ros-kilted-hardware-interface \
+            ros-kilted-joint-state-broadcaster \
+            ros-kilted-joint-trajectory-controller \
+            ros-kilted-launch-testing-ament-cmake \
+            ros-kilted-launch-testing-ros \
+            ros-kilted-pluginlib \
+            ros-kilted-rclcpp \
+            ros-kilted-rclcpp-lifecycle \
+            ros-kilted-robot-state-publisher \
+            ros-kilted-std-srvs \
+            ros-kilted-velocity-controllers \
+            ros-kilted-xacro
+
+      # gtest (test_conversions, test_hardware_interface) and the launch tests
+      # (single_motor_velocity, single_motor_position, motor_diagnostics, mixed_mode) all run
+      # here, alongside ament_lint_auto's cpplint/uncrustify/cppcheck/xmllint/copyright checks -
+      # clang-tidy's own static analysis runs in the lint job above instead.
+      - name: colcon build
+        run: |
+          . /opt/ros/kilted/setup.sh
+          colcon build --packages-select sts_hardware_interface
+
+      - name: colcon test
+        run: |
+          . /opt/ros/kilted/setup.sh
+          . install/setup.sh
+          colcon test --packages-select sts_hardware_interface --event-handlers console_direct+
+          colcon test-result --verbose
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: colcon-logs
+          path: log
