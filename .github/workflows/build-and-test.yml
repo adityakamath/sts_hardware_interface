@@ -40,7 +40,8 @@ jobs:
             ros-kilted-rclcpp-lifecycle \
             ros-kilted-robot-state-publisher \
             ros-kilted-std-srvs \
-            ros-kilted-velocity-controllers
+            ros-kilted-velocity-controllers \
+            ros-kilted-xacro
 
       # gtest (test_conversions, test_hardware_interface) and the launch tests
       # (single_motor_velocity, single_motor_position, motor_diagnostics, mixed_mode) all run
