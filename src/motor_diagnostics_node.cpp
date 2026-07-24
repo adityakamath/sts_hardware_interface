@@ -51,9 +51,11 @@ public:
         "/dynamic_joint_states", rclcpp::SensorDataQoS(),
         std::bind(&MotorDiagnosticsNode::joint_states_callback, this, std::placeholders::_1));
 
-    // Create publisher
+    // Create publisher. Reliable, not SensorDataQoS - this carries stall/overheat/overcurrent
+    // warnings, not a high-rate sensor stream, and a best-effort warning is a warning that can
+    // silently vanish. Matches bno055_diagnostics' QoS for the same /diagnostics topic.
     diagnostics_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-        "/diagnostics", rclcpp::SensorDataQoS());
+        "/diagnostics", rclcpp::SystemDefaultsQoS());
 
     RCLCPP_INFO(this->get_logger(), "Motor diagnostics node started");
     RCLCPP_INFO(this->get_logger(),

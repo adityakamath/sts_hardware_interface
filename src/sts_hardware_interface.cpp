@@ -574,10 +574,23 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
       std::placeholders::_1, std::placeholders::_2));
 
   // Enable service introspection: publishes full request/response content to
-  // /emergency_stop/_service_event for monitoring activations and releases
+  // /emergency_stop/_service_event for monitoring activations and releases.
+  //
+  // /emergency_stop reflects ongoing safety state, not a one-shot action, so this uses
+  // transient-local durability (depth 2, enough to cache the last request+response pair)
+  // instead of the volatile system default: a late-joining subscriber - e.g. lekiwi_audio's
+  // indicator_node, or bool_toggle_node syncing its own belief about current state - gets
+  // the current e-stop state replayed on connect rather than waiting for the next toggle.
+  // The liveliness lease lets a subscriber notice if this node dies without a clean exit.
+  const auto safety_qos = rclcpp::QoS(2)
+    .reliable()
+    .transient_local()
+    .liveliness(rclcpp::LivelinessPolicy::Automatic)
+    .liveliness_lease_duration(rclcpp::Duration(std::chrono::seconds(1)));
+
   emergency_stop_service_->configure_introspection(
     node_->get_clock(),
-    rclcpp::SystemDefaultsQoS(),
+    safety_qos,
     RCL_SERVICE_INTROSPECTION_CONTENTS);
 
   RCLCPP_INFO(logger_, "Created /emergency_stop service with introspection enabled");
