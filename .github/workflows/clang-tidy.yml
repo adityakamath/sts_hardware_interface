@@ -38,19 +38,19 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
 
-      - name: Setup ROS 2 Jazzy
+      - name: Setup ROS 2 Kilted
         uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: jazzy
+          required-ros-distributions: kilted
 
       - name: Install ROS 2 dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            ros-jazzy-hardware-interface \
-            ros-jazzy-pluginlib \
-            ros-jazzy-rclcpp \
-            ros-jazzy-rclcpp-lifecycle
+            ros-kilted-hardware-interface \
+            ros-kilted-pluginlib \
+            ros-kilted-rclcpp \
+            ros-kilted-rclcpp-lifecycle
 
       - name: Create workspace
         run: |
@@ -60,7 +60,7 @@ jobs:
       - name: Build with compile_commands.json
         shell: bash
         run: |
-          source /opt/ros/jazzy/setup.bash
+          source /opt/ros/kilted/setup.bash
           cd ~/ros2_ws
           colcon build \
             --packages-select sts_hardware_interface \
@@ -73,7 +73,7 @@ jobs:
       - name: Run clang-tidy
         shell: bash
         run: |
-          source /opt/ros/jazzy/setup.bash
+          source /opt/ros/kilted/setup.bash
           cd ~/ros2_ws/src/sts_hardware_interface
 
           # Create results directory

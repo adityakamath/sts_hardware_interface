@@ -10,31 +10,50 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        ros_distribution: [jazzy]
+    name: colcon test (ros:kilted)
+    runs-on: ubuntu-latest
+    container: ros:kilted
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
+          path: src/sts_hardware_interface
 
-      - uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: ${{ matrix.ros_distribution }}
+      - name: Install ROS dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            ros-kilted-ament-cmake-gtest \
+            ros-kilted-ament-lint-auto \
+            ros-kilted-ament-lint-common \
+            ros-kilted-control-msgs \
+            ros-kilted-diagnostic-msgs \
+            ros-kilted-hardware-interface \
+            ros-kilted-launch-testing-ament-cmake \
+            ros-kilted-launch-testing-ros \
+            ros-kilted-pluginlib \
+            ros-kilted-rclcpp \
+            ros-kilted-rclcpp-lifecycle \
+            ros-kilted-std-srvs
 
       # gtest (test_conversions, test_hardware_interface) and the launch tests
       # (single_motor_velocity, single_motor_position, motor_diagnostics, mixed_mode) all run
-      # as part of colcon test here, alongside ament_lint_auto's cpplint/uncrustify/cppcheck/
-      # xmllint/copyright checks - clang-tidy's own static analysis stays in its own workflow.
-      - uses: ros-tooling/action-ros-ci@v0.4
-        with:
-          package-name: sts_hardware_interface
-          target-ros2-distro: ${{ matrix.ros_distribution }}
+      # here, alongside ament_lint_auto's cpplint/uncrustify/cppcheck/xmllint/copyright checks -
+      # clang-tidy's own static analysis stays in its own workflow.
+      - name: colcon build
+        run: |
+          . /opt/ros/kilted/setup.sh
+          colcon build --packages-select sts_hardware_interface
+
+      - name: colcon test
+        run: |
+          . /opt/ros/kilted/setup.sh
+          . install/setup.sh
+          colcon test --packages-select sts_hardware_interface --event-handlers console_direct+
+          colcon test-result --verbose
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: colcon-logs-${{ matrix.ros_distribution }}
-          path: ros_ws/log
+          name: colcon-logs
+          path: log
