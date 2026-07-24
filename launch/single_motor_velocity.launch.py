@@ -82,7 +82,8 @@ def generate_launch_description():
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
             PathJoinSubstitution(
-                [FindPackageShare('sts_hardware_interface'), 'config', 'single_motor_velocity.urdf.xacro']
+                [FindPackageShare('sts_hardware_interface'), 'config',
+                 'single_motor_velocity.urdf.xacro']
             ),
             ' ',
             'serial_port:=', serial_port,
@@ -108,7 +109,8 @@ def generate_launch_description():
 
     # Controller configuration
     controller_config = PathJoinSubstitution(
-        [FindPackageShare('sts_hardware_interface'), 'config', 'single_motor_velocity_controllers.yaml']
+        [FindPackageShare('sts_hardware_interface'), 'config',
+         'single_motor_velocity_controllers.yaml']
     )
 
     # Controller manager

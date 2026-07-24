@@ -109,7 +109,8 @@ def generate_launch_description():
 
     # Controller configuration
     controller_config = PathJoinSubstitution(
-        [FindPackageShare('sts_hardware_interface'), 'config', 'single_motor_position_controllers.yaml']
+        [FindPackageShare('sts_hardware_interface'), 'config',
+         'single_motor_position_controllers.yaml']
     )
 
     # Controller manager

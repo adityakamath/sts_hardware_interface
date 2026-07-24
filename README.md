@@ -3,8 +3,8 @@
 ![Project Status](https://img.shields.io/badge/Status-Active-green)
 ![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
 ![C++](https://img.shields.io/badge/C++-17-blue?style=flat&logo=cplusplus&logoColor=white)
+[![CI](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/build-and-test.yml)
 [![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
-[![Blog](https://img.shields.io/badge/Blog-kamathrobotics.com-darkorange?style=flat&logo=hashnode&logoSize=auto)](https://kamathrobotics.com/hardware-abstraction-for-sts3215-servos)
 ![License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface?label=License)
 
 `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
