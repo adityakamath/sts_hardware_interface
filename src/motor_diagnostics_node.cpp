@@ -89,6 +89,10 @@ private:
 
       const auto& joint_name = msg->joint_names[i];
       auto status = diagnostic_msgs::msg::DiagnosticStatus();
+      // name, not just hardware_id: diagnostic_aggregator's GenericAnalyzer matches
+      // (startswith/contains/regex) only against DiagnosticStatus.name, never hardware_id -
+      // an unset name can't be grouped by any analyzer config.
+      status.name = "Motor: " + joint_name;
       status.hardware_id = joint_name;
       status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
 
