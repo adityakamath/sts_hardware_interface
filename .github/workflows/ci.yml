@@ -166,7 +166,7 @@ jobs:
           colcon test --packages-select sts_hardware_interface --event-handlers console_direct+
           colcon test-result --verbose
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: colcon-logs
