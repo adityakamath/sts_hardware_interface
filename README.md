@@ -11,6 +11,8 @@
 
 **⚠️ Status:** **Modes 0 (Position) and 1 (Velocity)** have been tested and validated. Mode 2 (PWM) is implemented but currently untested.
 
+**⚠️ One-key Calibration Status:** The `/one_key_calibration` service is newly added and currently **untested on physical hardware**.
+
 ## Features
 
 - **Scalable Multi-Motor Support**: Control 1 to 253 motors on a single serial bus
@@ -83,6 +85,34 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 ```
 
 When activated, ALL motors stop immediately and torque is disabled. The service returns `success: true` and a confirmation message on both activate and release.
+
+## One-Key Midpoint Calibration (Mode 0 Only)
+
+One-key midpoint calibration is exposed through a custom service:
+
+- Service: `/one_key_calibration`
+- Type: `sts_hardware_interface/srv/OneKeyCalibration`
+- Request fields: `motor_ids` only
+
+```bash
+# Calibrate all mode-0 (servo) joints
+ros2 service call /one_key_calibration sts_hardware_interface/srv/OneKeyCalibration "{motor_ids: []}"
+
+# Calibrate selected mode-0 joints by motor ID
+ros2 service call /one_key_calibration sts_hardware_interface/srv/OneKeyCalibration "{motor_ids: [1, 2]}"
+```
+
+Behavior:
+
+- The service is only created when at least one joint is configured in operating mode 0.
+- Empty `motor_ids` means "all mode-0 joints" (not all joints across all modes).
+- Requests that include mode-1 or mode-2 motor IDs are rejected.
+- Torque state is preserved per motor:
+  - If torque was enabled before calibration, it is disabled for calibration and restored afterwards.
+  - If torque was disabled before calibration, it remains disabled.
+- Verification is always performed after each calibration write.
+
+**⚠️ Untested:** This one-key calibration flow is implemented but has not yet been validated on real hardware.
 
 ## Motor Diagnostics Node
 

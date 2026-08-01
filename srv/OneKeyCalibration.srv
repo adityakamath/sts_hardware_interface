@@ -1,0 +1,4 @@
+uint16[] motor_ids
+---
+bool accepted
+string message

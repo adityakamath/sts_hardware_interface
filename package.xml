@@ -19,6 +19,7 @@
   <url type="bugtracker">https://github.com/adityakamath/sts_hardware_interface/issues</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
   <!-- C++ dependencies -->
   <depend>rclcpp</depend>
@@ -26,6 +27,7 @@
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
   <depend>std_srvs</depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
 
   <!-- Diagnostics node dependencies -->
   <depend>diagnostic_msgs</depend>
@@ -36,6 +38,8 @@
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>launch_testing_ros</test_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>

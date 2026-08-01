@@ -573,6 +573,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     std::bind(&STSHardwareInterface::emergency_stop_callback, this,
       std::placeholders::_1, std::placeholders::_2));
 
+  // One-key midpoint calibration only applies to mode 0 (servo) joints.
+  if (!servo_motor_indices_.empty()) {
+    one_key_calibration_service_ = node_->create_service<sts_hardware_interface::srv::OneKeyCalibration>(
+      "/one_key_calibration",
+      std::bind(&STSHardwareInterface::one_key_calibration_callback, this,
+        std::placeholders::_1, std::placeholders::_2));
+  }
+
   // Enable service introspection: publishes full request/response content to
   // /emergency_stop/_service_event for monitoring activations and releases.
   //
@@ -593,7 +601,16 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     safety_qos,
     RCL_SERVICE_INTROSPECTION_CONTENTS);
 
-  RCLCPP_INFO(logger_, "Created /emergency_stop service with introspection enabled");
+  if (one_key_calibration_service_) {
+    one_key_calibration_service_->configure_introspection(
+      node_->get_clock(),
+      safety_qos,
+      RCL_SERVICE_INTROSPECTION_CONTENTS);
+    RCLCPP_INFO(logger_, "Created /emergency_stop and /one_key_calibration services with introspection enabled");
+  } else {
+    RCLCPP_INFO(logger_, "Created /emergency_stop service with introspection enabled");
+    RCLCPP_INFO(logger_, "Skipped /one_key_calibration service: no mode 0 (servo) joints configured.");
+  }
 
   // Skip serial port initialization in mock mode
   if (enable_mock_mode_) {
@@ -1095,8 +1112,11 @@ hardware_interface::return_type STSHardwareInterface::write(
 
   // Skip all commands if emergency stop is active
   if (emergency_stop_active_) {
+    process_pending_one_key_calibration();
     return hardware_interface::return_type::OK;
   }
+
+  process_pending_one_key_calibration();
 
   // ===== WRITE COMMANDS FOR SERVO MODE MOTORS =====
   if (!servo_motor_indices_.empty()) {
@@ -1315,6 +1335,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
 
   // Cleanup ROS 2 node and service
   emergency_stop_service_.reset();
+  one_key_calibration_service_.reset();
   node_.reset();
   RCLCPP_INFO(logger_, "Released ROS 2 node and service resources");
 
@@ -1354,6 +1375,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
 
   // Cleanup ROS 2 node and service
   emergency_stop_service_.reset();
+  one_key_calibration_service_.reset();
   node_.reset();
   RCLCPP_INFO(logger_, "Released ROS 2 node and service resources");
 
@@ -1395,6 +1417,81 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
   }
 
   return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+void STSHardwareInterface::process_pending_one_key_calibration()
+{
+  PendingCalibrationRequest request;
+  {
+    std::lock_guard<std::mutex> lock(calibration_mutex_);
+    if (!pending_calibration_request_.has_value() || calibration_in_progress_) {
+      return;
+    }
+    request = *pending_calibration_request_;
+    pending_calibration_request_.reset();
+    calibration_in_progress_ = true;
+  }
+
+  bool all_ok = true;
+  constexpr int verify_tolerance_steps = 25;
+
+  for (size_t i = 0; i < request.motor_indices.size(); ++i) {
+    const size_t idx = request.motor_indices[i];
+    const int motor_id = motor_ids_[idx];
+    const bool was_torque_enabled = request.was_torque_enabled[i];
+
+    if (was_torque_enabled) {
+      if (auto r = check(servo_->EnableTorque(motor_id, 0), "EnableTorque"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "One-key calibration: failed to disable torque on motor %d (%s)",
+          motor_id, r->c_str());
+        all_ok = false;
+        continue;
+      }
+    }
+
+    if (auto r = check(servo_->CalibrationOfs(motor_id), "CalibrationOfs"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "One-key calibration: failed on motor %d (%s)", motor_id, r->c_str());
+      all_ok = false;
+      continue;
+    }
+
+    if (auto r = check(servo_->FeedBack(motor_id), "FeedBack"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "One-key calibration: feedback verify failed on motor %d (%s)",
+        motor_id, r->c_str());
+      all_ok = false;
+    } else {
+      const int raw_position = servo_->ReadPos(-1);
+      const int expected_center = position_center_[idx];
+      if (raw_position < 0 || std::abs(raw_position - expected_center) > verify_tolerance_steps) {
+        RCLCPP_WARN(logger_,
+          "One-key calibration verify: motor %d now at %d, expected near center %d (+/-%d)",
+          motor_id, raw_position, expected_center, verify_tolerance_steps);
+      } else {
+        RCLCPP_INFO(logger_,
+          "One-key calibration verify: motor %d at %d near center %d",
+          motor_id, raw_position, expected_center);
+      }
+    }
+
+    if (was_torque_enabled && !is_readonly_[idx] && !emergency_stop_active_) {
+      if (auto r = check(servo_->EnableTorque(motor_id, 1), "EnableTorque"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "One-key calibration: failed to re-enable torque on motor %d (%s)",
+          motor_id, r->c_str());
+        all_ok = false;
+      }
+    }
+  }
+
+  if (all_ok) {
+    RCLCPP_INFO(logger_, "One-key calibration request completed successfully.");
+  } else {
+    RCLCPP_WARN(logger_, "One-key calibration request completed with errors. Check logs above.");
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(calibration_mutex_);
+    calibration_in_progress_ = false;
+  }
 }
 
 /** @brief Parse a boolean hardware parameter with default value */
@@ -1506,6 +1603,73 @@ void STSHardwareInterface::emergency_stop_callback(
     res->message = "Emergency stop released";
   }
   res->success = true;
+}
+
+void STSHardwareInterface::one_key_calibration_callback(
+  const sts_hardware_interface::srv::OneKeyCalibration::Request::SharedPtr req,
+  sts_hardware_interface::srv::OneKeyCalibration::Response::SharedPtr res)
+{
+  if (servo_motor_indices_.empty()) {
+    res->accepted = false;
+    res->message = "One-key calibration is available only for mode 0 (servo) joints; none are configured.";
+    return;
+  }
+
+  if (enable_mock_mode_) {
+    res->accepted = false;
+    res->message = "One-key calibration is unavailable in mock mode.";
+    return;
+  }
+
+  PendingCalibrationRequest pending;
+
+  if (req->motor_ids.empty()) {
+    for (size_t idx : servo_motor_indices_) {
+      pending.motor_indices.push_back(idx);
+    }
+  } else {
+    for (uint16_t requested_id : req->motor_ids) {
+      auto it = std::find(motor_ids_.begin(), motor_ids_.end(), static_cast<int>(requested_id));
+      if (it == motor_ids_.end()) {
+        res->accepted = false;
+        res->message = "Unknown motor_id in request: " + std::to_string(requested_id);
+        return;
+      }
+      const size_t idx = static_cast<size_t>(std::distance(motor_ids_.begin(), it));
+      if (operating_modes_[idx] != MODE_SERVO) {
+        res->accepted = false;
+        res->message = "motor_id " + std::to_string(requested_id) + " is not in mode 0 (servo) and cannot be calibrated.";
+        return;
+      }
+      if (std::find(pending.motor_indices.begin(), pending.motor_indices.end(), idx) == pending.motor_indices.end()) {
+        pending.motor_indices.push_back(idx);
+      }
+    }
+  }
+
+  pending.was_torque_enabled.reserve(pending.motor_indices.size());
+  for (size_t idx : pending.motor_indices) {
+    const int torque_enable = servo_->readByte(static_cast<u8>(motor_ids_[idx]), SMS_STS_TORQUE_ENABLE);
+    if (torque_enable < 0) {
+      res->accepted = false;
+      res->message = "Failed to read torque state before calibration for motor_id " + std::to_string(motor_ids_[idx]);
+      return;
+    }
+    pending.was_torque_enabled.push_back(torque_enable != 0);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(calibration_mutex_);
+    if (calibration_in_progress_ || pending_calibration_request_.has_value()) {
+      res->accepted = false;
+      res->message = "Calibration request already in progress or queued.";
+      return;
+    }
+    pending_calibration_request_ = pending;
+  }
+
+  res->accepted = true;
+  res->message = "Calibration request accepted; torque state will be preserved and verification is always enabled.";
 }
 
 }  // namespace sts_hardware_interface

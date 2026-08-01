@@ -334,7 +334,25 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 ros2 topic echo /emergency_stop/_service_event
 ```
 
-### 5. Monitor Motor Diagnostics
+### 5. One-Key Midpoint Calibration (Mode 0 Only)
+
+```bash
+# Calibrate all mode-0 joints
+ros2 service call /one_key_calibration sts_hardware_interface/srv/OneKeyCalibration "{motor_ids: []}"
+
+# Calibrate selected mode-0 joints
+ros2 service call /one_key_calibration sts_hardware_interface/srv/OneKeyCalibration "{motor_ids: [1, 2]}"
+```
+
+Notes:
+
+- The service exists only when at least one joint is configured in operating mode 0.
+- `motor_ids: []` targets all mode-0 joints only.
+- Requests containing mode-1 or mode-2 motor IDs are rejected.
+- Torque state is preserved automatically per motor and post-write verification is always enabled.
+- **Untested:** this calibration path is currently untested on physical hardware.
+
+### 6. Monitor Motor Diagnostics
 
 The `motor_diagnostics_node` provides real-time health monitoring for all motors. It subscribes to `/dynamic_joint_states` and publishes aggregated diagnostic status to `/diagnostics`, which can be viewed in rqt or echoed in the terminal.
 

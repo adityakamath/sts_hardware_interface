@@ -7,6 +7,7 @@
 #include <vector>
 #include <chrono>
 #include <map>
+#include <mutex>
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/handle.hpp"
@@ -16,6 +17,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 #include "std_srvs/srv/set_bool.hpp"
+#include "sts_hardware_interface/srv/one_key_calibration.hpp"
 
 // SCServo SDK
 #include <scservo/SMS_STS.h>
@@ -312,6 +314,26 @@ private:
   void emergency_stop_callback(
     const std_srvs::srv::SetBool::Request::SharedPtr req,
     std_srvs::srv::SetBool::Response::SharedPtr res);
+
+  /** @brief Queue one-key calibration requests for safe execution in write() thread */
+  void one_key_calibration_callback(
+    const sts_hardware_interface::srv::OneKeyCalibration::Request::SharedPtr req,
+    sts_hardware_interface::srv::OneKeyCalibration::Response::SharedPtr res);
+
+  /** @brief Execute a queued one-key calibration request inside write() */
+  void process_pending_one_key_calibration();
+
+  struct PendingCalibrationRequest
+  {
+    std::vector<size_t> motor_indices;
+    std::vector<bool> was_torque_enabled;
+  };
+
+  std::mutex calibration_mutex_;
+  std::optional<PendingCalibrationRequest> pending_calibration_request_;
+  bool calibration_in_progress_{false};
+
+  rclcpp::Service<sts_hardware_interface::srv::OneKeyCalibration>::SharedPtr one_key_calibration_service_;
 };
 
 }  // namespace sts_hardware_interface

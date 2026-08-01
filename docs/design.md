@@ -47,6 +47,7 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 **Key transitions:**
 - **on_init()** → parses URDF params; detects read-only joints (no `<command_interface>` entries → `torque=0`, excluded from all write loops); builds servo/velocity/PWM mode index groups
 - **on_configure()** → creates `/emergency_stop` service (even in mock mode); opens serial port; pings all motors; writes optional EEPROM params (PID coefficients, `protection_current`, `overload_torque`, `return_delay`) per joint
+- **on_configure()** → creates `/one_key_calibration` (`sts_hardware_interface/srv/OneKeyCalibration`) only when at least one mode-0 joint is configured
 - **on_activate()** → `InitMotor(motor_id, mode, torque)` per joint — commanded joints: `torque=1`; read-only joints: `torque=0`
 - **Active cycle** → `read()` calls `FeedBack(motor_id)` per joint (individual reads, 7 state interfaces); `write()` uses SyncWrite per mode group when `use_sync_write=true` and >1 joint/group, else individual writes; read-only joints excluded from all write groups
 - **on_deactivate()** → `stop_motor()` per joint (individual writes), `EnableTorque(0)` all joints; returns to INACTIVE — may call `on_activate()` again or `on_cleanup()` to close serial
@@ -73,6 +74,25 @@ Each motor can be configured independently in one of three modes:
   - **Mode 1 (Velocity)**: Sets the target continuous rotation speed
 
 - **Mode 2 (PWM/Effort)**: This is open-loop control with NO velocity or acceleration parameters. It directly controls motor power via PWM duty cycle, bypassing all position and velocity feedback loops.
+
+### One-Key Midpoint Calibration Service
+
+The hardware interface provides a custom one-key midpoint calibration service:
+
+- Service: `/one_key_calibration`
+- Type: `sts_hardware_interface/srv/OneKeyCalibration`
+- Request: `motor_ids` (`uint16[]`)
+
+Behavior:
+
+- Available only when at least one joint uses operating mode 0.
+- Empty `motor_ids` calibrates all mode-0 joints.
+- Requests including mode-1 or mode-2 motor IDs are rejected.
+- Calibration executes on the hardware write thread via a queued request path.
+- Torque state is preserved per motor (restore only if it was enabled before calibration).
+- Verification is always performed after calibration writes.
+
+**⚠️ Untested:** This calibration service path is currently untested on physical hardware.
 
 **Configuration Example:**
 

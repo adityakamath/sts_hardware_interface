@@ -31,6 +31,7 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
@@ -38,6 +39,10 @@ find_package(pluginlib REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/OneKeyCalibration.srv"
+)
 
 # Build SCServo_Linux library (C++)
 add_subdirectory(external/SCServo_Linux)
@@ -47,9 +52,11 @@ set(SCSERVO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SCServo_Linux/inclu
 set(SCSERVO_LIBRARY SCServo)
 
 # STS Hardware Interface (ros2_control plugin)
-add_library(${PROJECT_NAME} SHARED
+add_library(${PROJECT_NAME}_plugin SHARED
   src/sts_hardware_interface.cpp
 )
+set_target_properties(${PROJECT_NAME}_plugin PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
+add_dependencies(${PROJECT_NAME}_plugin ${PROJECT_NAME}__rosidl_generator_cpp)
 
 # Motor Diagnostics Node
 add_executable(motor_diagnostics_node src/motor_diagnostics_node.cpp)
@@ -60,13 +67,13 @@ target_link_libraries(motor_diagnostics_node
 )
 install(TARGETS motor_diagnostics_node DESTINATION lib/${PROJECT_NAME})
 
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(${PROJECT_NAME}_plugin PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${SCSERVO_INCLUDE_DIR}
 )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(${PROJECT_NAME}_plugin
   ${SCSERVO_LIBRARY}
   hardware_interface::hardware_interface
   pluginlib::pluginlib
@@ -75,11 +82,14 @@ target_link_libraries(${PROJECT_NAME}
   ${std_srvs_TARGETS}
 )
 
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(${PROJECT_NAME}_plugin "${cpp_typesupport_target}")
+
 # Export hardware interface as plugin
 pluginlib_export_plugin_description_file(hardware_interface sts_hardware_interface.xml)
 
 # Install library
-install(TARGETS ${PROJECT_NAME}
+install(TARGETS ${PROJECT_NAME}_plugin
   DESTINATION lib
 )
 
@@ -159,7 +169,7 @@ if(BUILD_TESTING)
     test/test_hardware_interface.cpp
   )
   target_link_libraries(test_hardware_interface
-    ${PROJECT_NAME}
+    ${PROJECT_NAME}_plugin
     ${rclcpp_TARGETS}
     hardware_interface::hardware_interface
     ${std_srvs_TARGETS}
@@ -183,8 +193,9 @@ endif()
 
 # Export package information for downstream packages
 ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME})
+ament_export_libraries(${PROJECT_NAME}_plugin)
 ament_export_dependencies(
+  rosidl_default_runtime
   rclcpp
   rclcpp_lifecycle
   hardware_interface
