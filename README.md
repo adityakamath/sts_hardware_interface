@@ -9,7 +9,7 @@
 
 `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 
-**⚠️ Status:** **Modes 0 (Position) and 1 (Velocity)** have been tested and validated. Mode 2 (PWM) is implemented but currently untested.
+**✅ Status:** All three operating modes are implemented. **Modes 0 (Position) and 1 (Velocity)** have been tested and validated on physical hardware. **Mode 2 (PWM/Effort)** has been verified in mock mode — forward, reverse and stop commands all behave correctly; physical hardware validation is still pending.
 
 **⚠️ One-key Calibration Status:** The `/one_key_calibration` service is newly added and currently **untested on physical hardware**.
 
@@ -112,7 +112,7 @@ Behavior:
   - If torque was disabled before calibration, it remains disabled.
 - Verification is always performed after each calibration write.
 
-**⚠️ Untested:** This one-key calibration flow is implemented but has not yet been validated on real hardware.
+**⚠️ Untested on hardware:** This one-key calibration flow is implemented but has not yet been validated on real hardware.
 
 ## Motor Diagnostics Node
 
@@ -217,6 +217,8 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 
 **Mode 2 (PWM/Effort):**
 - `effort` - PWM duty cycle (unitless, -1.0 to +1.0 representing ±100% duty cycle)
+
+> **Mock-mode verified:** Forward (`effort=0.5` → `velocity=+5.0 rad/s`), reverse (`effort=-0.5` → `velocity=-5.0 rad/s`), and stop (`effort=0.0` → `velocity=0`, `is_moving=0`) all behave correctly. Use `single_motor_pwm.launch.py use_mock:=true` with `effort_controllers/JointGroupEffortController` to reproduce. Physical hardware validation is still pending.
 
 ## State Interfaces
 
