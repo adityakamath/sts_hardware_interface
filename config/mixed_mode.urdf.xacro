@@ -7,25 +7,210 @@
   <xacro:arg name="use_mock" default="false"/>
 
   <!-- Robot description -->
-  <link name="base_link"/>
 
-  <!-- Position Mode Links (Mode 0) -->
-  <link name="arm_link_1"/>
-  <link name="arm_link_2"/>
+  <!-- base_link: flat mounting plate (100×100×5 mm) -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.10 0.10 0.005"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.10 0.10 0.005"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00004" ixy="0" ixz="0" iyy="0.00004" iyz="0" izz="0.00008"/>
+    </inertial>
+  </link>
 
-  <!-- Velocity Mode Links (Mode 1) -->
-  <link name="wheel_link_1"/>
-  <link name="wheel_link_2"/>
+  <!-- ─── Position Mode Links (Mode 0) ─── -->
 
-  <!-- PWM Mode Links (Mode 2) -->
-  <link name="gripper_link_1"/>
-  <link name="gripper_link_2"/>
+  <!-- arm_link_1/2: STS3215 servo body + horn extending along +x -->
+  <link name="arm_link_1">
+    <visual>
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0.035 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.008 0.008"/>
+      </geometry>
+      <material name="orange">
+        <color rgba="1.0 0.5 0.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.068"/>
+      <origin xyz="0 0 -0.02"/>
+      <inertia ixx="0.000015" ixy="0" ixz="0" iyy="0.000015" iyz="0" izz="0.000007"/>
+    </inertial>
+  </link>
+
+  <link name="arm_link_2">
+    <visual>
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0.035 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.008 0.008"/>
+      </geometry>
+      <material name="orange">
+        <color rgba="1.0 0.5 0.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.068"/>
+      <origin xyz="0 0 -0.02"/>
+      <inertia ixx="0.000015" ixy="0" ixz="0" iyy="0.000015" iyz="0" izz="0.000007"/>
+    </inertial>
+  </link>
+
+  <!-- ─── Velocity Mode Links (Mode 1) ─── -->
+
+  <!-- wheel_link_1/2: cylinder (r=30 mm, h=10 mm) + servo body behind -->
+  <link name="wheel_link_1">
+    <visual>
+      <geometry>
+        <cylinder radius="0.030" length="0.010"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.1 0.4 0.8 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0 -0.025 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <box size="0.040 0.040 0.020"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.030" length="0.010"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.068"/>
+      <inertia ixx="0.000015" ixy="0" ixz="0" iyy="0.000015" iyz="0" izz="0.000029"/>
+    </inertial>
+  </link>
+
+  <link name="wheel_link_2">
+    <visual>
+      <geometry>
+        <cylinder radius="0.030" length="0.010"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.1 0.4 0.8 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0 0.025 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <box size="0.040 0.040 0.020"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.030" length="0.010"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.068"/>
+      <inertia ixx="0.000015" ixy="0" ixz="0" iyy="0.000015" iyz="0" izz="0.000029"/>
+    </inertial>
+  </link>
+
+  <!-- ─── PWM Mode Links (Mode 2) ─── -->
+
+  <!-- gripper_link_1/2: thin flat finger -->
+  <link name="gripper_link_1">
+    <visual>
+      <origin xyz="0.03 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.060 0.010 0.008"/>
+      </geometry>
+      <material name="green">
+        <color rgba="0.1 0.7 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.03 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.060 0.010 0.008"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.010"/>
+      <origin xyz="0.03 0 0"/>
+      <inertia ixx="0.0000001" ixy="0" ixz="0" iyy="0.0000030" iyz="0" izz="0.0000030"/>
+    </inertial>
+  </link>
+
+  <link name="gripper_link_2">
+    <visual>
+      <origin xyz="0.03 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.060 0.010 0.008"/>
+      </geometry>
+      <material name="green">
+        <color rgba="0.1 0.7 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.03 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.060 0.010 0.008"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.010"/>
+      <origin xyz="0.03 0 0"/>
+      <inertia ixx="0.0000001" ixy="0" ixz="0" iyy="0.0000030" iyz="0" izz="0.0000030"/>
+    </inertial>
+  </link>
 
   <!-- Position Mode Joints (Mode 0) - IDs 1 and 2 -->
   <joint name="arm_joint_1" type="revolute">
     <parent link="base_link"/>
     <child link="arm_link_1"/>
-    <origin xyz="0 0.05 0.1" rpy="0 0 0"/>
+    <origin xyz="0 0.05 0.02" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit lower="0.0" upper="6.283" effort="1.0" velocity="5.0"/>
   </joint>
@@ -33,7 +218,7 @@
   <joint name="arm_joint_2" type="revolute">
     <parent link="base_link"/>
     <child link="arm_link_2"/>
-    <origin xyz="0 -0.05 0.1" rpy="0 0 0"/>
+    <origin xyz="0 -0.05 0.02" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit lower="0.0" upper="6.283" effort="1.0" velocity="5.0"/>
   </joint>
@@ -42,14 +227,14 @@
   <joint name="wheel_joint_1" type="continuous">
     <parent link="base_link"/>
     <child link="wheel_link_1"/>
-    <origin xyz="0.1 0 0" rpy="0 0 0"/>
+    <origin xyz="0.1 0 0.035" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
   </joint>
 
   <joint name="wheel_joint_2" type="continuous">
     <parent link="base_link"/>
     <child link="wheel_link_2"/>
-    <origin xyz="-0.1 0 0" rpy="0 0 0"/>
+    <origin xyz="-0.1 0 0.035" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
   </joint>
 
@@ -57,7 +242,7 @@
   <joint name="gripper_joint_1" type="revolute">
     <parent link="arm_link_1"/>
     <child link="gripper_link_1"/>
-    <origin xyz="0.2 0 0" rpy="0 0 0"/>
+    <origin xyz="0.06 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="0.0" upper="0.5" effort="1.0" velocity="2.0"/>
   </joint>
@@ -65,7 +250,7 @@
   <joint name="gripper_joint_2" type="revolute">
     <parent link="arm_link_2"/>
     <child link="gripper_link_2"/>
-    <origin xyz="0.2 0 0" rpy="0 0 0"/>
+    <origin xyz="0.06 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="0.0" upper="0.5" effort="1.0" velocity="2.0"/>
   </joint>

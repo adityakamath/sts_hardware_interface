@@ -8,14 +8,68 @@
   <xacro:arg name="use_mock" default="false"/>
 
   <!-- Robot description -->
-  <link name="base_link"/>
 
-  <link name="arm_link"/>
+  <!-- base_link: flat mounting plate -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.08 0.08 0.005"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.08 0.08 0.005"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00003" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00005"/>
+    </inertial>
+  </link>
+
+  <!-- STS3215 servo body: 40×20×40 mm box, joint origin sits at the output shaft centre -->
+  <link name="arm_link">
+    <visual>
+      <!-- servo body: 40mm wide (x), 20mm deep (y), 40mm tall (z); shaft at top centre -->
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <!-- servo horn: thin flat arm extending +x from shaft -->
+    <visual>
+      <origin xyz="0.035 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.008 0.008"/>
+      </geometry>
+      <material name="orange">
+        <color rgba="1.0 0.5 0.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.068"/>
+      <origin xyz="0 0 -0.02"/>
+      <inertia ixx="0.000015" ixy="0" ixz="0" iyy="0.000015" iyz="0" izz="0.000007"/>
+    </inertial>
+  </link>
 
   <joint name="arm_joint" type="revolute">
     <parent link="base_link"/>
     <child link="arm_link"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <!-- shaft sits 20 mm above the base plate -->
+    <origin xyz="0 0 0.02" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit lower="0.0" upper="6.283" effort="1.0" velocity="5.0"/>
   </joint>
