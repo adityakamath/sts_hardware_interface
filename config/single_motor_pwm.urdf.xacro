@@ -1,0 +1,133 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="single_motor_pwm">
+
+  <!-- Arguments -->
+  <xacro:arg name="serial_port" default="/dev/ttyACM0"/>
+  <xacro:arg name="motor_id" default="1"/>
+  <xacro:arg name="baud_rate" default="1000000"/>
+  <xacro:arg name="use_mock" default="false"/>
+  <xacro:arg name="max_effort" default="1.0"/>
+
+  <!-- Robot description -->
+
+  <!-- base_link: flat mounting plate -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.08 0.08 0.005"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.08 0.08 0.005"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00003" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00005"/>
+    </inertial>
+  </link>
+
+  <!-- pwm_link: STS3215 servo body (40×20×40 mm) + output horn extending +x.
+       In Mode 2 the motor is open-loop; the horn position is driven directly by
+       PWM duty cycle, so no position feedback loop is active.  The visual still
+       shows the servo body centred on the output shaft (origin). -->
+  <link name="pwm_link">
+    <visual>
+      <!-- servo body: shaft at top-centre, body hangs 20 mm below -->
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <!-- output horn: thin arm extending +x from shaft -->
+    <visual>
+      <origin xyz="0.035 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.008 0.008"/>
+      </geometry>
+      <material name="red">
+        <!-- red distinguishes this from position-mode orange to make the mode
+             obvious at a glance in RViz2/Foxglove -->
+        <color rgba="0.9 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.020 0.040"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.068"/>
+      <origin xyz="0 0 -0.02"/>
+      <inertia ixx="0.000015" ixy="0" ixz="0" iyy="0.000015" iyz="0" izz="0.000007"/>
+    </inertial>
+  </link>
+
+  <!-- revolute so the horn visually sweeps when effort commands drive it;
+       limits are intentionally wide — PWM mode has no closed-loop position cap -->
+  <joint name="pwm_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="pwm_link"/>
+    <!-- shaft sits 20 mm above the base plate -->
+    <origin xyz="0 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="1.0" velocity="5.0"/>
+  </joint>
+
+  <!-- ros2_control hardware interface -->
+  <ros2_control name="sts_system" type="system">
+    <hardware>
+      <plugin>sts_hardware_interface/STSHardwareInterface</plugin>
+
+      <!-- Required Parameters -->
+      <param name="serial_port">$(arg serial_port)</param>  <!-- Serial port path (e.g., /dev/ttyACM0) -->
+
+      <!-- Optional Hardware Parameters (with defaults shown) -->
+      <param name="baud_rate">$(arg baud_rate)</param>  <!-- Baud rate: 9600-1000000 (default: 1000000) -->
+      <param name="communication_timeout_ms">100</param>  <!-- Serial timeout: 1-1000 ms (default: 100) -->
+      <param name="use_sync_write">false</param>  <!-- SyncWrite not needed for single motor -->
+      <param name="enable_mock_mode">$(arg use_mock)</param>  <!-- Simulation mode without hardware (default: false) -->
+      <param name="max_velocity_steps">3400</param>  <!-- Max motor velocity in steps/s: STS3215=3400, STS3032=2900 (default: 3400) -->
+      <param name="reset_states_on_activate">true</param>  <!-- Reset position/velocity to zero on activation (default: true) -->
+    </hardware>
+
+    <joint name="pwm_joint">
+      <!-- Required Joint Parameters -->
+      <param name="motor_id">$(arg motor_id)</param>  <!-- Motor ID on serial bus: 1-253 -->
+
+      <!-- Operating Mode -->
+      <param name="operating_mode">2</param>  <!-- 0=Position, 1=Velocity, 2=PWM (open-loop effort) -->
+
+      <!-- Optional: cap maximum PWM duty cycle to a safe fraction of full power -->
+      <param name="max_effort">$(arg max_effort)</param>  <!-- Max effort command (0.0, 1.0] — safety limiter; does NOT scale the command (default: 1.0) -->
+
+      <!-- Note: p_coefficient, d_coefficient, i_coefficient are ignored in Mode 2 (no PID) -->
+
+      <!-- Optional EEPROM parameters (omit any line to preserve the existing EEPROM value): -->
+      <!-- <param name="protection_current">462</param> -->  <!-- Hardware current cutoff (0-65535, 6.5mA units; 462 ≈ 3.0A): addr 28/29 -->
+      <!-- <param name="overload_torque">80</param> -->      <!-- Load threshold for overload protection (0-254): addr 36 -->
+      <!-- <param name="return_delay">0</param> -->          <!-- Response delay (0-254, 2µs units): addr 7 -->
+
+      <!-- Command Interface (Mode 2: PWM/Effort) -->
+      <command_interface name="effort"/>  <!-- PWM duty cycle: -1.0 (full reverse) to +1.0 (full forward); clamped to ±max_effort -->
+
+      <!-- State Interfaces (always exported, declarations optional but recommended) -->
+      <state_interface name="position"/>  <!-- Current position (radians) — may drift; open-loop -->
+      <state_interface name="velocity"/>  <!-- Current velocity (rad/s) -->
+      <state_interface name="effort"/>    <!-- Motor load (-1.0 to +1.0, normalized) -->
+      <state_interface name="voltage"/>   <!-- Supply voltage (volts) -->
+      <state_interface name="temperature"/>  <!-- Internal temperature (°C) -->
+      <state_interface name="current"/>   <!-- Motor current draw (amperes) -->
+      <state_interface name="is_moving"/> <!-- Motion status (1.0=moving, 0.0=stopped) -->
+    </joint>
+  </ros2_control>
+
+</robot>

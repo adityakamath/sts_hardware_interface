@@ -1,0 +1,63 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz - Control loop frequency
+
+    # Joint State Broadcaster - Publishes joint states to /joint_states and /dynamic_joint_states
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Effort Controller - Commands PWM duty cycle to the pwm_joint (Mode 2: open-loop)
+    # effort_controllers/JointGroupEffortController publishes to:
+    #   /pwm_controller/commands  (std_msgs/Float64MultiArray)
+    # and subscribes to commands on the same topic.
+    # To send a command in mock mode:
+    #   ros2 topic pub /pwm_controller/commands std_msgs/msg/Float64MultiArray \
+    #     "data: [0.5]"   # 50 % duty cycle forward
+    pwm_controller:
+      type: effort_controllers/JointGroupEffortController
+
+# Joint State Broadcaster configuration
+# Publishes standard state (position, velocity, effort) to /joint_states
+# Publishes all configured interfaces to /dynamic_joint_states
+joint_state_broadcaster:
+  ros__parameters:
+    joints:
+      - pwm_joint
+
+    # State interfaces to publish to /dynamic_joint_states
+    # IMPORTANT: Must explicitly list ALL interfaces, including standard ones
+    interfaces:
+      - position       # Current position (radians) — may drift in open-loop
+      - velocity       # Current velocity (rad/s)
+      - effort         # Motor load (-1.0 to +1.0, normalized)
+      - voltage        # Supply voltage (volts)
+      - temperature    # Internal temperature (°C)
+      - current        # Motor current draw (amperes)
+      - is_moving      # Motion status (1.0=moving, 0.0=stopped)
+
+# PWM Controller configuration (Mode 2: open-loop effort/PWM)
+#
+# Verification checklist for mock mode:
+#   1. pwm_joint effort state should track the commanded value proportionally.
+#   2. pwm_joint velocity state should be non-zero when effort != 0.0
+#      (mock: hw_state_velocity_ = hw_cmd_effort_ * 10.0).
+#   3. Commands outside ±max_effort (set in the URDF) must be clamped;
+#      check that the state effort stays within the declared limit.
+#   4. On deactivate: velocity and effort states must both reset to 0.0.
+#   5. PID parameters (p/d/i_coefficient) in the URDF should produce a
+#      startup warning that they are ignored in Mode 2.
+pwm_controller:
+  ros__parameters:
+    joints:
+      - pwm_joint
+
+    interface_name: effort  # Interface type for command subscription
+
+    # Command interface used by this controller
+    command_interfaces:
+      - effort  # PWM duty cycle: -1.0 (full reverse) to +1.0 (full forward)
+
+    # State interfaces monitored by this controller
+    state_interfaces:
+      - position  # Current position (radians)
+      - effort    # Motor load (-1.0 to +1.0, normalized)
