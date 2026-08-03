@@ -71,15 +71,18 @@
     </inertial>
   </link>
 
-  <!-- revolute so the horn visually sweeps when effort commands drive it;
-       limits are intentionally wide — PWM mode has no closed-loop position cap -->
-  <joint name="pwm_joint" type="revolute">
+  <!-- continuous: PWM mode is open-loop — no position limits apply, the motor
+       runs at the commanded duty cycle indefinitely in either direction.
+       Using continuous avoids JointSaturationLimiter clamping effort to 0
+       when the joint reaches a revolute position limit. -->
+  <joint name="pwm_joint" type="continuous">
     <parent link="base_link"/>
     <child link="pwm_link"/>
     <!-- shaft sits 20 mm above the base plate -->
     <origin xyz="0 0 0.02" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-3.14159" upper="3.14159" effort="1.0" velocity="5.0"/>
+    <!-- effort limit only (no position limits on continuous joint) -->
+    <limit effort="1.0" velocity="5.0"/>
   </joint>
 
   <!-- ros2_control hardware interface -->

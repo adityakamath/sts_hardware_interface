@@ -50,14 +50,3 @@ pwm_controller:
   ros__parameters:
     joints:
       - pwm_joint
-
-    interface_name: effort  # Interface type for command subscription
-
-    # Command interface used by this controller
-    command_interfaces:
-      - effort  # PWM duty cycle: -1.0 (full reverse) to +1.0 (full forward)
-
-    # State interfaces monitored by this controller
-    state_interfaces:
-      - position  # Current position (radians)
-      - effort    # Motor load (-1.0 to +1.0, normalized)
