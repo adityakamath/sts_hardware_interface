@@ -55,7 +55,14 @@ set(SCSERVO_LIBRARY SCServo)
 add_library(${PROJECT_NAME}_plugin SHARED
   src/sts_hardware_interface.cpp
 )
-set_target_properties(${PROJECT_NAME}_plugin PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
+set_target_properties(${PROJECT_NAME}_plugin PROPERTIES
+  OUTPUT_NAME ${PROJECT_NAME}
+  # Ensure the plugin can resolve rosidl-generated sibling libraries at runtime.
+  # On macOS @loader_path expands to the directory containing the plugin dylib;
+  # on Linux $ORIGIN does the same. Both the plugin and the typesupport libs are
+  # installed into the same lib/ directory, so this single entry is sufficient.
+  INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,$ORIGIN>"
+)
 add_dependencies(${PROJECT_NAME}_plugin ${PROJECT_NAME}__rosidl_generator_cpp)
 
 # Motor Diagnostics Node
@@ -205,5 +212,31 @@ ament_export_dependencies(
 
 # Export targets for modern CMake usage
 ament_export_targets(${PROJECT_NAME}Targets HAS_LIBRARY_TARGET)
+
+# macOS + pixi/conda workaround: the rosidl typesupport dispatch does a bare
+# dlopen("lib<pkg>__rosidl_typesupport_fastrtps_cpp.dylib") which only searches
+# DYLD_LIBRARY_PATH and LC_RPATH entries of the calling process.  Hardened conda
+# binaries strip DYLD_*, so the workspace install/lib dir is never searched.
+# Fix: create symlinks in $CONDA_PREFIX/lib (always in the process rpath) that
+# point back to the workspace-installed rosidl typesupport dylibs.
+if(APPLE AND DEFINED ENV{CONDA_PREFIX})
+  set(_pkg_name "${PROJECT_NAME}")  # expanded at configure time
+  install(CODE "
+    set(_conda_lib \"\$ENV{CONDA_PREFIX}/lib\")
+    if(IS_DIRECTORY \"\${_conda_lib}\")
+      file(GLOB _ts_libs
+        \"\${CMAKE_INSTALL_PREFIX}/lib/lib${_pkg_name}__rosidl*.dylib\"
+      )
+      foreach(_src \${_ts_libs})
+        get_filename_component(_name \"\${_src}\" NAME)
+        set(_dst \"\${_conda_lib}/\${_name}\")
+        message(STATUS \"Symlinking rosidl typesupport: \${_name}\")
+        execute_process(
+          COMMAND \${CMAKE_COMMAND} -E create_symlink \"\${_src}\" \"\${_dst}\"
+        )
+      endforeach()
+    endif()
+  ")
+endif()
 
 ament_package()
