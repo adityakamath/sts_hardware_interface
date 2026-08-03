@@ -255,6 +255,71 @@ ros2 topic echo /diagnostics
 
 ---
 
+### Example 4: Single Motor (PWM / Effort Mode)
+
+Demonstrates open-loop PWM control (Mode 2) with a single motor. Unlike Modes 0 and 1 there is no closed-loop feedback — the motor runs at the commanded duty cycle directly.
+
+**What it includes:**
+
+- URDF: [config/single_motor_pwm.urdf.xacro](../config/single_motor_pwm.urdf.xacro)
+- Controllers: [config/single_motor_pwm_controllers.yaml](../config/single_motor_pwm_controllers.yaml)
+- Launch file: [launch/single_motor_pwm.launch.py](../launch/single_motor_pwm.launch.py)
+
+**How to run:**
+
+```bash
+# With real hardware
+ros2 launch sts_hardware_interface single_motor_pwm.launch.py serial_port:=/dev/ttyACM0
+
+# With a custom motor ID
+ros2 launch sts_hardware_interface single_motor_pwm.launch.py serial_port:=/dev/ttyACM0 motor_id:=5
+
+# Cap maximum duty cycle to 50 % for safety
+ros2 launch sts_hardware_interface single_motor_pwm.launch.py serial_port:=/dev/ttyACM0 max_effort:=0.5
+
+# In mock mode (no hardware required)
+ros2 launch sts_hardware_interface single_motor_pwm.launch.py use_mock:=true
+```
+
+**What it does:**
+
+1. Loads robot description with one continuous joint (`pwm_joint`)
+   - Joint type is `continuous` (no position limits) to prevent `JointSaturationLimiter` from clamping effort commands
+2. Starts `ros2_control` node with mock or real hardware
+3. Spawns two controllers:
+   - `joint_state_broadcaster` - publishes all 7 state interfaces to `/dynamic_joint_states`
+   - `pwm_controller` (`effort_controllers/JointGroupEffortController`) - accepts duty-cycle commands on `/pwm_controller/commands`
+
+**Mock Mode Behavior:**
+
+When running in mock mode (`use_mock:=true`), the hardware interface simulates realistic PWM-driven feedback:
+
+- **Velocity:** Proportional to commanded effort (`velocity = effort × 10.0`); direction sign is preserved
+- **Effort state:** Reflects absolute motor load
+- **Temperature:** Increases with load (25–40 °C range)
+- **Current:** Proportional to effort (up to ~1 A at maximum effort)
+- **Voltage:** Drops slightly under load (11.5–12 V range)
+
+**Test the motor:**
+
+```bash
+# Forward at 50 % duty cycle
+ros2 topic pub /pwm_controller/commands std_msgs/msg/Float64MultiArray "data: [0.5]"
+
+# Reverse at 50 % duty cycle
+ros2 topic pub /pwm_controller/commands std_msgs/msg/Float64MultiArray "data: [-0.5]"
+
+# Stop
+ros2 topic pub --once /pwm_controller/commands std_msgs/msg/Float64MultiArray "data: [0.0]"
+
+# Monitor all state interfaces (effort, velocity, is_moving, voltage, temperature, current)
+ros2 topic echo /dynamic_joint_states
+```
+
+> **Verified in mock mode:** forward/reverse/stop all behave correctly. Physical hardware validation is still pending.
+
+---
+
 ## Launch File Arguments
 
 | Argument | Type | Default | Available In | Description |
@@ -262,7 +327,8 @@ ros2 topic echo /diagnostics
 | `serial_port` | string | `/dev/ttyACM0` | All | Serial port path |
 | `baud_rate` | int | `1000000` | All | Communication baud rate |
 | `use_mock` | bool | `false` | All | Enable mock mode (no hardware) |
-| `motor_id` | int | `1` | single_motor_velocity, single_motor_position | Motor ID on serial bus |
+| `motor_id` | int | `1` | single_motor_velocity, single_motor_position, single_motor_pwm | Motor ID on serial bus |
+| `max_effort` | double | `1.0` | single_motor_pwm | Maximum PWM duty cycle cap (0.0, 1.0] |
 
 ---
 
