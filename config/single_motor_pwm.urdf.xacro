@@ -10,71 +10,13 @@
 
   <!-- Robot description -->
 
-  <!-- base_link: flat mounting plate -->
-  <link name="base_link">
-    <visual>
-      <geometry>
-        <box size="0.08 0.08 0.005"/>
-      </geometry>
-      <material name="grey">
-        <color rgba="0.5 0.5 0.5 1.0"/>
-      </material>
-    </visual>
-    <collision>
-      <geometry>
-        <box size="0.08 0.08 0.005"/>
-      </geometry>
-    </collision>
-    <inertial>
-      <mass value="0.05"/>
-      <inertia ixx="0.00003" ixy="0" ixz="0" iyy="0.00003" iyz="0" izz="0.00005"/>
-    </inertial>
-  </link>
+  <!-- Robot description -->
+  <link name="base_link"/>
 
-  <!-- pwm_link: STS3215 servo body (40×20×40 mm) + output horn extending +x.
-       In Mode 2 the motor is open-loop; the horn position is driven directly by
-       PWM duty cycle, so no position feedback loop is active.  The visual still
-       shows the servo body centred on the output shaft (origin). -->
-  <link name="pwm_link">
-    <visual>
-      <!-- servo body: shaft at top-centre, body hangs 20 mm below -->
-      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.040 0.020 0.040"/>
-      </geometry>
-      <material name="dark_grey">
-        <color rgba="0.2 0.2 0.2 1.0"/>
-      </material>
-    </visual>
-    <!-- output horn: thin arm extending +x from shaft -->
-    <visual>
-      <origin xyz="0.035 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.05 0.008 0.008"/>
-      </geometry>
-      <material name="red">
-        <!-- red distinguishes this from position-mode orange to make the mode
-             obvious at a glance in RViz2/Foxglove -->
-        <color rgba="0.9 0.1 0.1 1.0"/>
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.040 0.020 0.040"/>
-      </geometry>
-    </collision>
-    <inertial>
-      <mass value="0.068"/>
-      <origin xyz="0 0 -0.02"/>
-      <inertia ixx="0.000015" ixy="0" ixz="0" iyy="0.000015" iyz="0" izz="0.000007"/>
-    </inertial>
-  </link>
+  <link name="pwm_link"/>
 
-  <!-- continuous: PWM mode is open-loop — no position limits apply, the motor
-       runs at the commanded duty cycle indefinitely in either direction.
-       Using continuous avoids JointSaturationLimiter clamping effort to 0
-       when the joint reaches a revolute position limit. -->
+  <!-- continuous: PWM mode is open-loop — no position limits apply.
+       Using continuous avoids JointSaturationLimiter clamping effort to 0. -->
   <joint name="pwm_joint" type="continuous">
     <parent link="base_link"/>
     <child link="pwm_link"/>

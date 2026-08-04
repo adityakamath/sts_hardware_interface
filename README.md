@@ -218,8 +218,6 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 **Mode 2 (PWM/Effort):**
 - `effort` - PWM duty cycle (unitless, -1.0 to +1.0 representing ±100% duty cycle)
 
-> **Mock-mode verified:** Forward (`effort=0.5` → `velocity=+5.0 rad/s`), reverse (`effort=-0.5` → `velocity=-5.0 rad/s`), and stop (`effort=0.0` → `velocity=0`, `is_moving=0`) all behave correctly. Use `single_motor_pwm.launch.py use_mock:=true` with `effort_controllers/JointGroupEffortController` to reproduce. Physical hardware validation is still pending.
-
 ## State Interfaces
 
 The hardware always exports all 7 state interfaces for every joint (regardless of operating mode):
