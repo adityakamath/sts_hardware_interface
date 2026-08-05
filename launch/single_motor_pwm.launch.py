@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Launch file for single STS motor in PWM (Mode 2 / open-loop effort) mode.
 
 This launch file demonstrates Mode 2 usage of the STS Hardware Interface with a
