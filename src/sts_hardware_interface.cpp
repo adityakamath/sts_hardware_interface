@@ -231,6 +231,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   protection_current_.resize(num_joints, std::nullopt);
   overload_torque_.resize(num_joints, std::nullopt);
   return_delay_.resize(num_joints, std::nullopt);
+  deadband_.resize(num_joints, std::nullopt);
 
   // Parse each joint
   for (size_t i = 0; i < num_joints; ++i) {
@@ -475,6 +476,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     if (!parse_eeprom_param("protection_current", protection_current_, 0, 65535)) return hardware_interface::CallbackReturn::ERROR;
     if (!parse_eeprom_param("overload_torque",    overload_torque_,    0, 254))   return hardware_interface::CallbackReturn::ERROR;
     if (!parse_eeprom_param("return_delay",       return_delay_,       0, 254))   return hardware_interface::CallbackReturn::ERROR;
+    if (!parse_eeprom_param("deadband",           deadband_,           0, 255))   return hardware_interface::CallbackReturn::ERROR;
   }
 
   // Check for duplicate motor IDs
@@ -699,7 +701,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     bool has_pc = protection_current_[i].has_value();
     bool has_ot = overload_torque_[i].has_value();
     bool has_rd = return_delay_[i].has_value();
-    if (!has_pc && !has_ot && !has_rd) continue;
+    bool has_db = deadband_[i].has_value();
+    if (!has_pc && !has_ot && !has_rd && !has_db) continue;
 
     int id = motor_ids_[i];
     if (auto r = check(servo_->unLockEeprom(id), "unLockEeprom"); r.has_value()) {
@@ -727,15 +730,28 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
         return hardware_interface::CallbackReturn::ERROR;
       }
     }
+    if (has_db) {
+      if (auto r = check(servo_->writeByte(id, SMS_STS_CW_DEAD, static_cast<u8>(deadband_[i].value())), "writeByte CW_DEAD"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      if (auto r = check(servo_->writeByte(id, SMS_STS_CCW_DEAD, static_cast<u8>(deadband_[i].value())), "writeByte CCW_DEAD"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
     if (auto r = check(servo_->LockEeprom(id), "LockEeprom"); r.has_value()) {
       RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
-    RCLCPP_INFO(logger_, "Motor %d (joint '%s'): wrote protection params PC=%s OT=%s RD=%s",
+    RCLCPP_INFO(logger_, "Motor %d (joint '%s'): wrote protection params PC=%s OT=%s RD=%s DB=%s",
       id, joint_names_[i].c_str(),
       has_pc ? std::to_string(protection_current_[i].value()).c_str() : "(unchanged)",
       has_ot ? std::to_string(overload_torque_[i].value()).c_str() : "(unchanged)",
-      has_rd ? std::to_string(return_delay_[i].value()).c_str() : "(unchanged)");
+      has_rd ? std::to_string(return_delay_[i].value()).c_str() : "(unchanged)",
+      has_db ? std::to_string(deadband_[i].value()).c_str() : "(unchanged)");
   }
 
   RCLCPP_INFO(logger_, "Configuration complete");

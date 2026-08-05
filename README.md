@@ -195,6 +195,7 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `protection_current` | int | *(omit)* | Hardware current cutoff written to EEPROM (0–65535, 6.5 mA/unit; e.g. 462 ≈ 3.0 A). When exceeded, the servo firmware cuts torque independently of ROS. All modes, addr 28/29. Omit to preserve existing EEPROM value. |
 | `overload_torque` | int | *(omit)* | Load percentage threshold that triggers overload protection, written to EEPROM (0–254). All modes, addr 36. Omit to preserve existing EEPROM value. |
 | `return_delay` | int | *(omit)* | Servo response delay written to EEPROM (0–254, 2 µs/unit). All modes, addr 7. Omit to preserve existing EEPROM value. |
+| `deadband` | int | *(omit)* | Position insensitive-area written to EEPROM (0–255). All modes, addr 26 (CW_DEAD) and addr 27 (CCW_DEAD) - both written to the same value; the two directions are not independently tunable. Omit to preserve existing EEPROM value. |
 
 **Readonly joints:** A joint with **no `<command_interface>` entries** is treated as readonly. It still requires `motor_id` and `operating_mode` (the mode register is written to EEPROM so state feedback is interpreted correctly), but torque is disabled at activation and the joint is excluded from all write loops. All 7 state interfaces are still exported and read every cycle.
 
