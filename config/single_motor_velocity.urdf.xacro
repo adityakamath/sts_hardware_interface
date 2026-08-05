@@ -55,7 +55,7 @@
       <!-- <param name="protection_current">462</param> -->  <!-- Hardware current cutoff (0-65535, 6.5mA units; 462 ≈ 3.0A): addr 28/29 -->
       <!-- <param name="overload_torque">80</param> -->      <!-- Load threshold for overload protection (0-254): addr 36 -->
       <!-- <param name="return_delay">0</param> -->          <!-- Response delay (0-254, 2µs units): addr 7 -->
-      <!-- <param name="deadband">2</param> -->              <!-- Position insensitive-area (0-255): addr 26/27 (CW_DEAD/CCW_DEAD) - both set to the same value, not independently tunable -->
+      <!-- <param name="deadband">2</param> -->              <!-- Position insensitive-area (0-255): addr 26/27 (CW_DEAD/CCW_DEAD), both set to the same value (Mode 0 only; ignored in Mode 1/2) -->
 
       <!-- Command Interfaces (Mode 1: Velocity) -->
       <command_interface name="velocity"/>  <!-- Target velocity in rad/s -->

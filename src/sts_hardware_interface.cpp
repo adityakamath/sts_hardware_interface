@@ -476,7 +476,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     if (!parse_eeprom_param("protection_current", protection_current_, 0, 65535)) return hardware_interface::CallbackReturn::ERROR;
     if (!parse_eeprom_param("overload_torque",    overload_torque_,    0, 254))   return hardware_interface::CallbackReturn::ERROR;
     if (!parse_eeprom_param("return_delay",       return_delay_,       0, 254))   return hardware_interface::CallbackReturn::ERROR;
-    if (!parse_eeprom_param("deadband",           deadband_,           0, 255))   return hardware_interface::CallbackReturn::ERROR;
+
+    // deadband (CW_DEAD/CCW_DEAD) is a position dead-zone: Mode 0 only, same restriction as d_coefficient.
+    if (operating_modes_[i] == MODE_SERVO) {
+      if (!parse_eeprom_param("deadband", deadband_, 0, 255)) return hardware_interface::CallbackReturn::ERROR;
+    } else if (joint.parameters.count("deadband")) {
+      RCLCPP_WARN(logger_, "Joint '%s': deadband is ignored outside Mode 0 (no position dead-zone concept in Mode 1/2)",
+        joint.name.c_str());
+    }
   }
 
   // Check for duplicate motor IDs

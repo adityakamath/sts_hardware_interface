@@ -271,7 +271,7 @@ private:
   std::vector<std::optional<int>> protection_current_;  // Hardware current cutoff (0-65535, 6.5mA/unit): addr 28/29 (uint16, writeWord); all modes
   std::vector<std::optional<int>> overload_torque_;     // Load threshold triggering overload protection (0-254): addr 36 (uint8, writeByte); all modes
   std::vector<std::optional<int>> return_delay_;        // Response delay (0-254, 2µs/unit): addr 7 (uint8, writeByte); all modes
-  std::vector<std::optional<int>> deadband_;            // Position insensitive-area (0-255): addr 26/27 (CW_DEAD/CCW_DEAD, both uint8, writeByte); all modes
+  std::vector<std::optional<int>> deadband_;            // Position insensitive-area (0-255): addr 26/27 (CW_DEAD/CCW_DEAD, both uint8, writeByte); Mode 0 only
 
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;
