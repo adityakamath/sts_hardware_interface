@@ -97,10 +97,13 @@ inline int rad_s_to_raw_speed(double speed_mag_rad_s, int max_velocity_steps)
 
 /**
  * @brief Convert normalized effort [-1.0, +1.0] to motor PWM [-1000, +1000].
+ *
+ * Applies the same sign inversion as raw_velocity_to_rad_s/rad_s_to_raw_velocity: motor
+ * positive direction is clockwise, ROS 2 uses counter-clockwise positive.
  */
 inline int effort_to_raw_pwm(double effort)
 {
-  return static_cast<int>(std::clamp(effort, -1.0, 1.0) * STS_MAX_PWM);
+  return static_cast<int>(std::clamp(-effort, -1.0, 1.0) * STS_MAX_PWM);
 }
 
 /**

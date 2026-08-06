@@ -106,18 +106,18 @@ TEST(ConversionsTest, RadSToRawVelocity_Clamps) {
 // ---- effort_to_raw_pwm ----
 
 TEST(ConversionsTest, EffortToRawPwm_KnownValues) {
-  // 0 → 0; ±1.0 → ±1000 (STS_MAX_PWM); ±0.5 → ±500
+  // Sign-inverted (CW motor vs. CCW-positive ROS 2): 0 → 0; +1.0 → -1000; -0.5 → +500
   EXPECT_EQ(effort_to_raw_pwm(0.0), 0);
-  EXPECT_EQ(effort_to_raw_pwm(1.0), 1000);
-  EXPECT_EQ(effort_to_raw_pwm(-1.0), -1000);
-  EXPECT_EQ(effort_to_raw_pwm(0.5), 500);
-  EXPECT_EQ(effort_to_raw_pwm(-0.5), -500);
+  EXPECT_EQ(effort_to_raw_pwm(1.0), -1000);
+  EXPECT_EQ(effort_to_raw_pwm(-1.0), 1000);
+  EXPECT_EQ(effort_to_raw_pwm(0.5), -500);
+  EXPECT_EQ(effort_to_raw_pwm(-0.5), 500);
 }
 
 TEST(ConversionsTest, EffortToRawPwm_Clamps) {
-  // Values outside [-1.0, 1.0] are clamped to ±1000
-  EXPECT_EQ(effort_to_raw_pwm(2.0), 1000);
-  EXPECT_EQ(effort_to_raw_pwm(-2.0), -1000);
+  // Values outside [-1.0, 1.0] are clamped to ±1000 (post-inversion)
+  EXPECT_EQ(effort_to_raw_pwm(2.0), -1000);
+  EXPECT_EQ(effort_to_raw_pwm(-2.0), 1000);
 }
 
 // ---- clamp_acceleration ----
