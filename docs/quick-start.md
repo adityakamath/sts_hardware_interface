@@ -316,7 +316,7 @@ ros2 topic pub --once /pwm_controller/commands std_msgs/msg/Float64MultiArray "d
 ros2 topic echo /dynamic_joint_states
 ```
 
-> **Verified in mock mode:** forward/reverse/stop all behave correctly. Physical hardware validation is still pending.
+> **Direction validated on physical hardware:** a sign-inversion bug in `effort_to_raw_pwm` was found and fixed; torque-magnitude calibration is still in progress.
 
 ---
 

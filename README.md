@@ -9,7 +9,7 @@
 
 `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 
-**✅ Status:** All three operating modes are implemented. **Modes 0 (Position) and 1 (Velocity)** have been tested and validated on physical hardware. **Mode 2 (PWM/Effort)** has been verified in mock mode — forward, reverse and stop commands all behave correctly; physical hardware validation is still pending.
+**✅ Status:** All three operating modes are implemented. **Modes 0 (Position) and 1 (Velocity)** have been tested and validated on physical hardware. **Mode 2 (PWM/Effort)** direction has been validated on physical hardware (a sign-inversion bug in `effort_to_raw_pwm` was found and fixed); torque-magnitude calibration is still in progress.
 
 **⚠️ One-key Calibration Status:** The `/one_key_calibration` service is newly added and currently **untested on physical hardware**.
 
