@@ -11,8 +11,6 @@ Complete setup and usage instructions for the STS Hardware Interface.
 ```bash
 cd ~/ros2_ws/src
 git clone https://github.com/adityakamath/sts_hardware_interface.git
-cd sts_hardware_interface
-git submodule update --init --recursive
 ```
 
 ### 2. Build the Package
@@ -669,4 +667,4 @@ Summary: X tests, 0 errors, 0 failures, Y skipped
 - [ros2_control documentation](https://control.ros.org/)
 - [Feetech STS3215 documentation](https://www.feetechrc.com/2020-05-13_56655.html)
 - [Original FTServo_Linux SDK](https://github.com/ftservo/FTServo_Linux)
-- [SCServo_Linux SDK](https://github.com/adityakamath/SCServo_Linux)
+- [SCServo_Linux SDK](https://github.com/adityakamath/SCServo_Linux) — `sts_hardware_interface` vendors a trimmed, STS/SMS-only copy in `include/SCServo_STS`; see the upstream [README](https://github.com/adityakamath/SCServo_Linux/blob/main/README.md) and [docs](https://github.com/adityakamath/SCServo_Linux/tree/main/docs) for the full multi-protocol SDK

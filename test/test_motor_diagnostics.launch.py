@@ -127,13 +127,29 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
         self.assertTrue(received, '/diagnostics not received within 30 seconds')
 
     def test_diagnostics_ok_status(self):
-        """Verify diagnostics status is OK when all values are nominal."""
-        received = self._wait_for_diagnostics(timeout_sec=30.0)
-        self.assertTrue(received)
-        status = received[0].status[0]
-        self.assertEqual(
-            status.level, DiagnosticStatus.OK,
-            f'Expected OK ({DiagnosticStatus.OK}), got {status.level}')
+        """Verify diagnostics status is OK when all values are nominal.
+
+        Waits specifically for an OK-level message rather than trusting
+        whatever arrives first: other test methods in this class inject
+        fault values into the shared /dynamic_joint_states stream, and
+        their in-flight messages can still be processed by the (stateless)
+        diagnostics node right as this test starts, since test order across
+        methods isn't controlled and all methods share one running stack.
+        """
+        received = []
+        sub = self.node.create_subscription(
+            DiagnosticArray, '/diagnostics', received.append, qos_profile_sensor_data)
+        deadline = time.time() + 30.0
+        ok_status = None
+        while time.time() < deadline and ok_status is None:
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+            while received:
+                msg = received.pop(0)
+                if msg.status and msg.status[0].level == DiagnosticStatus.OK:
+                    ok_status = msg.status[0]
+                    break
+        self.node.destroy_subscription(sub)
+        self.assertIsNotNone(ok_status, 'Expected an OK diagnostic status within 30 seconds')
 
     def test_diagnostics_warn_temperature(self):
         """Diagnostics status is WARN when temperature exceeds temp_warn but below temp_error."""

@@ -3,7 +3,7 @@ layout: page
 title: System Design
 ---
 
-System design and implementation guide for the Feetech STS servo motor hardware interface.
+System design and implementation guide for the Feetech SMS_STS servo motor hardware interface.
 
 ## Overview
 
@@ -47,7 +47,7 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 **Key transitions:**
 - **on_init()** → parses URDF params; detects read-only joints (no `<command_interface>` entries → `torque=0`, excluded from all write loops); builds servo/velocity/PWM mode index groups
 - **on_configure()** → creates `/emergency_stop` service (even in mock mode); opens serial port; pings all motors; writes optional EEPROM params (PID coefficients, `protection_current`, `overload_torque`, `return_delay`) per joint
-- **on_configure()** → creates `/one_key_calibration` (`sts_hardware_interface/srv/OneKeyCalibration`) only when at least one mode-0 joint is configured
+- **on_configure()** → creates `/one_key_calibration` (`sts_hardware_interface/srv/OneKeyCalibration`) unconditionally — calibration is mode-agnostic
 - **on_activate()** → `InitMotor(motor_id, mode, torque)` per joint — commanded joints: `torque=1`; read-only joints: `torque=0`
 - **Active cycle** → `read()` calls `FeedBack(motor_id)` per joint (individual reads, 7 state interfaces); `write()` uses SyncWrite per mode group when `use_sync_write=true` and >1 joint/group, else individual writes; read-only joints excluded from all write groups
 - **on_deactivate()** → `stop_motor()` per joint (individual writes), `EnableTorque(0)` all joints; returns to INACTIVE — may call `on_activate()` again or `on_cleanup()` to close serial
@@ -77,7 +77,7 @@ Each motor can be configured independently in one of three modes:
 
 ### One-Key Midpoint Calibration Service
 
-The hardware interface provides a custom one-key midpoint calibration service:
+The hardware interface provides a custom one-key midpoint calibration service. `CalibrationOfs` is a protocol-level servo command — it recenters a motor's raw encoder to step 2048 regardless of how `sts_hardware_interface` is using that motor, so the service is a general hardware-maintenance utility, not tied to operating mode:
 
 - Service: `/one_key_calibration`
 - Type: `sts_hardware_interface/srv/OneKeyCalibration`
@@ -85,14 +85,13 @@ The hardware interface provides a custom one-key midpoint calibration service:
 
 Behavior:
 
-- Available only when at least one joint uses operating mode 0.
-- Empty `motor_ids` calibrates all mode-0 joints.
-- Requests including mode-1 or mode-2 motor IDs are rejected.
+- Available for any configured joint, in any operating mode.
+- Empty `motor_ids` calibrates all joints.
 - Calibration executes on the hardware write thread via a queued request path.
 - Torque state is preserved per motor (restore only if it was enabled before calibration).
-- Verification is always performed after calibration writes.
+- Verification is always performed after calibration writes, checking the raw position lands near step 2048 (the fixed `CalibrationOfs` target) — not the joint's configured `position_center_`, which is a separate, user-defined "0 rad" reference.
 
-**⚠️ Untested:** This calibration service path is currently untested on physical hardware.
+**⚠️ Untested:** Mock-mode behavior has unit test coverage (see Testing below), but this service has not been validated on real hardware, and neither mode has been exercised through the full launch stack.
 
 **Configuration Example:**
 
@@ -616,7 +615,7 @@ test/
 
 ### Unit Tests: `test_conversions.cpp`
 
-**49 tests** covering all unit conversion functions in isolation.
+**29 tests** covering all unit conversion functions in isolation.
 
 **What is tested:**
 - `steps_to_radians` and `radians_to_steps` — forward and inverse conversions, boundary values (0, full-range), mid-range linearity
@@ -632,7 +631,7 @@ test/
 
 ### Unit Tests: `test_hardware_interface.cpp`
 
-**103 tests** exercising the full `STSHardwareInterface` in mock mode, covering every branch of the lifecycle.
+**95 tests** exercising the full `STSHardwareInterface` in mock mode, covering every branch of the lifecycle.
 
 **Parameter validation (`on_init`):**
 
@@ -651,6 +650,11 @@ test/
 | Position limits | `min_position`, `max_position` non-number strings → `RETURN_ERROR` |
 | Velocity limits | `max_velocity` non-number strings → `RETURN_ERROR` |
 | Effort limits | `max_effort` non-number strings → `RETURN_ERROR` |
+| `p_coefficient` / `d_coefficient` / `i_coefficient` | Out-of-range [0–255], non-integer strings → `RETURN_ERROR`; `d_coefficient` ignored (not rejected) outside Mode 0; all three ignored (not rejected) in Mode 2 |
+| `protection_current` | Out-of-range [0–65535], non-integer strings → `RETURN_ERROR` |
+| `overload_torque` / `return_delay` | Out-of-range [0–254], non-integer strings → `RETURN_ERROR` |
+| `deadband` | Out-of-range [0–255], non-integer strings → `RETURN_ERROR`; ignored (not rejected) outside Mode 0 |
+| Readonly joints | Joint with zero `<command_interface>` entries → `RETURN_SUCCESS`; exports state interfaces but no command interfaces; excluded from write loops |
 
 **Lifecycle transitions:**
 
@@ -680,6 +684,13 @@ Each transition is asserted to return `CallbackReturn::SUCCESS`. The `reset_stat
 - Activating emergency stop clears all command interfaces to zero
 - Releasing emergency stop restores normal write behavior
 - Service callback is invoked directly without a live ROS node (tests the internal callback function)
+
+**One-key calibration (mock mode):**
+
+- `/one_key_calibration` is created unconditionally — calibration is mode-agnostic, so no joint configuration can prevent it
+- Requests for any operating mode are accepted, including explicitly-addressed Mode 1/2 motor IDs (unlike the real-hardware path's torque/verification steps, there's no servo to query, so those are skipped)
+- Unknown `motor_id` in the request is still rejected — validation runs before the mock/real branch
+- Acceptance queues the request for `write()`, which simulates the servo's `CalibrationOfs` command: the joint's position state is set to the encoder midpoint (raw step 2048, converted through `position_center_`) without moving — this is the only test coverage of the calibration *execution* path, since real-hardware execution needs physical hardware (see the caveat at the top of `README.md`)
 
 ---
 
@@ -753,6 +764,7 @@ Spins up the `motor_diagnostics` and `single_motor_velocity` launch files togeth
 
 - Each fault test subscribes to `/diagnostics` and publishes injected `DynamicJointState` values in a loop, spinning concurrently until a matching diagnostic level + keyword is received. This avoids races with the hardware interface's continuous nominal data stream.
 - Thresholds used in assertions match those in `config/motor_diagnostics_config.yaml`.
+- `test_diagnostics_ok_status` waits specifically for an `OK`-level message rather than trusting the first one that arrives: `motor_diagnostics_node` is stateless (each `/diagnostics` message reflects only the `/dynamic_joint_states` message that produced it), but all test methods share one running node stack, and `unittest` runs them in alphabetical order — so a fault-injecting test (e.g. `test_diagnostics_error_temperature`) can still have messages in flight right as this test starts.
 
 ---
 
@@ -791,4 +803,4 @@ colcon test --packages-select sts_hardware_interface \
 - [ros2_control documentation](https://control.ros.org/)
 - [Feetech STS3215 documentation](https://www.feetechrc.com/2020-05-13_56655.html)
 - [Original FTServo_Linux SDK](https://github.com/ftservo/FTServo_Linux)
-- [SCServo_Linux SDK](https://github.com/adityakamath/SCServo_Linux)
+- [SCServo_Linux SDK](https://github.com/adityakamath/SCServo_Linux) — `sts_hardware_interface` vendors a trimmed, STS/SMS-only copy in `include/SCServo_STS`; see the upstream [README](https://github.com/adityakamath/SCServo_Linux/blob/main/README.md) and [docs](https://github.com/adityakamath/SCServo_Linux/tree/main/docs) for the full multi-protocol SDK

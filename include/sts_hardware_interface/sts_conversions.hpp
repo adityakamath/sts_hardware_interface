@@ -26,6 +26,7 @@ constexpr int    STS_MAX_POSITION     = 4095;   // 12-bit encoder
 constexpr int    STS_DEFAULT_CENTER   = 4095;   // Default: 0 rad at step 4095, range [0, 2π)
 constexpr int    STS_MAX_PWM          = 1000;   // ±100% duty cycle
 constexpr int    STS_MAX_ACCELERATION = 254;    // protocol constant
+constexpr int    STS_MIDPOINT_RAW_POSITION = 2048;  // Encoder midpoint; one-key calibration (CalibrationOfs) resets current position to this raw step
 
 /**
  * @brief Convert motor steps [0, 4095] to radians with configurable center.

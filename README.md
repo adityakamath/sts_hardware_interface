@@ -11,7 +11,7 @@
 
 **✅ Status:** All three operating modes are implemented. **Modes 0 (Position) and 1 (Velocity)** have been tested and validated on physical hardware. **Mode 2 (PWM/Effort)** direction has been validated on physical hardware (a sign-inversion bug in `effort_to_raw_pwm` was found and fixed); torque-magnitude calibration is still in progress.
 
-**⚠️ One-key Calibration Status:** The `/one_key_calibration` service is newly added and currently **untested on physical hardware**.
+**⚠️ One-key Calibration Status:** The `/one_key_calibration` service is newly added. Mock-mode behavior has unit test coverage, but it is **untested on physical hardware**, and neither mode has been exercised through the full launch stack.
 
 ## Features
 
@@ -32,8 +32,6 @@
 ```bash
 cd ~/ros2_ws/src
 git clone https://github.com/adityakamath/sts_hardware_interface.git
-cd sts_hardware_interface
-git submodule update --init --recursive
 cd ~/ros2_ws
 colcon build --packages-select sts_hardware_interface
 ```
@@ -86,33 +84,32 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 
 When activated, ALL motors stop immediately and torque is disabled. The service returns `success: true` and a confirmation message on both activate and release.
 
-## One-Key Midpoint Calibration (Mode 0 Only)
+## One-Key Midpoint Calibration
 
-One-key midpoint calibration is exposed through a custom service:
+One-key midpoint calibration is exposed through a custom service. It's a general hardware-maintenance utility: `CalibrationOfs` is a protocol-level servo command, independent of a joint's configured `operating_mode`, so it's available for Position, Velocity, and PWM/Effort joints alike.
 
 - Service: `/one_key_calibration`
 - Type: `sts_hardware_interface/srv/OneKeyCalibration`
 - Request fields: `motor_ids` only
 
 ```bash
-# Calibrate all mode-0 (servo) joints
+# Calibrate all configured joints
 ros2 service call /one_key_calibration sts_hardware_interface/srv/OneKeyCalibration "{motor_ids: []}"
 
-# Calibrate selected mode-0 joints by motor ID
+# Calibrate selected joints by motor ID, regardless of operating mode
 ros2 service call /one_key_calibration sts_hardware_interface/srv/OneKeyCalibration "{motor_ids: [1, 2]}"
 ```
 
 Behavior:
 
-- The service is only created when at least one joint is configured in operating mode 0.
-- Empty `motor_ids` means "all mode-0 joints" (not all joints across all modes).
-- Requests that include mode-1 or mode-2 motor IDs are rejected.
+- Empty `motor_ids` means "all joints" (any operating mode).
 - Torque state is preserved per motor:
   - If torque was enabled before calibration, it is disabled for calibration and restored afterwards.
   - If torque was disabled before calibration, it remains disabled.
 - Verification is always performed after each calibration write.
+- **Mock mode:** the request is accepted (not rejected) and simulates the servo's `CalibrationOfs` command — the joint's position state is set to the encoder midpoint (raw step 2048) without moving. Torque preservation and verification don't apply, since there's no real servo to query.
 
-**⚠️ Untested on hardware:** This one-key calibration flow is implemented but has not yet been validated on real hardware.
+**⚠️ Untested on hardware:** This one-key calibration flow has not yet been validated on real hardware. Mock-mode behavior is covered only by unit tests (see the **[Design documentation](docs/design.md)**) — neither mode has been exercised through the full `ros2_control` launch stack.
 
 ## Motor Diagnostics Node
 
@@ -242,7 +239,7 @@ The hardware always exports all 7 state interfaces for every joint (regardless o
 
 - **[ROS 2](https://docs.ros.org/en/kilted/)**: Tested with Kilted
 - **[ros2_control](https://control.ros.org/)** and **[ros2_controllers](https://control.ros.org/)**
-- **[SCServo_Linux](https://github.com/adityakamath/SCServo_Linux)** (included as git submodule)
+- **[SCServo_Linux](https://github.com/adityakamath/SCServo_Linux)** — vendored in `include/SCServo_STS`, trimmed to STS/SMS-series support only. See the [upstream README](https://github.com/adityakamath/SCServo_Linux/blob/main/README.md) and [docs](https://github.com/adityakamath/SCServo_Linux/tree/main/docs) for the full multi-protocol SDK documentation.
 
 ## License
 

@@ -44,11 +44,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/OneKeyCalibration.srv"
 )
 
-# Build SCServo_Linux library (C++)
-add_subdirectory(external/SCServo_Linux)
+# Build SCServo_STS library (C++)
+add_subdirectory(include/SCServo_STS)
 
 # SCServo library configuration
-set(SCSERVO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SCServo_Linux/include)
+set(SCSERVO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/SCServo_STS/include)
 set(SCSERVO_LIBRARY SCServo)
 
 # STS Hardware Interface (ros2_control plugin)
@@ -153,7 +153,7 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
 
   # Disable lint_cmake and uncrustify auto-detection: both linters would recurse into
-  # external/SCServo_Linux which is a vendor directory with its own style conventions.
+  # include/SCServo_STS which is a vendor directory with its own style conventions.
   # Setting _FOUND before ament_lint_auto_find_test_dependencies() prevents hook
   # registration and avoids duplicate-test build errors.
   set(ament_cmake_lint_cmake_FOUND TRUE)

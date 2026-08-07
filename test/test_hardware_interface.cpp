@@ -204,6 +204,51 @@ hardware_interface::HardwareInfo make_two_motor_info()
   return info;
 }
 
+/// Build info for a joint with no command interfaces at all — this makes it
+/// readonly per on_init's `is_readonly_[i] = joint.command_interfaces.empty()`.
+hardware_interface::HardwareInfo make_readonly_joint_info()
+{
+  hardware_interface::HardwareInfo info;
+  info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
+  info.hardware_parameters["enable_mock_mode"] = "true";
+
+  hardware_interface::ComponentInfo joint;
+  joint.name = "sensor_joint";
+  joint.parameters["motor_id"] = "4";
+  joint.parameters["operating_mode"] = "1";  // mode is irrelevant once readonly
+  info.joints.push_back(joint);
+  return info;
+}
+
+/// Build a HardwareInfo with one readonly joint (no command interfaces) and
+/// one normal velocity-mode joint, for mixed readonly/writable coverage.
+hardware_interface::HardwareInfo make_mixed_readonly_info()
+{
+  hardware_interface::HardwareInfo info;
+  info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
+  info.hardware_parameters["enable_mock_mode"] = "true";
+
+  {
+    hardware_interface::ComponentInfo joint;
+    joint.name = "sensor_joint";
+    joint.parameters["motor_id"] = "4";
+    joint.parameters["operating_mode"] = "1";
+    info.joints.push_back(joint);
+  }
+  {
+    hardware_interface::ComponentInfo joint;
+    joint.name = "wheel_joint";
+    joint.parameters["motor_id"] = "1";
+    joint.parameters["operating_mode"] = "1";
+    hardware_interface::InterfaceInfo vel_iface;
+    vel_iface.name = "velocity";
+    joint.command_interfaces.push_back(vel_iface);
+    info.joints.push_back(joint);
+  }
+
+  return info;
+}
+
 // ---- on_init: success cases ----
 
 TEST(HardwareInterfaceInitTest, ValidOperatingModes) {
@@ -1556,6 +1601,357 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityModeWithoutAccelerati
   }
   EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
   EXPECT_EQ(std::find(names.begin(), names.end(), "acceleration"), names.end());
+}
+
+// ============================================================
+// Readonly joints (no command interfaces)
+// ============================================================
+
+TEST(HardwareInterfaceReadonlyTest, ReadonlyJointOnInitSucceeds) {
+  // A joint with zero command interfaces is valid: it's treated as readonly
+  // rather than rejected for missing required interfaces.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_readonly_joint_info();
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceReadonlyTest, ReadonlyJointExportsNoCommandInterfaces) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_readonly_joint_info();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+
+  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_EQ(cmd_ifaces.size(), 0u);
+}
+
+TEST(HardwareInterfaceReadonlyTest, ReadonlyJointStillExportsStateInterfaces) {
+  // State is still read every cycle for readonly joints — only writes are skipped.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_readonly_joint_info();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+
+  auto state_ifaces = hw.export_state_interfaces();
+  EXPECT_GT(state_ifaces.size(), 0u);
+}
+
+TEST(HardwareInterfaceReadonlyTest, MixedReadonlyAndWritableJointsExportCorrectly) {
+  // One readonly joint + one normal velocity joint: command interfaces come
+  // only from the writable joint, state interfaces come from both.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_mixed_readonly_info();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+
+  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_EQ(cmd_ifaces.size(), 1u);
+  EXPECT_EQ(cmd_ifaces[0].get_prefix_name(), "wheel_joint");
+}
+
+TEST_F(HardwareInterfaceLifecycleTest, ReadonlyJointFullLifecycleSucceeds) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_readonly_joint_info();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+
+  rclcpp_lifecycle::State unconfigured(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
+  rclcpp_lifecycle::State inactive(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE, "inactive");
+  rclcpp_lifecycle::State active(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
+
+  ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
+  ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
+
+  rclcpp::Time t(0, 0, RCL_ROS_TIME);
+  rclcpp::Duration d(0, 0);
+  EXPECT_EQ(hw.read(t, d), return_type::OK);
+  EXPECT_EQ(hw.write(t, d), return_type::OK);  // no-op for the readonly joint
+
+  EXPECT_EQ(hw.on_deactivate(active), CallbackReturn::SUCCESS);
+}
+
+// ============================================================
+// on_init: PID coefficient (p_coefficient/d_coefficient/i_coefficient) validation
+// Valid range: [0, 255]. d_coefficient only applies in Mode 0 (servo);
+// all three are ignored (with a warning) in Mode 2 (PWM).
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, InvalidPidCoefficientReturnsError) {
+  for (const char * param : {"p_coefficient", "d_coefficient", "i_coefficient"}) {
+    for (const char * val : {"-1", "256", "not_a_number"}) {
+      sts_hardware_interface::STSHardwareInterface hw;
+      auto info = make_valid_position_motor_info();  // mode 0: all three apply
+      info.joints[0].parameters[param] = val;
+      EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR)
+        << param << "=\"" << val << "\" should fail";
+    }
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidPidCoefficientSucceeds) {
+  for (const char * param : {"p_coefficient", "d_coefficient", "i_coefficient"}) {
+    for (const char * val : {"0", "128", "255"}) {
+      sts_hardware_interface::STSHardwareInterface hw;
+      auto info = make_valid_position_motor_info();
+      info.joints[0].parameters[param] = val;
+      EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS)
+        << param << "=\"" << val << "\" should succeed";
+    }
+  }
+}
+
+TEST(HardwareInterfaceInitTest, DCoefficientInVelocityModeIsIgnoredNotRejected) {
+  // Mode 1 has no D register; a d_coefficient param is accepted with a warning,
+  // not rejected.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();  // mode 1
+  info.joints[0].parameters["d_coefficient"] = "100";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+TEST(HardwareInterfaceInitTest, PidCoefficientsInPwmModeAreIgnoredNotRejected) {
+  // Mode 2 (PWM) has no PID registers at all; all three params are accepted
+  // with a warning, not rejected — even an otherwise-out-of-range value.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_effort_motor_info();  // mode 2
+  info.joints[0].parameters["p_coefficient"] = "999";
+  info.joints[0].parameters["d_coefficient"] = "999";
+  info.joints[0].parameters["i_coefficient"] = "999";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+// ============================================================
+// on_init: protection parameter validation
+// protection_current: [0, 65535]; overload_torque: [0, 254]; return_delay: [0, 254].
+// All modes, all optional — absent means "don't touch EEPROM".
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, InvalidProtectionCurrentReturnsError) {
+  for (const char * val : {"-1", "65536", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["protection_current"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidProtectionCurrentSucceeds) {
+  for (const char * val : {"0", "462", "65535"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["protection_current"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, InvalidOverloadTorqueReturnsError) {
+  for (const char * val : {"-1", "255", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["overload_torque"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidOverloadTorqueSucceeds) {
+  for (const char * val : {"0", "128", "254"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["overload_torque"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, InvalidReturnDelayReturnsError) {
+  for (const char * val : {"-1", "255", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["return_delay"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidReturnDelaySucceeds) {
+  for (const char * val : {"0", "128", "254"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["return_delay"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+// ============================================================
+// on_init: deadband (CW_DEAD/CCW_DEAD position dead-zone) validation
+// Valid range: [0, 255]. Mode 0 (servo) only; ignored (with a warning),
+// not rejected, in Mode 1/2.
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, InvalidDeadbandReturnsError) {
+  for (const char * val : {"-1", "256", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_position_motor_info();  // mode 0
+    info.joints[0].parameters["deadband"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidDeadbandSucceeds) {
+  for (const char * val : {"0", "128", "255"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_position_motor_info();  // mode 0
+    info.joints[0].parameters["deadband"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, DeadbandOutsideModeZeroIsIgnoredNotRejected) {
+  // Mode 1 has no position dead-zone concept; deadband is accepted with a
+  // warning, not rejected — even an otherwise-out-of-range value.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();  // mode 1
+  info.joints[0].parameters["deadband"] = "999";
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+}
+
+// ============================================================
+// /one_key_calibration service
+// ============================================================
+
+TEST_F(HardwareInterfaceLifecycleTest, OneKeyCalibrationServiceCreatedRegardlessOfMode) {
+  // Calibration is a hardware-maintenance utility independent of operating_mode:
+  // info_ (from make_valid_single_motor_info) is mode 1 (velocity) only, and
+  // /one_key_calibration must still be created.
+  rclcpp_lifecycle::State unconfigured(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
+  ASSERT_EQ(hw_->on_configure(unconfigured), CallbackReturn::SUCCESS);
+
+  auto client_node = rclcpp::Node::make_shared("test_calib_client_node");
+  auto client = client_node->create_client<sts_hardware_interface::srv::OneKeyCalibration>(
+    "/one_key_calibration");
+  EXPECT_TRUE(client->wait_for_service(std::chrono::seconds(5)));
+}
+
+class HardwareInterfaceOneKeyCalibrationTest : public HardwareInterfaceServoMockTest
+{
+protected:
+  void SetUp() override
+  {
+    HardwareInterfaceServoMockTest::SetUp();
+    client_node_ = rclcpp::Node::make_shared("test_one_key_calib_client_node");
+    calib_client_ =
+      client_node_->create_client<sts_hardware_interface::srv::OneKeyCalibration>(
+        "/one_key_calibration");
+  }
+
+  void TearDown() override
+  {
+    calib_client_.reset();
+    client_node_.reset();
+    HardwareInterfaceServoMockTest::TearDown();
+  }
+
+  /// Call /one_key_calibration and wait for the response, spinning both the
+  /// client node and hw_'s internal node (via hw_->read()) until it resolves.
+  sts_hardware_interface::srv::OneKeyCalibration::Response::SharedPtr call_calibration(
+    const std::vector<uint16_t> & motor_ids = {})
+  {
+    auto req = std::make_shared<sts_hardware_interface::srv::OneKeyCalibration::Request>();
+    req->motor_ids = motor_ids;
+    auto future = calib_client_->async_send_request(req);
+
+    rclcpp::Time t(0, 0, RCL_ROS_TIME);
+    rclcpp::Duration d(0, 0);
+    for (int i = 0; i < 50; ++i) {
+      rclcpp::spin_some(client_node_);
+      hw_->read(t, d);  // internally calls rclcpp::spin_some(node_)
+      if (future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+        return future.get();
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return nullptr;  // timed out
+  }
+
+  std::shared_ptr<rclcpp::Node> client_node_;
+  rclcpp::Client<sts_hardware_interface::srv::OneKeyCalibration>::SharedPtr calib_client_;
+};
+
+TEST_F(HardwareInterfaceOneKeyCalibrationTest, ServiceIsAvailableWithServoJoints) {
+  // info_ (from make_servo_info_with_velocity) has a mode-0 joint, so
+  // on_configure must create /one_key_calibration.
+  ASSERT_TRUE(calib_client_->wait_for_service(std::chrono::seconds(5)));
+}
+
+TEST_F(HardwareInterfaceOneKeyCalibrationTest, AcceptedInMockMode) {
+  // Mock mode has no real EEPROM to write, but the request is still accepted
+  // and simulates the position reset (see the next test).
+  ASSERT_TRUE(calib_client_->wait_for_service(std::chrono::seconds(5)));
+  auto res = call_calibration();
+  ASSERT_NE(res, nullptr) << "service call timed out";
+  EXPECT_TRUE(res->accepted);
+  EXPECT_NE(res->message.find("mock mode"), std::string::npos) << res->message;
+}
+
+TEST_F(HardwareInterfaceOneKeyCalibrationTest, SetsPositionToEncoderMidpoint) {
+  // Calibration is queued by the service callback but only executed inside
+  // write() (mirroring the real-hardware path); one write() cycle after
+  // acceptance, the position state must reflect raw step 2048.
+  ASSERT_TRUE(calib_client_->wait_for_service(std::chrono::seconds(5)));
+  auto res = call_calibration();
+  ASSERT_NE(res, nullptr) << "service call timed out";
+  ASSERT_TRUE(res->accepted);
+
+  rclcpp::Time t(0, 0, RCL_ROS_TIME);
+  rclcpp::Duration d(0, 0);
+  EXPECT_EQ(hw_->write(t, d), return_type::OK);
+
+  auto * position = find_state("position");
+  ASSERT_NE(position, nullptr);
+  double position_val = 0.0;
+  (void)position->get_value(position_val, true);
+
+  const double expected = sts_hardware_interface::conversions::raw_position_to_radians(
+    sts_hardware_interface::conversions::STS_MIDPOINT_RAW_POSITION,
+    sts_hardware_interface::conversions::STS_DEFAULT_CENTER);
+  EXPECT_NEAR(position_val, expected, 1e-9);
+}
+
+TEST_F(HardwareInterfaceOneKeyCalibrationTest, UnknownMotorIdRejectedInMockMode) {
+  // Validation (unknown motor_id) runs before the mock/real branch, so it
+  // still rejects even though mock-mode calibration is otherwise accepted.
+  ASSERT_TRUE(calib_client_->wait_for_service(std::chrono::seconds(5)));
+  auto res = call_calibration({99});
+  ASSERT_NE(res, nullptr) << "service call timed out";
+  EXPECT_FALSE(res->accepted);
+  EXPECT_NE(res->message.find("Unknown motor_id"), std::string::npos) << res->message;
+}
+
+TEST_F(HardwareInterfaceMockTest, VelocityModeMotorCanBeExplicitlyCalibrated) {
+  // Calibration is a mode-agnostic hardware-maintenance utility: info_ (from
+  // make_valid_single_motor_info) is mode 1 (velocity) with motor_id=1, and an
+  // explicit request for that motor_id must be accepted, not rejected for
+  // being the "wrong" mode.
+  auto client_node = rclcpp::Node::make_shared("test_velocity_calib_client_node");
+  auto client = client_node->create_client<sts_hardware_interface::srv::OneKeyCalibration>(
+    "/one_key_calibration");
+  ASSERT_TRUE(client->wait_for_service(std::chrono::seconds(5)));
+
+  auto req = std::make_shared<sts_hardware_interface::srv::OneKeyCalibration::Request>();
+  req->motor_ids = {1};
+  auto future = client->async_send_request(req);
+
+  rclcpp::Time t(0, 0, RCL_ROS_TIME);
+  rclcpp::Duration d(0, 0);
+  sts_hardware_interface::srv::OneKeyCalibration::Response::SharedPtr res;
+  for (int i = 0; i < 50 && !res; ++i) {
+    rclcpp::spin_some(client_node);
+    hw_->read(t, d);
+    if (future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+      res = future.get();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_NE(res, nullptr) << "service call timed out";
+  EXPECT_TRUE(res->accepted);
 }
 
 int main(int argc, char ** argv)

@@ -1,5 +1,5 @@
 /** @file sts_hardware_interface.cpp
- * @brief ros2_control hardware interface implementation for Feetech STS servo motors */
+ * @brief ros2_control hardware interface implementation for Feetech SMS_STS servo motors */
 
 #include "sts_hardware_interface/sts_hardware_interface.hpp"
 
@@ -111,9 +111,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  if (proportional_acc_max_ < 0 || proportional_acc_max_ > STS_MAX_ACCELERATION) {
+  if (proportional_acc_max_ < 0 || proportional_acc_max_ > SMS_STS_MAX_ACCELERATION) {
     RCLCPP_ERROR(logger_, "Invalid proportional_acc_max: %d. Must be in [0, %d]",
-      proportional_acc_max_, STS_MAX_ACCELERATION);
+      proportional_acc_max_, SMS_STS_MAX_ACCELERATION);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -253,9 +253,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     }
 
     // Validate motor ID range
-    if (motor_ids_[i] < STS_MIN_MOTOR_ID || motor_ids_[i] > STS_MAX_MOTOR_ID) {
+    if (motor_ids_[i] < SMS_STS_MIN_MOTOR_ID || motor_ids_[i] > SMS_STS_MAX_MOTOR_ID) {
       RCLCPP_ERROR(logger_, "Joint '%s': Invalid motor_id %d (must be between %d and %d)",
-        joint.name.c_str(), motor_ids_[i], STS_MIN_MOTOR_ID, STS_MAX_MOTOR_ID);
+        joint.name.c_str(), motor_ids_[i], SMS_STS_MIN_MOTOR_ID, SMS_STS_MAX_MOTOR_ID);
       return hardware_interface::CallbackReturn::ERROR;
     }
 
@@ -582,13 +582,12 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     std::bind(&STSHardwareInterface::emergency_stop_callback, this,
       std::placeholders::_1, std::placeholders::_2));
 
-  // One-key midpoint calibration only applies to mode 0 (servo) joints.
-  if (!servo_motor_indices_.empty()) {
-    one_key_calibration_service_ = node_->create_service<sts_hardware_interface::srv::OneKeyCalibration>(
-      "/one_key_calibration",
-      std::bind(&STSHardwareInterface::one_key_calibration_callback, this,
-        std::placeholders::_1, std::placeholders::_2));
-  }
+  // One-key midpoint calibration is a general hardware-maintenance utility:
+  // CalibrationOfs is a protocol-level servo command, independent of operating_mode.
+  one_key_calibration_service_ = node_->create_service<sts_hardware_interface::srv::OneKeyCalibration>(
+    "/one_key_calibration",
+    std::bind(&STSHardwareInterface::one_key_calibration_callback, this,
+      std::placeholders::_1, std::placeholders::_2));
 
   // Enable service introspection: publishes full request/response content to
   // /emergency_stop/_service_event for monitoring activations and releases.
@@ -610,16 +609,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     safety_qos,
     RCL_SERVICE_INTROSPECTION_CONTENTS);
 
-  if (one_key_calibration_service_) {
-    one_key_calibration_service_->configure_introspection(
-      node_->get_clock(),
-      safety_qos,
-      RCL_SERVICE_INTROSPECTION_CONTENTS);
-    RCLCPP_INFO(logger_, "Created /emergency_stop and /one_key_calibration services with introspection enabled");
-  } else {
-    RCLCPP_INFO(logger_, "Created /emergency_stop service with introspection enabled");
-    RCLCPP_INFO(logger_, "Skipped /one_key_calibration service: no mode 0 (servo) joints configured.");
-  }
+  one_key_calibration_service_->configure_introspection(
+    node_->get_clock(),
+    safety_qos,
+    RCL_SERVICE_INTROSPECTION_CONTENTS);
+  RCLCPP_INFO(logger_, "Created /emergency_stop and /one_key_calibration services with introspection enabled");
 
   // Skip serial port initialization in mock mode
   if (enable_mock_mode_) {
@@ -1097,13 +1091,15 @@ hardware_interface::return_type STSHardwareInterface::write(
       }
     }
 
+    process_pending_one_key_calibration_mock();
+
     return hardware_interface::return_type::OK;
   }
 
   // Check for broadcast emergency stop (stops ALL motors)
   if (hw_cmd_emergency_stop_ > 0.5 && !emergency_stop_active_) {
     RCLCPP_WARN(logger_, "Emergency stop activated - stopping ALL motors and disabling torque");
-    if (auto r = check(servo_->WriteSpe(STS_BROADCAST_ID, 0, STS_MAX_ACCELERATION), "broadcast stop"); r.has_value()) {
+    if (auto r = check(servo_->WriteSpe(BROADCAST_ID, 0, SMS_STS_MAX_ACCELERATION), "broadcast stop"); r.has_value()) {
       RCLCPP_WARN(logger_, "Broadcast emergency stop: %s", r->c_str());
     }
 
@@ -1240,7 +1236,7 @@ hardware_interface::return_type STSHardwareInterface::write(
           velocity_sync_accelerations_[j] = 0;
         } else {
           int acc = static_cast<int>(std::round((velocity_sync_deltas_[j] / max_delta_rad_s) * proportional_acc_max_));
-          velocity_sync_accelerations_[j] = static_cast<u8>(std::clamp(acc, 1, STS_MAX_ACCELERATION));
+          velocity_sync_accelerations_[j] = static_cast<u8>(std::clamp(acc, 1, SMS_STS_MAX_ACCELERATION));
         }
       }
 
@@ -1484,7 +1480,10 @@ void STSHardwareInterface::process_pending_one_key_calibration()
       all_ok = false;
     } else {
       const int raw_position = servo_->ReadPos(-1);
-      const int expected_center = position_center_[idx];
+      // CalibrationOfs always recenters to raw step 2048 (the encoder midpoint) —
+      // this is a fixed firmware behavior, independent of the joint's configured
+      // position_center_ (which is a separate, user-defined "0 rad" reference).
+      const int expected_center = conversions::STS_MIDPOINT_RAW_POSITION;
       if (raw_position < 0 || std::abs(raw_position - expected_center) > verify_tolerance_steps) {
         RCLCPP_WARN(logger_,
           "One-key calibration verify: motor %d now at %d, expected near center %d (+/-%d)",
@@ -1510,6 +1509,38 @@ void STSHardwareInterface::process_pending_one_key_calibration()
   } else {
     RCLCPP_WARN(logger_, "One-key calibration request completed with errors. Check logs above.");
   }
+
+  {
+    std::lock_guard<std::mutex> lock(calibration_mutex_);
+    calibration_in_progress_ = false;
+  }
+}
+
+void STSHardwareInterface::process_pending_one_key_calibration_mock()
+{
+  PendingCalibrationRequest request;
+  {
+    std::lock_guard<std::mutex> lock(calibration_mutex_);
+    if (!pending_calibration_request_.has_value() || calibration_in_progress_) {
+      return;
+    }
+    request = *pending_calibration_request_;
+    pending_calibration_request_.reset();
+    calibration_in_progress_ = true;
+  }
+
+  for (size_t idx : request.motor_indices) {
+    // Simulate CalibrationOfs: the motor's current physical position becomes
+    // raw step 2048 (the Feetech STS encoder midpoint) without actually moving.
+    hw_state_position_[idx] = conversions::raw_position_to_radians(
+      conversions::STS_MIDPOINT_RAW_POSITION, position_center_[idx]);
+    hw_cmd_position_[idx] = hw_state_position_[idx];  // Hold at the new calibrated position
+
+    RCLCPP_INFO(logger_, "One-key calibration (mock): motor %d (joint '%s') position set to raw step %d",
+      motor_ids_[idx], joint_names_[idx].c_str(), conversions::STS_MIDPOINT_RAW_POSITION);
+  }
+
+  RCLCPP_INFO(logger_, "One-key calibration request completed successfully (mock mode).");
 
   {
     std::lock_guard<std::mutex> lock(calibration_mutex_);
@@ -1632,22 +1663,13 @@ void STSHardwareInterface::one_key_calibration_callback(
   const sts_hardware_interface::srv::OneKeyCalibration::Request::SharedPtr req,
   sts_hardware_interface::srv::OneKeyCalibration::Response::SharedPtr res)
 {
-  if (servo_motor_indices_.empty()) {
-    res->accepted = false;
-    res->message = "One-key calibration is available only for mode 0 (servo) joints; none are configured.";
-    return;
-  }
-
-  if (enable_mock_mode_) {
-    res->accepted = false;
-    res->message = "One-key calibration is unavailable in mock mode.";
-    return;
-  }
-
   PendingCalibrationRequest pending;
 
   if (req->motor_ids.empty()) {
-    for (size_t idx : servo_motor_indices_) {
+    // Calibration is a hardware-maintenance utility, independent of operating_mode:
+    // CalibrationOfs recenters any STS servo's raw encoder regardless of how
+    // sts_hardware_interface is using it. Empty motor_ids means "all joints".
+    for (size_t idx = 0; idx < motor_ids_.size(); ++idx) {
       pending.motor_indices.push_back(idx);
     }
   } else {
@@ -1659,26 +1681,27 @@ void STSHardwareInterface::one_key_calibration_callback(
         return;
       }
       const size_t idx = static_cast<size_t>(std::distance(motor_ids_.begin(), it));
-      if (operating_modes_[idx] != MODE_SERVO) {
-        res->accepted = false;
-        res->message = "motor_id " + std::to_string(requested_id) + " is not in mode 0 (servo) and cannot be calibrated.";
-        return;
-      }
       if (std::find(pending.motor_indices.begin(), pending.motor_indices.end(), idx) == pending.motor_indices.end()) {
         pending.motor_indices.push_back(idx);
       }
     }
   }
 
-  pending.was_torque_enabled.reserve(pending.motor_indices.size());
-  for (size_t idx : pending.motor_indices) {
-    const int torque_enable = servo_->readByte(static_cast<u8>(motor_ids_[idx]), SMS_STS_TORQUE_ENABLE);
-    if (torque_enable < 0) {
-      res->accepted = false;
-      res->message = "Failed to read torque state before calibration for motor_id " + std::to_string(motor_ids_[idx]);
-      return;
+  if (enable_mock_mode_) {
+    // No real servo to query torque state from; mock calibration only simulates
+    // the raw-position reset, so torque preservation doesn't apply.
+    pending.was_torque_enabled.assign(pending.motor_indices.size(), false);
+  } else {
+    pending.was_torque_enabled.reserve(pending.motor_indices.size());
+    for (size_t idx : pending.motor_indices) {
+      const int torque_enable = servo_->readByte(static_cast<u8>(motor_ids_[idx]), SMS_STS_TORQUE_ENABLE);
+      if (torque_enable < 0) {
+        res->accepted = false;
+        res->message = "Failed to read torque state before calibration for motor_id " + std::to_string(motor_ids_[idx]);
+        return;
+      }
+      pending.was_torque_enabled.push_back(torque_enable != 0);
     }
-    pending.was_torque_enabled.push_back(torque_enable != 0);
   }
 
   {
@@ -1692,7 +1715,9 @@ void STSHardwareInterface::one_key_calibration_callback(
   }
 
   res->accepted = true;
-  res->message = "Calibration request accepted; torque state will be preserved and verification is always enabled.";
+  res->message = enable_mock_mode_
+    ? "Calibration request accepted (mock mode): position will be set to the encoder midpoint."
+    : "Calibration request accepted; torque state will be preserved and verification is always enabled.";
 }
 
 }  // namespace sts_hardware_interface

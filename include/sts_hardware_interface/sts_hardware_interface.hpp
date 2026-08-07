@@ -1,5 +1,5 @@
-#ifndef STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
-#define STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
+#ifndef SMS_STS_HARDWARE_INTERFACE_SMS_STS_HARDWARE_INTERFACE_HPP_
+#define SMS_STS_HARDWARE_INTERFACE_SMS_STS_HARDWARE_INTERFACE_HPP_
 
 #include <memory>
 #include <optional>
@@ -287,12 +287,12 @@ private:
   static constexpr double LOAD_SCALE = 0.1;         // 1 unit = 0.1% (Feetech spec)
 
   // STS protocol constants (same for all STS motors)
-  static constexpr int STS_MAX_ACCELERATION = 254;     // Maximum acceleration value (protocol constant)
-  static constexpr int STS_MAX_POSITION = 4095;        // Maximum position in steps (12-bit encoder)
-  static constexpr int STS_MAX_PWM = 1000;             // Maximum PWM value
-  static constexpr int STS_MIN_MOTOR_ID = 1;           // Minimum valid motor ID
-  static constexpr int STS_MAX_MOTOR_ID = 253;         // Maximum valid motor ID
-  static constexpr int STS_BROADCAST_ID = 0xFE;        // Broadcast ID (254) for all motors
+  static constexpr int SMS_STS_MAX_ACCELERATION = 254;     // Maximum acceleration value (protocol constant)
+  static constexpr int SMS_STS_MAX_POSITION = 4095;        // Maximum position in steps (12-bit encoder)
+  static constexpr int SMS_STS_MAX_PWM = 1000;             // Maximum PWM value
+  static constexpr int SMS_STS_MIN_MOTOR_ID = 1;           // Minimum valid motor ID
+  static constexpr int SMS_STS_MAX_MOTOR_ID = 253;         // Maximum valid motor ID
+  static constexpr int BROADCAST_ID = 0xFE;                // Broadcast ID (254) for all motors
 
   // Operating mode constants
   static constexpr int MODE_SERVO = 0;      // Position control mode
@@ -324,6 +324,9 @@ private:
   /** @brief Execute a queued one-key calibration request inside write() */
   void process_pending_one_key_calibration();
 
+  /** @brief Mock-mode equivalent: sets simulated position to the encoder midpoint, no real servo I/O */
+  void process_pending_one_key_calibration_mock();
+
   struct PendingCalibrationRequest
   {
     std::vector<size_t> motor_indices;
@@ -339,4 +342,4 @@ private:
 
 }  // namespace sts_hardware_interface
 
-#endif  // STS_HARDWARE_INTERFACE_STS_HARDWARE_INTERFACE_HPP_
+#endif  // SMS_STS_HARDWARE_INTERFACE_SMS_STS_HARDWARE_INTERFACE_HPP_
