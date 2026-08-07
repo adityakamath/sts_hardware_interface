@@ -127,7 +127,8 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
         self.assertTrue(received, '/diagnostics not received within 30 seconds')
 
     def test_diagnostics_ok_status(self):
-        """Verify diagnostics status is OK when all values are nominal.
+        """
+        Verify diagnostics status is OK when all values are nominal.
 
         Waits specifically for an OK-level message rather than trusting
         whatever arrives first: other test methods in this class inject
