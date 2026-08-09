@@ -6,7 +6,11 @@ on:
 
 jobs:
   lint:
-    name: clang-tidy
+    name: clang-tidy (${{ matrix.ros_distro }})
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: [kilted, jazzy]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -22,19 +26,19 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
 
-      - name: Setup ROS 2 Kilted
+      - name: Setup ROS 2
         uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: kilted
+          required-ros-distributions: ${{ matrix.ros_distro }}
 
       - name: Install ROS 2 dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            ros-kilted-hardware-interface \
-            ros-kilted-pluginlib \
-            ros-kilted-rclcpp \
-            ros-kilted-rclcpp-lifecycle
+            ros-${{ matrix.ros_distro }}-hardware-interface \
+            ros-${{ matrix.ros_distro }}-pluginlib \
+            ros-${{ matrix.ros_distro }}-rclcpp \
+            ros-${{ matrix.ros_distro }}-rclcpp-lifecycle
 
       - name: Create workspace
         run: |
@@ -44,7 +48,7 @@ jobs:
       - name: Build with compile_commands.json
         shell: bash
         run: |
-          source /opt/ros/kilted/setup.bash
+          source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           cd ~/ros2_ws
           colcon build \
             --packages-select sts_hardware_interface \
@@ -57,7 +61,7 @@ jobs:
       - name: Run clang-tidy
         shell: bash
         run: |
-          source /opt/ros/kilted/setup.bash
+          source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           cd ~/ros2_ws/src/sts_hardware_interface
 
           mkdir -p clang-tidy-results
@@ -86,7 +90,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: clang-tidy-results
+          name: clang-tidy-results-${{ matrix.ros_distro }}
           path: ~/ros2_ws/src/sts_hardware_interface/clang-tidy-results/
 
       - name: Comment PR with results
@@ -117,9 +121,13 @@ jobs:
             });
 
   test:
-    name: colcon test (ros:kilted)
+    name: colcon test (ros:${{ matrix.ros_distro }})
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: [kilted, jazzy]
     runs-on: ubuntu-latest
-    container: ros:kilted
+    container: ros:${{ matrix.ros_distro }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -130,25 +138,25 @@ jobs:
       - name: Install ROS dependencies
         run: |
           apt-get update && apt-get install -y --no-install-recommends \
-            ros-kilted-ament-cmake-gtest \
-            ros-kilted-ament-lint-auto \
-            ros-kilted-ament-lint-common \
-            ros-kilted-control-msgs \
-            ros-kilted-controller-manager \
-            ros-kilted-diagnostic-msgs \
-            ros-kilted-effort-controllers \
-            ros-kilted-hardware-interface \
-            ros-kilted-joint-state-broadcaster \
-            ros-kilted-joint-trajectory-controller \
-            ros-kilted-launch-testing-ament-cmake \
-            ros-kilted-launch-testing-ros \
-            ros-kilted-pluginlib \
-            ros-kilted-rclcpp \
-            ros-kilted-rclcpp-lifecycle \
-            ros-kilted-robot-state-publisher \
-            ros-kilted-std-srvs \
-            ros-kilted-velocity-controllers \
-            ros-kilted-xacro
+            ros-${{ matrix.ros_distro }}-ament-cmake-gtest \
+            ros-${{ matrix.ros_distro }}-ament-lint-auto \
+            ros-${{ matrix.ros_distro }}-ament-lint-common \
+            ros-${{ matrix.ros_distro }}-control-msgs \
+            ros-${{ matrix.ros_distro }}-controller-manager \
+            ros-${{ matrix.ros_distro }}-diagnostic-msgs \
+            ros-${{ matrix.ros_distro }}-effort-controllers \
+            ros-${{ matrix.ros_distro }}-hardware-interface \
+            ros-${{ matrix.ros_distro }}-joint-state-broadcaster \
+            ros-${{ matrix.ros_distro }}-joint-trajectory-controller \
+            ros-${{ matrix.ros_distro }}-launch-testing-ament-cmake \
+            ros-${{ matrix.ros_distro }}-launch-testing-ros \
+            ros-${{ matrix.ros_distro }}-pluginlib \
+            ros-${{ matrix.ros_distro }}-rclcpp \
+            ros-${{ matrix.ros_distro }}-rclcpp-lifecycle \
+            ros-${{ matrix.ros_distro }}-robot-state-publisher \
+            ros-${{ matrix.ros_distro }}-std-srvs \
+            ros-${{ matrix.ros_distro }}-velocity-controllers \
+            ros-${{ matrix.ros_distro }}-xacro
 
       # gtest (test_conversions, test_hardware_interface) and the launch tests
       # (single_motor_velocity, single_motor_position, motor_diagnostics, mixed_mode) all run
@@ -156,12 +164,12 @@ jobs:
       # clang-tidy's own static analysis runs in the lint job above instead.
       - name: colcon build
         run: |
-          . /opt/ros/kilted/setup.sh
+          . /opt/ros/${{ matrix.ros_distro }}/setup.sh
           colcon build --packages-select sts_hardware_interface
 
       - name: colcon test
         run: |
-          . /opt/ros/kilted/setup.sh
+          . /opt/ros/${{ matrix.ros_distro }}/setup.sh
           . install/setup.sh
           colcon test --packages-select sts_hardware_interface --event-handlers console_direct+
           colcon test-result --verbose
@@ -169,5 +177,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: colcon-logs
+          name: colcon-logs-${{ matrix.ros_distro }}
           path: log

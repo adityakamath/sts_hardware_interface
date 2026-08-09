@@ -1,7 +1,7 @@
 # STS Hardware Interface
 
 ![Project Status](https://img.shields.io/badge/Status-Active-green)
-![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
+![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20%7C%20Jazzy%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
 ![C++](https://img.shields.io/badge/C++-17-blue?style=flat&logo=cplusplus&logoColor=white)
 [![CI](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/ci.yml/badge.svg)](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/ci.yml)
 [![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/sts_hardware_interface)
@@ -237,7 +237,7 @@ The hardware always exports all 7 state interfaces for every joint (regardless o
 
 ## Dependencies
 
-- **[ROS 2](https://docs.ros.org/en/kilted/)**: Tested with Kilted
+- **[ROS 2](https://docs.ros.org/en/kilted/)**: CI-tested on Kilted and Jazzy
 - **[ros2_control](https://control.ros.org/)** and **[ros2_controllers](https://control.ros.org/)**
 - **[SCServo_Linux](https://github.com/adityakamath/SCServo_Linux)** — vendored in `include/SCServo_STS`, trimmed to STS/SMS-series support only. See the [upstream README](https://github.com/adityakamath/SCServo_Linux/blob/main/README.md) and [docs](https://github.com/adityakamath/SCServo_Linux/tree/main/docs) for the full multi-protocol SDK documentation.
 

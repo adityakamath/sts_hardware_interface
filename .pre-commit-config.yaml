@@ -4,7 +4,7 @@ default_stages: [pre-commit]
 repos:
   # No .clang-format here, and clang-tidy needs a full compile_commands.json to run
   # meaningfully (that's what the clang-tidy CI workflow is for) - too heavy for a
-  # commit-time hook. These two catch the cheap, language-agnostic stuff.
+  # commit-time hook. These catch the cheap, language-agnostic stuff.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -12,3 +12,11 @@ repos:
         exclude: ^external/
       - id: end-of-file-fixer
         exclude: ^external/
+      - id: detect-private-key
+        exclude: ^external/
+      - id: check-added-large-files
+        exclude: ^external/
+  - repo: https://github.com/s-weigand/pre-commit_mirrors-actionlint
+    rev: v1.6.24
+    hooks:
+      - id: actionlint
