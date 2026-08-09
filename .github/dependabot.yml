@@ -1,6 +1,7 @@
 version: 2
 updates:
-  # Keep GitHub Actions up to date
+  # Keep GitHub Actions up to date; bundled into one PR and auto-merged by
+  # .github/workflows/dependabot-auto-merge.yml once CI passes.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -9,3 +10,7 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
