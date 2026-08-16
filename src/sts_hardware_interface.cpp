@@ -1023,7 +1023,9 @@ hardware_interface::return_type STSHardwareInterface::read(
           return hardware_interface::return_type::ERROR;
         }
       }
-      return hardware_interface::return_type::ERROR;
+      // Below threshold: tolerate the glitch, keep this motor's last known state, keep polling
+      // the rest instead of failing the whole read cycle over one transient error.
+      continue;
     }
 
     // Reset error counter on successful read
@@ -1575,9 +1577,13 @@ Result STSHardwareInterface::check_write(int result, size_t idx, const char* ope
         consecutive_write_errors_, motor_ids_[idx], joint_names_[idx].c_str());
       if (attempt_error_recovery()) {
         consecutive_write_errors_ = 0;
+      } else {
+        return std::string(operation) + " failed on motor " + std::to_string(motor_ids_[idx]);
       }
     }
-    return std::string(operation) + " failed on motor " + std::to_string(motor_ids_[idx]);
+    // Below threshold (or recovery succeeded): tolerate the glitch, caller continues instead
+    // of failing the whole write cycle over one transient error.
+    return std::nullopt;
   }
   return std::nullopt;
 }
