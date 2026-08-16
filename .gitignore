@@ -36,3 +36,6 @@ ament_index/
 
 # graphify
 graphify-out/
+
+# colcon
+COLCON_IGNORE
