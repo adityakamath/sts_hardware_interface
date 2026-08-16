@@ -76,8 +76,8 @@ install(TARGETS motor_diagnostics_node DESTINATION lib/${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}_plugin PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${SCSERVO_INCLUDE_DIR}>
   $<INSTALL_INTERFACE:include>
-  ${SCSERVO_INCLUDE_DIR}
 )
 
 target_link_libraries(${PROJECT_NAME}_plugin
@@ -97,7 +97,10 @@ pluginlib_export_plugin_description_file(hardware_interface sts_hardware_interfa
 
 # Install library
 install(TARGETS ${PROJECT_NAME}_plugin
-  DESTINATION lib
+  EXPORT ${PROJECT_NAME}Targets
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 # Install include directory
@@ -200,7 +203,7 @@ endif()
 
 # Export package information for downstream packages
 ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME}_plugin)
+ament_export_libraries(${PROJECT_NAME})
 ament_export_dependencies(
   rosidl_default_runtime
   rclcpp
