@@ -232,8 +232,7 @@ Configure these at the `<hardware>` level in your URDF:
 | `communication_timeout_ms` | int | 100 | 1-1000 | Serial communication timeout (ms) |
 | `use_sync_write` | bool | true | true/false | Batch commands for multiple motors |
 | `enable_mock_mode` | bool | false | true/false | Simulation mode (no hardware required) |
-| `max_velocity_steps` | int | 3400 | > 0 | Maximum motor velocity in steps/s (STS3215: 3400, STS3032: 2900) |
-| `proportional_vel_max` | int | 0 | 0–`max_velocity_steps` | **SyncWrite only.** Velocity (steps/s) assigned to the servo joint with the largest \|target_position − current_position\| delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to `0` to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when `use_sync_write=false`. |
+| `proportional_vel_max` | int | 0 | 0–(smallest per-joint `max_velocity_steps` among servo-mode joints) | **SyncWrite only.** Velocity (steps/s) assigned to the servo joint with the largest \|target_position − current_position\| delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to `0` to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when `use_sync_write=false`. |
 | `proportional_vel_deadband` | double | 0.01 | ≥ 0.0 rad | **SyncWrite only.** Minimum max-delta (rad) below which all joints revert to their commanded velocity (avoids noise-driven re-scaling at steady-state). Has no effect when `use_sync_write=false` or `proportional_vel_max=0`. |
 | `proportional_acc_max` | int | 100 | 0–254 | **SyncWrite only.** Acceleration value [0–254] assigned to the velocity joint with the largest \|target_velocity − current_velocity\| delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to `0` to disable (falls back to per-joint commanded acceleration, or ACC=0 if the interface is not declared). Has no effect when `use_sync_write=false`. |
 | `proportional_acc_deadband` | double | 0.05 | ≥ 0.0 rad/s | **SyncWrite only.** Minimum velocity delta (rad/s) below which ACC=0 is sent to all wheels (avoids jitter during steady-state cruise). Has no effect when `use_sync_write=false` or `proportional_acc_max=0`. |
@@ -256,7 +255,8 @@ Configure these per `<joint>` in your URDF:
 | `min_position` | double | 0.0 | any | Min position limit (radians, Mode 0 only) |
 | `max_position` | double | 6.283 | any | Max position limit (radians, Mode 0 only) |
 | `position_center_steps` | int | 4095 | 0–4095 | Raw encoder step mapped to 0 rad (Mode 0 only). Default gives [0, 2π) range; set to 2048 for approximately [−π, +π] range. |
-| `max_velocity` | double | 5.22 | > 0.0 | Max velocity limit (rad/s, Modes 0 and 1) |
+| `max_velocity_steps` | int | 3400 | > 0 | Motor's maximum velocity in steps/s, model-dependent (Modes 0 and 1). Set per joint so different STS models can share a bus (STS3215: 3400, STS3032: 2900). Also sets the default for `max_velocity` below. |
+| `max_velocity` | double | derived from `max_velocity_steps` | > 0.0 | Max velocity limit (rad/s, Modes 0 and 1) |
 | `max_effort` | double | 1.0 | (0.0, 1.0] | Maximum allowed effort command (Mode 2 only). Limits command range without scaling. |
 | `p_coefficient` | int | *(omit)* | 0–255 | P gain written to EEPROM at startup. Mode 0 → addr 21; Mode 1 → addr 37; Mode 2: ignored. Omit to preserve existing EEPROM value. |
 | `d_coefficient` | int | *(omit)* | 0–255 | D gain written to EEPROM at startup. Mode 0 → addr 22 only; Mode 1 and 2: ignored. Omit to preserve existing EEPROM value. |
@@ -316,7 +316,7 @@ When `use_sync_write: true` and multiple position-mode motors are active, the ha
 
 ```
 delta_j  = |target_position_j - current_position_j|   (rad, clamped target)
-speed_j  = clamp(round(delta_j / max_delta * proportional_vel_max), 1, max_velocity_steps)
+speed_j  = clamp(round(delta_j / max_delta * proportional_vel_max), 1, max_velocity_steps_j)
 ```
 
 The joint with the largest delta receives `proportional_vel_max` (steps/s); all others are scaled down so every joint arrives at its target at the same time. Per-joint `velocity_max` is respected as an upper bound. Below `proportional_vel_deadband` rad max delta (steady-state hold), all joints revert to their commanded speed. When `proportional_vel_max=0`, the hardware interface falls back to per-joint commanded speed (or raw 0 = hardware max speed if the velocity interface is not declared). The individual-write fallback path is unchanged.
@@ -640,10 +640,10 @@ test/
 | `serial_port` | Missing parameter → `RETURN_ERROR` |
 | `baud_rate` | Missing, non-integer strings → `RETURN_ERROR` |
 | `communication_timeout_ms` | Missing, non-integer strings, out-of-range → `RETURN_ERROR` |
-| `max_velocity_steps` | Missing, non-positive, non-integer strings → `RETURN_ERROR` |
+| `max_velocity_steps` (per joint) | Missing (defaults to 3400), non-positive, non-integer strings → `RETURN_ERROR` |
 | `proportional_acc_max` | Non-integer strings, out-of-range [0–254] → `RETURN_ERROR` |
 | `proportional_acc_deadband` | Non-number strings, negative values → `RETURN_ERROR` |
-| `proportional_vel_max` | Non-integer strings, negative or > `max_velocity_steps` → `RETURN_ERROR` |
+| `proportional_vel_max` | Non-integer strings, negative, or exceeding the smallest per-joint `max_velocity_steps` among servo-mode joints → `RETURN_ERROR` |
 | `proportional_vel_deadband` | Non-number strings, negative values → `RETURN_ERROR` |
 | `motor_id` | Missing per joint, out-of-range (0, 254, 255) → `RETURN_ERROR`; duplicate IDs → `RETURN_ERROR` |
 | `operating_mode` | Values 0, 1, 2 (valid); invalid values (non-integer or out of range) → `RETURN_ERROR`; missing parameter → defaults to velocity (1) |

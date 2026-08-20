@@ -168,8 +168,7 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `communication_timeout_ms` | int | 100 | Serial timeout: 1-1000 ms |
 | `use_sync_write` | bool | true | Enable SyncWrite for multi-motor setups |
 | `enable_mock_mode` | bool | false | Simulation mode (no hardware) |
-| `max_velocity_steps` | int | 3400 | Max motor velocity in steps/s (STS3215: 3400, STS3032: 2900, STS3235: 3400) |
-| `proportional_vel_max` | int | 0 | **SyncWrite only.** Velocity value [0–`max_velocity_steps`] assigned to the joint with the largest `\|target_position - current_position\|` delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to `0` to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when `use_sync_write=false`. |
+| `proportional_vel_max` | int | 0 | **SyncWrite only.** Velocity value [0–smallest per-joint `max_velocity_steps` among servo-mode joints] assigned to the joint with the largest `\|target_position - current_position\|` delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to `0` to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when `use_sync_write=false`. |
 | `proportional_vel_deadband` | double | 0.01 | **SyncWrite only.** Minimum max-delta (rad) below which all joints revert to their commanded velocity (steady-state hold, avoids noise-driven re-scaling). Has no effect when `use_sync_write=false` or `proportional_vel_max=0`. |
 | `proportional_acc_max` | int | 100 | **SyncWrite only.** Acceleration value [0–254] assigned to the wheel with the largest `\|target_velocity - current_velocity\|` delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to `0` to disable (falls back to per-joint commanded acceleration, or 0 if the interface is not declared). Has no effect when `use_sync_write=false`. |
 | `proportional_acc_deadband` | double | 0.05 | **SyncWrite only.** Minimum max-delta (rad/s) below which acceleration 0 is sent to all wheels (steady-state cruise, avoids noise-driven jitter). Has no effect when `use_sync_write=false` or `proportional_acc_max=0`. |
@@ -184,7 +183,8 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `min_position` | double | 0.0 | Min position limit (radians, Mode 0 only) |
 | `max_position` | double | 6.283 | Max position limit (2π radians, Mode 0 only) |
 | `position_center_steps` | int | 4095 | Raw encoder step mapped to 0 rad, 0–4095 (Mode 0 only). Default gives [0, 2π) range; set to 2048 for approximately [−π, +π] range. |
-| `max_velocity` | double | 5.22 | Max velocity limit (rad/s, Modes 0 and 1, optional) |
+| `max_velocity_steps` | int | 3400 | Motor's max velocity in steps/s, model-dependent (Modes 0 and 1). Set per joint so different STS models can share a bus (STS3215: 3400, STS3032: 2900, STS3235: 3400). Also sets the default for `max_velocity` below. |
+| `max_velocity` | double | derived from `max_velocity_steps` | Max velocity limit (rad/s, Modes 0 and 1, optional) |
 | `max_effort` | double | 1.0 | Maximum allowed effort command ((0.0, 1.0], Mode 2 only). Safety limiter that restricts command range without scaling. |
 | `p_coefficient` | int | *(omit)* | Proportional gain written to servo EEPROM on startup (0–255). Mode 0 → position P (addr 21); Mode 1 → velocity P (addr 37); Mode 2 → ignored. Omit to preserve existing EEPROM value. |
 | `d_coefficient` | int | *(omit)* | Derivative gain written to servo EEPROM on startup (0–255). Mode 0 only → position D (addr 22); Mode 1/2 → ignored (velocity controller is PI only). Omit to preserve existing EEPROM value. |

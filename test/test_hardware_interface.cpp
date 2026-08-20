@@ -365,7 +365,7 @@ TEST(HardwareInterfaceInitTest, InvalidCommunicationTimeoutReturnsError) {
 TEST(HardwareInterfaceInitTest, InvalidMaxVelocityStepsReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
-  info.hardware_parameters["max_velocity_steps"] = "0";  // must be > 0
+  info.joints[0].parameters["max_velocity_steps"] = "0";  // must be > 0
   EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
 }
 

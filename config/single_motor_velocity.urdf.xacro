@@ -32,7 +32,6 @@
       <param name="communication_timeout_ms">100</param>  <!-- Serial timeout: 1-1000 ms (default: 100) -->
       <param name="use_sync_write">false</param>  <!-- Enable SyncWrite for multi-motor setups (default: true, disabled for single motor) -->
       <param name="enable_mock_mode">$(arg use_mock)</param>  <!-- Simulation mode without hardware (default: false) -->
-      <param name="max_velocity_steps">3400</param>  <!-- Max motor velocity in steps/s: STS3215=3400, STS3032=2900 (default: 3400) -->
       <param name="reset_states_on_activate">true</param>  <!-- Reset position/velocity to zero on activation (default: true) -->
     </hardware>
 
@@ -42,6 +41,7 @@
 
       <!-- Optional Joint Parameters (with defaults shown) -->
       <param name="operating_mode">1</param>  <!-- 0=Position (servo), 1=Velocity (wheel), 2=PWM (effort) [default: 1] -->
+      <param name="max_velocity_steps">3400</param>  <!-- Motor's max velocity in steps/s, model-dependent: STS3215=3400, STS3032=2900 (default: 3400) -->
       <param name="max_velocity">5.22</param>  <!-- Max velocity limit in rad/s (default: 5.22, STS3215 max) -->
       <!-- Position limits (Mode 0 only): -->
       <!-- <param name="min_position">0.0</param>    Min position limit in radians (default: 0.0) -->

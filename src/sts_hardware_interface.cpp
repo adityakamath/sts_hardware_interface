@@ -84,22 +84,6 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   use_sync_write_ = parse_bool_param("use_sync_write", true);
   reset_states_on_activate_ = parse_bool_param("reset_states_on_activate", true);
 
-  // Parse motor-specific parameter (model-dependent)
-  try {
-    max_velocity_steps_ = std::stoi(
-      info_.hardware_parameters.count("max_velocity_steps") ?
-      info_.hardware_parameters.at("max_velocity_steps") : "3400");  // STS3215 default
-  } catch (const std::exception &) {
-    RCLCPP_ERROR(logger_, "Invalid max_velocity_steps value: '%s' (must be a valid integer)",
-      info_.hardware_parameters.at("max_velocity_steps").c_str());
-    return hardware_interface::CallbackReturn::ERROR;
-  }
-
-  if (max_velocity_steps_ <= 0) {
-    RCLCPP_ERROR(logger_, "Invalid max_velocity_steps: %d. Must be a positive integer", max_velocity_steps_);
-    return hardware_interface::CallbackReturn::ERROR;
-  }
-
   // Parse proportional acceleration parameters
   try {
     proportional_acc_max_ = std::stoi(
@@ -171,13 +155,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  if (proportional_vel_max_ < 0 || proportional_vel_max_ > max_velocity_steps_) {
-    RCLCPP_ERROR(logger_, "Invalid proportional_vel_max: %d. Must be in [0, %d]",
-      proportional_vel_max_, max_velocity_steps_);
+  if (proportional_vel_max_ < 0) {
+    RCLCPP_ERROR(logger_, "Invalid proportional_vel_max: %d. Must be >= 0", proportional_vel_max_);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  RCLCPP_INFO(logger_, "Motor model parameter: max_velocity=%d steps/s", max_velocity_steps_);
   RCLCPP_INFO(logger_, "Proportional ACC: max=%d, deadband=%.4f rad/s",
     proportional_acc_max_, proportional_acc_deadband_rad_s_);
   RCLCPP_INFO(logger_, "Proportional VEL: max=%d steps/s (%s), deadband=%.4f rad",
@@ -218,7 +200,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   position_min_.resize(num_joints, 0.0);  // Default: 0 radians (0 steps)
   position_max_.resize(num_joints, 2.0 * M_PI);  // Default: 2π radians (4096 steps)
-  velocity_max_.resize(num_joints, static_cast<double>(max_velocity_steps_) * STEPS_TO_RAD);  // Use configured max velocity
+  max_velocity_steps_.resize(num_joints, DEFAULT_MAX_VELOCITY_STEPS);  // Per-joint, model-dependent (default: STS3215)
+  velocity_max_.resize(num_joints, static_cast<double>(DEFAULT_MAX_VELOCITY_STEPS) * STEPS_TO_RAD);  // Derived from max_velocity_steps default
   effort_max_.resize(num_joints, 1.0);
   has_position_limits_.resize(num_joints, false);
   has_velocity_limits_.resize(num_joints, false);
@@ -328,6 +311,25 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       }
     }
 
+    // Parse motor-specific max_velocity_steps (model-dependent; per joint so different STS
+    // models can share a bus). Must be parsed before max_velocity so the latter can override
+    // the derived default below.
+    if (joint.parameters.count("max_velocity_steps")) {
+      try {
+        max_velocity_steps_[i] = std::stoi(joint.parameters.at("max_velocity_steps"));
+      } catch (const std::exception &) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid max_velocity_steps value: '%s' (must be a valid integer)",
+          joint.name.c_str(), joint.parameters.at("max_velocity_steps").c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      if (max_velocity_steps_[i] <= 0) {
+        RCLCPP_ERROR(logger_, "Joint '%s': Invalid max_velocity_steps: %d. Must be a positive integer",
+          joint.name.c_str(), max_velocity_steps_[i]);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      velocity_max_[i] = static_cast<double>(max_velocity_steps_[i]) * STEPS_TO_RAD;
+    }
+
     if (joint.parameters.count("max_velocity")) {
       try {
         velocity_max_[i] = std::stod(joint.parameters.at("max_velocity"));
@@ -403,10 +405,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       }
     }
 
-    RCLCPP_INFO(logger_, "Joint '%s': motor_id=%d, mode=%d, read-only=%s, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f]",
+    RCLCPP_INFO(logger_, "Joint '%s': motor_id=%d, mode=%d, read-only=%s, limits: pos[%.2f, %.2f] vel[%.2f] eff[%.2f], max_velocity_steps=%d",
       joint.name.c_str(), motor_ids_[i], operating_modes_[i],
       is_readonly_[i] ? "true" : "false",
-      position_min_[i], position_max_[i], velocity_max_[i], effort_max_[i]);
+      position_min_[i], position_max_[i], velocity_max_[i], effort_max_[i], max_velocity_steps_[i]);
 
     // Parse optional PID coefficients (0-255; absent = do not write, preserve EEPROM value).
     // Routing depends on operating mode:
@@ -528,6 +530,21 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
 
   RCLCPP_INFO(logger_, "Motor groupings: %zu servo, %zu velocity, %zu PWM",
     servo_motor_indices_.size(), velocity_motor_indices_.size(), pwm_motor_indices_.size());
+
+  // Validate proportional_vel_max_ against the tightest per-joint max_velocity_steps among
+  // servo-mode joints (SyncWritePosEx speed field is shared, so it can't exceed any of them).
+  if (proportional_vel_max_ > 0 && !servo_motor_indices_.empty()) {
+    int min_max_velocity_steps = max_velocity_steps_[servo_motor_indices_[0]];
+    for (size_t idx : servo_motor_indices_) {
+      min_max_velocity_steps = std::min(min_max_velocity_steps, max_velocity_steps_[idx]);
+    }
+    if (proportional_vel_max_ > min_max_velocity_steps) {
+      RCLCPP_ERROR(logger_,
+        "Invalid proportional_vel_max: %d. Must be <= %d (smallest max_velocity_steps among servo-mode joints)",
+        proportional_vel_max_, min_max_velocity_steps);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+  }
 
   // Warn when proportional coordination parameters are configured but cannot take effect.
   // SyncWrite (and therefore proportional scaling) requires >1 joint in the same mode.
@@ -969,7 +986,7 @@ hardware_interface::return_type STSHardwareInterface::read(
       }
 
       // Simulate load based on velocity (convert simulated load percentage to effort units)
-      double simulated_load_percentage = hw_state_velocity_[i] / (max_velocity_steps_ * STEPS_TO_RAD) * 100.0;
+      double simulated_load_percentage = hw_state_velocity_[i] / (max_velocity_steps_[i] * STEPS_TO_RAD) * 100.0;
       simulated_load_percentage = std::clamp(simulated_load_percentage, -100.0, 100.0);
       // Motor load is absolute - doesn't depend on max_effort limit
       hw_state_effort_[i] = simulated_load_percentage / 100.0;
@@ -1165,7 +1182,7 @@ hardware_interface::return_type STSHardwareInterface::write(
           double max_speed = std::max(0.0,
             conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]));
           servo_sync_speeds_[j] = static_cast<u16>(
-            conversions::rad_s_to_raw_speed(max_speed, max_velocity_steps_));
+            conversions::rad_s_to_raw_speed(max_speed, max_velocity_steps_[idx]));
         } else if (servo_sync_deltas_[j] == 0.0) {
           // This joint is already at its target: set speed to 0 (no move)
           servo_sync_speeds_[j] = 0;
@@ -1173,7 +1190,7 @@ hardware_interface::return_type STSHardwareInterface::write(
           // Proportional scaling, but respect per-joint velocity_max
           double scaled = (servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_;
           double limited = std::min(scaled, velocity_max_[idx]);
-          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(static_cast<int>(std::round(limited)), 1, max_velocity_steps_));
+          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(static_cast<int>(std::round(limited)), 1, max_velocity_steps_[idx]));
         }
       }
 
@@ -1191,7 +1208,7 @@ hardware_interface::return_type STSHardwareInterface::write(
         // rad_s_to_raw_speed: unsigned magnitude conversion for position mode — no sign inversion.
         // hw_cmd_velocity_ == 0.0 (not declared / not written) → raw 0 = STS protocol max speed.
         int raw_max_speed = conversions::rad_s_to_raw_speed(
-          std::max(0.0, max_speed), max_velocity_steps_);
+          std::max(0.0, max_speed), max_velocity_steps_[idx]);
         int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
 
         if (auto r = check_write(servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration), idx, "position"); r.has_value()) {
@@ -1213,7 +1230,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
         size_t idx = velocity_motor_indices_[j];
         double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
-        velocity_sync_velocities_[j] = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_);
+        velocity_sync_velocities_[j] = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_[idx]);
         velocity_sync_deltas_[j] = std::abs(target_velocity - hw_state_velocity_[idx]);
         max_delta_rad_s = std::max(max_delta_rad_s, velocity_sync_deltas_[j]);
       }
@@ -1250,7 +1267,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Individual writes for single velocity motor or when SyncWrite disabled
       for (size_t idx : velocity_motor_indices_) {
         double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
-        int raw_velocity = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_);
+        int raw_velocity = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_[idx]);
         int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
 
         if (auto r = check_write(servo_->WriteSpe(motor_ids_[idx], raw_velocity, acceleration), idx, "velocity"); r.has_value()) {

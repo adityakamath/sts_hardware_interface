@@ -82,11 +82,10 @@ using Result = std::optional<std::string>;
  * - communication_timeout_ms: Serial communication timeout, 1-1000 ms (default: 100)
  * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
  * - enable_mock_mode: Enable simulation mode without hardware (default: false)
- * - max_velocity_steps: Maximum motor velocity in steps/s (default: 3400, STS3215 spec)
- *                       Adjust for other models: STS3032=2900, STS3235=3400
  * - proportional_vel_max: SyncWrite only. Velocity [0–max_velocity_steps] assigned to the joint
  *                         with the largest |target_position - current_position| delta; all others
- *                         scaled proportionally. Set to 0 to disable. (default: 0)
+ *                         scaled proportionally. Capped to the smallest per-joint max_velocity_steps
+ *                         among servo-mode joints. Set to 0 to disable. (default: 0)
  * - proportional_vel_deadband: SyncWrite only. Min max-delta (rad) below which all joints revert
  *                              to their commanded velocity (steady-state hold). (default: 0.01)
  * - proportional_acc_max: SyncWrite only. Acceleration [0–254] assigned to the wheel with the
@@ -105,8 +104,11 @@ using Result = std::optional<std::string>;
  *                          (default: 4095). Only used in position mode (mode 0). Set to your
  *                          servo's calibrated center; e.g. 2048 for approximately [-π, +π]
  *                          range (one encoder step of asymmetry at the ±π boundary).
- * - max_velocity: Maximum velocity limit in rad/s (default: 5.22, STS3215 max: 3400 steps/s)
- *                 NOTE: Adjust this for other STS motors (e.g., STS3032 max: 2900 steps/s)
+ * - max_velocity: Maximum velocity limit in rad/s (default: derived from max_velocity_steps)
+ * - max_velocity_steps: Motor's maximum velocity in steps/s, model-dependent (default: 3400,
+ *                       STS3215 spec). Set per joint so different STS models (e.g. STS3032=2900,
+ *                       STS3235=3400) can share the same serial bus. Also sets the default for
+ *                       max_velocity when that is not explicitly given.
  * - max_effort: Maximum effort limit, 0-1 for PWM mode (default: 1.0)
  * - p_coefficient: Proportional gain written to EEPROM (0-255, optional — omit to preserve existing value)
  *                  Mode 0 → addr 21 (SMS_STS_MODE0_P_COEF); Mode 1 → addr 37 (SMS_STS_MODE1_P_COEF); Mode 2: ignored
@@ -179,9 +181,6 @@ private:
   int communication_timeout_ms_;
   bool enable_mock_mode_;
   bool use_sync_write_;  // Use SyncWrite for multi-motor commands
-
-  // Motor-specific parameter (model-dependent)
-  int max_velocity_steps_;   // Maximum velocity in steps/s (default: 3400 for STS3215)
 
   // Proportional acceleration parameters (SyncWriteSpe velocity path only)
   int proportional_acc_max_;             // ACC given to the wheel with the largest Δv [0-254] (default: 100)
@@ -261,6 +260,7 @@ private:
   std::vector<bool> has_velocity_limits_;
   std::vector<bool> has_effort_limits_;
   std::vector<int> position_center_;  // Raw step for 0 rad per joint (default: STS_DEFAULT_CENTER=4095)
+  std::vector<int> max_velocity_steps_;  // Per-joint motor max velocity in steps/s, model-dependent (default: DEFAULT_MAX_VELOCITY_STEPS)
 
   // ===== PER-JOINT PID COEFFICIENTS (optional, written to EEPROM in on_configure) =====
   std::vector<std::optional<int>> p_coefficient_;  // Proportional gain (0-255): Mode 0 → SMS_STS_MODE0_P_COEF (addr 21); Mode 1 → SMS_STS_MODE1_P_COEF (addr 37)
@@ -293,6 +293,9 @@ private:
   static constexpr int SMS_STS_MIN_MOTOR_ID = 1;           // Minimum valid motor ID
   static constexpr int SMS_STS_MAX_MOTOR_ID = 253;         // Maximum valid motor ID
   static constexpr int BROADCAST_ID = 0xFE;                // Broadcast ID (254) for all motors
+
+  // Default max_velocity_steps when a joint does not override it (STS3215 spec; motor-model-dependent)
+  static constexpr int DEFAULT_MAX_VELOCITY_STEPS = 3400;
 
   // Operating mode constants
   static constexpr int MODE_SERVO = 0;      // Position control mode

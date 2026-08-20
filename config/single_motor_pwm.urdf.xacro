@@ -40,7 +40,6 @@
       <param name="communication_timeout_ms">100</param>  <!-- Serial timeout: 1-1000 ms (default: 100) -->
       <param name="use_sync_write">false</param>  <!-- SyncWrite not needed for single motor -->
       <param name="enable_mock_mode">$(arg use_mock)</param>  <!-- Simulation mode without hardware (default: false) -->
-      <param name="max_velocity_steps">3400</param>  <!-- Max motor velocity in steps/s: STS3215=3400, STS3032=2900 (default: 3400) -->
       <param name="reset_states_on_activate">true</param>  <!-- Reset position/velocity to zero on activation (default: true) -->
     </hardware>
 
