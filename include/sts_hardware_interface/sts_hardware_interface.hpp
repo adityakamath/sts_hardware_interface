@@ -232,6 +232,11 @@ private:
   std::vector<u8> pwm_sync_ids_;
   std::vector<s16> pwm_sync_pwm_values_;
 
+  // ===== PRE-ALLOCATED SYNCREAD ID LIST (all motors, readonly included - read() polls every
+  // motor regardless of write eligibility; buffer itself is allocated once via syncReadBegin
+  // in on_configure, freed via syncReadEnd in on_cleanup/on_shutdown) =====
+  std::vector<u8> read_sync_ids_;
+
   // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
   std::vector<double> hw_state_position_;
   std::vector<double> hw_state_velocity_;
@@ -285,6 +290,11 @@ private:
   static constexpr double VOLTAGE_SCALE = 0.1;      // 1 unit = 0.1V (Feetech spec)
   static constexpr double CURRENT_SCALE = 0.0065;   // 1 unit = 6.5mA (Feetech spec)
   static constexpr double LOAD_SCALE = 0.1;         // 1 unit = 0.1% (Feetech spec)
+
+  // Feedback block read by read(): PRESENT_POSITION_L through PRESENT_CURRENT_H, one
+  // contiguous SyncRead per cycle instead of N per-motor FeedBack() round-trips.
+  static constexpr u8 SYNC_READ_FEEDBACK_LEN =
+    SMS_STS_PRESENT_CURRENT_H - SMS_STS_PRESENT_POSITION_L + 1;
 
   // STS protocol constants (same for all STS motors)
   static constexpr int SMS_STS_MAX_ACCELERATION = 254;     // Maximum acceleration value (protocol constant)

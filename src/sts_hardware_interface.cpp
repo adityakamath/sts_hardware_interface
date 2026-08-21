@@ -653,6 +653,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
   RCLCPP_INFO(logger_, "Opened serial port %s at baud rate %d with %d ms timeout",
     serial_port_.c_str(), baud_rate_, communication_timeout_ms_);
 
+  // Pre-allocate the SyncRead response buffer (read() polls every motor - readonly
+  // included - each cycle, so this list is independent from the write-side sync groupings).
+  read_sync_ids_.clear();
+  for (int motor_id : motor_ids_) {
+    read_sync_ids_.push_back(static_cast<u8>(motor_id));
+  }
+  servo_->syncReadBegin(read_sync_ids_.size(), SYNC_READ_FEEDBACK_LEN);
+
   // Verify communication with all motors
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
     int ping_result = servo_->Ping(motor_ids_[i]);
@@ -1009,18 +1017,26 @@ hardware_interface::return_type STSHardwareInterface::read(
     return hardware_interface::return_type::OK;
   }
 
-  // Real hardware mode: read feedback from all motors
+  // Real hardware mode: one SyncRead transaction covers every motor's feedback block
+  // (PRESENT_POSITION_L..PRESENT_CURRENT_H) instead of N sequential per-motor FeedBack()
+  // round-trips - collapses N blocking serial waits into 1, matching the write path's
+  // existing SyncWrite pattern (use_sync_write_) and keeping read() inside its real-time
+  // budget regardless of motor count.
+  servo_->syncReadPacketTx(
+    read_sync_ids_.data(), static_cast<u8>(read_sync_ids_.size()),
+    SMS_STS_PRESENT_POSITION_L, SYNC_READ_FEEDBACK_LEN);
+
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    int result = servo_->FeedBack(motor_ids_[i]);
-    if (result != 1) {
+    u8 feedback[SYNC_READ_FEEDBACK_LEN];
+    int result = servo_->syncReadPacketRx(read_sync_ids_[i], feedback);
+    if (result != SYNC_READ_FEEDBACK_LEN) {
       consecutive_read_errors_++;
-      int servo_error = servo_->getErr();
       RCLCPP_WARN_THROTTLE(
         logger_,
         throttle_clock_, 1000,
-        "Failed to read feedback from motor %d (joint '%s') - error count: %d/%d, servo error: %d",
+        "Failed to read feedback from motor %d (joint '%s') via SyncRead - error count: %d/%d",
         motor_ids_[i], joint_names_[i].c_str(),
-        consecutive_read_errors_, MAX_CONSECUTIVE_ERRORS, servo_error);
+        consecutive_read_errors_, MAX_CONSECUTIVE_ERRORS);
 
       if (consecutive_read_errors_ >= MAX_CONSECUTIVE_ERRORS) {
         RCLCPP_ERROR(
@@ -1048,8 +1064,13 @@ hardware_interface::return_type STSHardwareInterface::read(
     // Reset error counter on successful read
     consecutive_read_errors_ = 0;
 
-    // Read all state interfaces
-    int raw_position = servo_->ReadPos(-1);
+    // Decode the feedback block directly - offsets match SMS_STS_PRESENT_* register addresses
+    // relative to SMS_STS_PRESENT_POSITION_L, same layout FeedBack()/Read*(-1) used internally.
+    int raw_position = ServoUtils::readSignedWordFromBuffer(
+      feedback,
+      SMS_STS_PRESENT_POSITION_L - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_PRESENT_POSITION_H - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_DIRECTION_BIT_POS);
     hw_state_position_[i] = conversions::raw_position_to_radians(raw_position, position_center_[i]);
 
     // Always clamp the reported position to URDF limits. A joint can drift past software limits
@@ -1060,25 +1081,37 @@ hardware_interface::return_type STSHardwareInterface::read(
       hw_state_position_[i] = std::clamp(hw_state_position_[i], position_min_[i], position_max_[i]);
     }
 
-    int raw_velocity = servo_->ReadSpeed(-1);
+    int raw_velocity = ServoUtils::readSignedWordFromBuffer(
+      feedback,
+      SMS_STS_PRESENT_SPEED_L - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_PRESENT_SPEED_H - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_DIRECTION_BIT_POS);
     hw_state_velocity_[i] = conversions::raw_velocity_to_rad_s(raw_velocity);
 
-    int raw_load = servo_->ReadLoad(-1);
+    int raw_load = ServoUtils::readSignedWordFromBuffer(
+      feedback,
+      SMS_STS_PRESENT_LOAD_L - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_PRESENT_LOAD_H - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_LOAD_DIRECTION_BIT_POS);
     // Convert load percentage to effort: (-100% to 100%) -> (-1.0 to 1.0)
     // Motor load is absolute - doesn't depend on max_effort limit
     double load_percentage = raw_load * LOAD_SCALE;  // 0.1 units per percent
     hw_state_effort_[i] = load_percentage / 100.0;
 
-    int raw_voltage = servo_->ReadVoltage(-1);
+    int raw_voltage = feedback[SMS_STS_PRESENT_VOLTAGE - SMS_STS_PRESENT_POSITION_L];
     hw_state_voltage_[i] = static_cast<double>(raw_voltage) * VOLTAGE_SCALE;
 
-    int raw_temperature = servo_->ReadTemper(-1);
+    int raw_temperature = feedback[SMS_STS_PRESENT_TEMPERATURE - SMS_STS_PRESENT_POSITION_L];
     hw_state_temperature_[i] = static_cast<double>(raw_temperature);
 
-    int raw_current = servo_->ReadCurrent(-1);
+    int raw_current = ServoUtils::readSignedWordFromBuffer(
+      feedback,
+      SMS_STS_PRESENT_CURRENT_L - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_PRESENT_CURRENT_H - SMS_STS_PRESENT_POSITION_L,
+      SMS_STS_DIRECTION_BIT_POS);
     hw_state_current_[i] = static_cast<double>(raw_current) * CURRENT_SCALE;
 
-    int raw_is_moving = servo_->ReadMove(-1);
+    int raw_is_moving = feedback[SMS_STS_MOVING - SMS_STS_PRESENT_POSITION_L];
     hw_state_is_moving_[i] = (raw_is_moving > 0) ? 1.0 : 0.0;
   }
 
@@ -1365,6 +1398,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_cleanup(
 
   // Close serial connection
   if (servo_) {
+    servo_->syncReadEnd();
     servo_->end();
     RCLCPP_INFO(logger_, "Closed serial connection to %s", serial_port_.c_str());
   }
@@ -1405,6 +1439,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_shutdown(
     }
 
     // Close serial connection
+    servo_->syncReadEnd();
     servo_->end();
     RCLCPP_INFO(logger_, "Closed serial connection to %s during shutdown", serial_port_.c_str());
 
