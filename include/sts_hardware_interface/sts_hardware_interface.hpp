@@ -282,6 +282,11 @@ private:
   int consecutive_read_errors_;
   int consecutive_write_errors_;
   static constexpr int MAX_CONSECUTIVE_ERRORS = 5;
+  // Ping retry/backoff, configurable via node parameters (see on_configure()).
+  int configure_ping_retry_attempts_ = 5;
+  int configure_ping_retry_delay_ms_ = 20;
+  int recovery_ping_retry_attempts_ = 5;
+  int recovery_ping_retry_delay_ms_ = 20;
 
   // Unit conversion constants
   static constexpr double STEPS_PER_REVOLUTION = 4096.0;

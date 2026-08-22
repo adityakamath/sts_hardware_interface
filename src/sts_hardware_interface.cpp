@@ -4,10 +4,12 @@
 #include "sts_hardware_interface/sts_hardware_interface.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace sts_hardware_interface
@@ -591,6 +593,16 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
   if (!node_) {
     node_ = std::make_shared<rclcpp::Node>("sts_hardware_interface_node");
     RCLCPP_INFO(logger_, "Created ROS 2 node for emergency stop service");
+
+    // Ping retry/backoff, yaml-configurable via /**/sts_hardware_interface_node.
+    node_->declare_parameter<int>("configure_ping_retry_attempts", configure_ping_retry_attempts_);
+    node_->declare_parameter<int>("configure_ping_retry_delay_ms", configure_ping_retry_delay_ms_);
+    node_->declare_parameter<int>("recovery_ping_retry_attempts", recovery_ping_retry_attempts_);
+    node_->declare_parameter<int>("recovery_ping_retry_delay_ms", recovery_ping_retry_delay_ms_);
+    configure_ping_retry_attempts_ = node_->get_parameter("configure_ping_retry_attempts").as_int();
+    configure_ping_retry_delay_ms_ = node_->get_parameter("configure_ping_retry_delay_ms").as_int();
+    recovery_ping_retry_attempts_ = node_->get_parameter("recovery_ping_retry_attempts").as_int();
+    recovery_ping_retry_delay_ms_ = node_->get_parameter("recovery_ping_retry_delay_ms").as_int();
   }
 
   // Create emergency stop service server (both mock and real hardware)
@@ -661,13 +673,25 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
   }
   servo_->syncReadBegin(read_sync_ids_.size(), SYNC_READ_FEEDBACK_LEN);
 
-  // Verify communication with all motors
+  // Verify communication with all motors, retrying each ping (bus may still be settling).
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    int ping_result = servo_->Ping(motor_ids_[i]);
-    if (ping_result == -1) {
-      int servo_error = servo_->getErr();
-      RCLCPP_ERROR(logger_, "Failed to ping motor %d (joint '%s') - servo error: %d",
-        motor_ids_[i], joint_names_[i].c_str(), servo_error);
+    bool responded = false;
+    int servo_error = 0;
+    for (int attempt = 1; attempt <= configure_ping_retry_attempts_; ++attempt) {
+      if (servo_->Ping(motor_ids_[i]) != -1) {
+        responded = true;
+        break;
+      }
+      servo_error = servo_->getErr();
+      if (attempt < configure_ping_retry_attempts_) {
+        RCLCPP_WARN(logger_, "Motor %d (joint '%s') ping %d/%d failed, retrying...",
+          motor_ids_[i], joint_names_[i].c_str(), attempt, configure_ping_retry_attempts_);
+        std::this_thread::sleep_for(std::chrono::milliseconds(configure_ping_retry_delay_ms_));
+      }
+    }
+    if (!responded) {
+      RCLCPP_ERROR(logger_, "Failed to ping motor %d (joint '%s') after %d attempts - servo error: %d",
+        motor_ids_[i], joint_names_[i].c_str(), configure_ping_retry_attempts_, servo_error);
       return hardware_interface::CallbackReturn::ERROR;
     }
     RCLCPP_INFO(logger_, "Motor %d (joint '%s') responded to ping",
@@ -1169,13 +1193,21 @@ hardware_interface::return_type STSHardwareInterface::write(
   if (hw_cmd_emergency_stop_ <= 0.5 && emergency_stop_active_) {
     RCLCPP_INFO(logger_, "Emergency stop released - re-enabling torque");
 
-    // Re-enable torque on commanded joints only; readonly joints keep torque disabled
+    // Re-enable torque on commanded joints only; readonly joints keep torque disabled.
+    bool reenable_failed = false;
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
       if (is_readonly_[i]) continue;
-      if (auto r = check(servo_->EnableTorque(motor_ids_[i], 1), "EnableTorque"); r.has_value()) {
-        RCLCPP_WARN(logger_, "Motor %d (joint '%s'): enable torque after emergency stop release: %s",
+      if (auto r = check_write(servo_->EnableTorque(motor_ids_[i], 1), i, "EnableTorque"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): enable torque after emergency stop release: %s",
           motor_ids_[i], joint_names_[i].c_str(), r->c_str());
+        reenable_failed = true;
       }
+    }
+
+    if (reenable_failed) {
+      // Stay in e-stop rather than proceed with a mixed/unknown torque state.
+      RCLCPP_ERROR(logger_, "Torque re-enable failed on at least one joint - remaining in emergency stop");
+      return hardware_interface::return_type::OK;
     }
 
     emergency_stop_active_ = false;
@@ -1680,11 +1712,23 @@ bool STSHardwareInterface::attempt_error_recovery()
   // Restore communication timeout
   servo_->IOTimeOut = communication_timeout_ms_;
 
-  // Verify and reinitialize all motors
+  // Verify and reinitialize all motors, retrying each ping before giving up on it.
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
-    if (servo_->Ping(motor_ids_[i]) == -1) {
-      RCLCPP_ERROR(logger_, "Motor %d (joint '%s') not responding after serial reinit",
-        motor_ids_[i], joint_names_[i].c_str());
+    bool responded = false;
+    for (int attempt = 1; attempt <= recovery_ping_retry_attempts_; ++attempt) {
+      if (servo_->Ping(motor_ids_[i]) != -1) {
+        responded = true;
+        break;
+      }
+      if (attempt < recovery_ping_retry_attempts_) {
+        RCLCPP_WARN(logger_, "Motor %d (joint '%s') ping %d/%d failed during recovery, retrying...",
+          motor_ids_[i], joint_names_[i].c_str(), attempt, recovery_ping_retry_attempts_);
+        std::this_thread::sleep_for(std::chrono::milliseconds(recovery_ping_retry_delay_ms_));
+      }
+    }
+    if (!responded) {
+      RCLCPP_ERROR(logger_, "Motor %d (joint '%s') not responding after serial reinit (%d attempts)",
+        motor_ids_[i], joint_names_[i].c_str(), recovery_ping_retry_attempts_);
       return false;
     }
 
