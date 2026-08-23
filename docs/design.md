@@ -585,6 +585,7 @@ See [config/mixed_mode.urdf.xacro](../config/mixed_mode.urdf.xacro):
 | **Motors not responding** | Serial port permissions; wrong motor ID; baud rate mismatch; communication wiring | `sudo chmod 666 /dev/ttyACM0`; verify motor IDs with vendor tools; check `baud_rate` matches motor config; test with `enable_mock_mode: true` |
 | **Position drift/jumps** | Incorrect position limits; position wrapping at 2π; encoder issues | Verify `min_position`/`max_position` range; check position limits match mechanism; monitor raw encoder values |
 | **Communication errors** | Controller update rate too high; too many motors on bus; cable quality issues | Decrease controller `update_rate`; enable `use_sync_write: true`; reduce number of state interfaces; test with single motor first |
+| **SyncWrite silently sends nothing** | Motor count on one bus exceeds SyncWrite's packet-length ceiling (255 bytes → 31 motors at 7 bytes/motor) | Split motors across multiple `serial_port`s/controllers, or disable `use_sync_write` for that group |
 | **Emergency stop stuck** | Emergency stop not released; hardware error state | Call `/emergency_stop` service with `data: false`; restart controller_manager; check motor error states |
 | **Consecutive errors** | Loose connections; power supply issues; motor firmware errors | Check serial cable connections; verify motor power supply (6-12V); monitor error recovery attempts |
 

@@ -512,6 +512,9 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
   ```
   Diagnostics may report communication or hardware errors.
 
+6. **Too many motors on one SyncWrite bus:** past 31 motors (7-byte payloads), SyncWrite
+   silently sends nothing rather than erroring - split across multiple `serial_port`s instead.
+
 ### Position Jumps or Drift
 
 **Problem:** Motor position jumps unexpectedly or drifts over time.
