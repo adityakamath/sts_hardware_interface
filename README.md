@@ -23,7 +23,7 @@
 - **Safety Features**: Broadcast emergency stop, hardware limits, automatic error recovery
 - **Full State Feedback**: Position, velocity, load, voltage, temperature, current, motion status
 - **Per-joint EEPROM Configuration**: Optional PID coefficients (Mode 0/1) and hardware protection parameters (all modes) written to servo EEPROM at startup
-- **Readonly Joints**: Joints with no `<command_interface>` entries have torque disabled and are excluded from all write loops, but still report full state feedback — enables teleoperation leader arms on the same serial bus as follower arms
+- **Read-only Joints**: Joints with no `<command_interface>` entries have torque disabled and are excluded from all write loops, but still report full state feedback — enables teleoperation leader arms on the same serial bus as follower arms
 - **Mock Mode**: Hardware-free simulation for development and testing
 - **Motor Diagnostics Node**: Real-time health/stall/voltage/current/temperature monitoring for STS motors
 
