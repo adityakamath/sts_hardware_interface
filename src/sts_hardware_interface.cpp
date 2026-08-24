@@ -81,6 +81,24 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  // Parse and validate read_cycle_budget_ms (default: 15, range: 1-1000) - caps how long read()
+  // may spend across all motors' syncReadPacketRx calls in one cycle; see the member's own
+  // comment in the header for why this exists.
+  try {
+    read_cycle_budget_ms_ = std::stoi(
+      info_.hardware_parameters.count("read_cycle_budget_ms") ?
+      info_.hardware_parameters.at("read_cycle_budget_ms") : "15");
+  } catch (const std::exception &) {
+    RCLCPP_ERROR(logger_, "Invalid read_cycle_budget_ms value: '%s' (must be a valid integer)",
+      info_.hardware_parameters.at("read_cycle_budget_ms").c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  if (read_cycle_budget_ms_ < 1 || read_cycle_budget_ms_ > 1000) {
+    RCLCPP_ERROR(logger_, "Invalid read_cycle_budget_ms: %d. Must be between 1 and 1000 ms", read_cycle_budget_ms_);
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
   // Parse boolean parameters
   enable_mock_mode_ = parse_bool_param("enable_mock_mode", false);
   use_sync_write_ = parse_bool_param("use_sync_write", true);
@@ -1044,14 +1062,38 @@ hardware_interface::return_type STSHardwareInterface::read(
   // Real hardware mode: one SyncRead transaction covers every motor's feedback block
   // (PRESENT_POSITION_L..PRESENT_CURRENT_H) instead of N sequential per-motor FeedBack()
   // round-trips - collapses N blocking serial waits into 1, matching the write path's
-  // existing SyncWrite pattern (use_sync_write_) and keeping read() inside its real-time
-  // budget regardless of motor count.
+  // existing SyncWrite pattern (use_sync_write_). read_cycle_budget_ms_ (below) is what
+  // actually keeps this inside its real-time budget when motors don't respond - SyncRead
+  // alone only helps in the healthy case; a single unresponsive motor can still block for
+  // up to communication_timeout_ms_ on its own, and those stack per motor within one cycle.
   servo_->syncReadPacketTx(
     read_sync_ids_.data(), static_cast<u8>(read_sync_ids_.size()),
     SMS_STS_PRESENT_POSITION_L, SYNC_READ_FEEDBACK_LEN);
 
+  const auto read_cycle_deadline =
+    std::chrono::steady_clock::now() + std::chrono::milliseconds(read_cycle_budget_ms_);
+
   for (size_t i = 0; i < motor_ids_.size(); ++i) {
     u8 feedback[SYNC_READ_FEEDBACK_LEN];
+    if (std::chrono::steady_clock::now() >= read_cycle_deadline) {
+      // Not a communication failure - we simply ran out of time this cycle to even ask this
+      // motor (syncReadPacketRx can itself block up to communication_timeout_ms_, which would
+      // only make the overrun worse). Deliberately does NOT touch consecutive_read_errors_,
+      // which is reserved for motors we actually queried and got no valid response from:
+      // counting "never asked" the same as "asked and failed" let a single genuinely slow
+      // motor cascade into up to N synthetic failures within microseconds, tripping recovery
+      // far more readily than intended (confirmed: this alone made the error/recovery cascade
+      // fire more often, not less, after this budget was first introduced). Keep this motor's
+      // last known state and retry it fresh next cycle.
+      RCLCPP_WARN_THROTTLE(
+        logger_,
+        throttle_clock_, 1000,
+        "Skipped reading motor %d (joint '%s') this cycle - read() cycle time budget (%dms) "
+        "exhausted",
+        motor_ids_[i], joint_names_[i].c_str(), read_cycle_budget_ms_);
+      continue;
+    }
+
     int result = servo_->syncReadPacketRx(read_sync_ids_[i], feedback);
     if (result != SYNC_READ_FEEDBACK_LEN) {
       consecutive_read_errors_++;

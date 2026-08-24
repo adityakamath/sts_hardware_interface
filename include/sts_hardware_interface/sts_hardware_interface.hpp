@@ -179,6 +179,12 @@ private:
   std::string serial_port_;
   int baud_rate_;
   int communication_timeout_ms_;
+  // Caps total time read() may spend across all motors' syncReadPacketRx calls in one cycle
+  // (default: 15ms). Without this, each unresponsive motor blocks up to communication_timeout_ms_
+  // on its own, and those stack per-cycle - one bad motor can already blow a 50Hz/20ms control
+  // loop's budget outright. Once exceeded, remaining motors this cycle are treated as failed
+  // reads (consecutive_read_errors_ incremented, last known state kept) instead of being polled.
+  int read_cycle_budget_ms_;
   bool enable_mock_mode_;
   bool use_sync_write_;  // Use SyncWrite for multi-motor commands
 
