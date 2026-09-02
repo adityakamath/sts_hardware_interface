@@ -254,6 +254,30 @@ class SMS_STS : public SCSerial
 	 *  @return 1 on success, 0 on failure */
 	virtual int LockEeprom(u8 ID);
 
+	/** @brief Write/read EEPROM tuning parameters with the unlock/write/lock sequence handled internally */
+	virtual int WritePCoef(u8 ID, u8 mode, u8 value);
+	virtual int ReadPCoef(u8 ID, u8 mode);
+	virtual int WriteDCoef(u8 ID, u8 value);
+	virtual int ReadDCoef(u8 ID);
+	virtual int WriteICoef(u8 ID, u8 mode, u8 value);
+	virtual int ReadICoef(u8 ID, u8 mode);
+	virtual int WriteProtectionCurrent(u8 ID, u16 value);
+	virtual int ReadProtectionCurrent(u8 ID);
+	virtual int WriteOverloadTorque(u8 ID, u8 value);
+	virtual int ReadOverloadTorque(u8 ID);
+	virtual int WriteReturnDelay(u8 ID, u8 value);
+	virtual int ReadReturnDelay(u8 ID);
+	virtual int WriteDeadband(u8 ID, u8 value);
+	virtual int ReadDeadband(u8 ID);
+	virtual int WriteDTS(u8 ID, u8 value);
+	virtual int ReadDTS(u8 ID);
+	virtual int WriteVMax(u8 ID, u8 value);
+	virtual int ReadVMax(u8 ID);
+	virtual int WriteAMax(u8 ID, u8 value);
+	virtual int ReadAMax(u8 ID);
+	virtual int WriteKAcc(u8 ID, u8 value);
+	virtual int ReadKAcc(u8 ID);
+
 	/** @brief Calibrate servo midpoint position
 	 *  @param ID Servo ID
 	 *  @return 1 on success, 0 on failure

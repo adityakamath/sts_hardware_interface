@@ -82,9 +82,30 @@ this vendored copy.
 ## What did *not* change
 
 The actual servo protocol implementation — packet construction, checksums,
-register maps, read/write/sync-write logic — is untouched. `SMS_STS.h`,
-`SMS_STS.cpp`, `SCS.cpp`, and `SCSerial.cpp` are byte-for-byte identical to
+register maps, read/write/sync-write logic, and the non-STS protocol families
+are untouched. `SCS.cpp` and `SCSerial.cpp` are byte-for-byte identical to
 upstream. `SCS.h` and `SCSerial.h` only have doc-comment edits (removing
 references to the deleted `SCSCL`/`HLSCL` classes, see §2) — no functional
-change. This is a structural trim (fewer servo families, no examples, no repo
-tooling), not a functional fork.
+change.
+
+## STS-only helper additions
+
+`SMS_STS.h` and `SMS_STS.cpp` now include explicit EEPROM helper pairs for the
+STS-series tuning registers used by `sts_hardware_interface`:
+
+- `WritePCoef` / `ReadPCoef`
+- `WriteDCoef` / `ReadDCoef`
+- `WriteICoef` / `ReadICoef`
+- `WriteProtectionCurrent` / `ReadProtectionCurrent`
+- `WriteOverloadTorque` / `ReadOverloadTorque`
+- `WriteReturnDelay` / `ReadReturnDelay`
+- `WriteDeadband` / `ReadDeadband`
+- `WriteDTS` / `ReadDTS`
+- `WriteVMax` / `ReadVMax`
+- `WriteAMax` / `ReadAMax`
+- `WriteKAcc` / `ReadKAcc`
+
+These helpers encapsulate the unlock/write/lock EEPROM sequence inside the SDK
+and are intended for the STS-series path only. The vendored copy remains a
+structural trim (fewer servo families, no examples, no repo tooling), not a
+functional fork of the broader SCServo protocol stack.

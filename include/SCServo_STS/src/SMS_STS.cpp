@@ -411,6 +411,171 @@ int SMS_STS::LockEeprom(u8 ID)
 	return writeByte(ID, SMS_STS_LOCK, 1);
 }
 
+namespace {
+
+int writeLockedByte(SMS_STS & servo, u8 ID, u8 addr, u8 value)
+{
+	if (servo.unLockEeprom(ID) != 1) {
+		return 0;
+	}
+	if (servo.writeByte(ID, addr, value) != 1) {
+		servo.LockEeprom(ID);
+		return 0;
+	}
+	return servo.LockEeprom(ID);
+}
+
+int writeLockedWord(SMS_STS & servo, u8 ID, u8 addr, u16 value)
+{
+	if (servo.unLockEeprom(ID) != 1) {
+		return 0;
+	}
+	if (servo.writeWord(ID, addr, value) != 1) {
+		servo.LockEeprom(ID);
+		return 0;
+	}
+	return servo.LockEeprom(ID);
+}
+
+int readByteRegister(SMS_STS & servo, u8 ID, u8 addr)
+{
+	servo.Err = 0;
+	return servo.readByte(ID, addr);
+}
+
+int readWordRegister(SMS_STS & servo, u8 ID, u8 addr)
+{
+	servo.Err = 0;
+	return servo.readWord(ID, addr);
+}
+
+}  // namespace
+
+int SMS_STS::WritePCoef(u8 ID, u8 mode, u8 value)
+{
+	const u8 addr = (mode == SMS_STS_MODE_SERVO) ? SMS_STS_MODE0_P_COEF : SMS_STS_MODE1_P_COEF;
+	return writeLockedByte(*this, ID, addr, value);
+}
+
+int SMS_STS::ReadPCoef(u8 ID, u8 mode)
+{
+	const u8 addr = (mode == SMS_STS_MODE_SERVO) ? SMS_STS_MODE0_P_COEF : SMS_STS_MODE1_P_COEF;
+	return readByteRegister(*this, ID, addr);
+}
+
+int SMS_STS::WriteDCoef(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_MODE0_D_COEF, value);
+}
+
+int SMS_STS::ReadDCoef(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_MODE0_D_COEF);
+}
+
+int SMS_STS::WriteICoef(u8 ID, u8 mode, u8 value)
+{
+	const u8 addr = (mode == SMS_STS_MODE_SERVO) ? SMS_STS_MODE0_I_COEF : SMS_STS_MODE1_I_COEF;
+	return writeLockedByte(*this, ID, addr, value);
+}
+
+int SMS_STS::ReadICoef(u8 ID, u8 mode)
+{
+	const u8 addr = (mode == SMS_STS_MODE_SERVO) ? SMS_STS_MODE0_I_COEF : SMS_STS_MODE1_I_COEF;
+	return readByteRegister(*this, ID, addr);
+}
+
+int SMS_STS::WriteProtectionCurrent(u8 ID, u16 value)
+{
+	return writeLockedWord(*this, ID, SMS_STS_PROTECTION_CURRENT_L, value);
+}
+
+int SMS_STS::ReadProtectionCurrent(u8 ID)
+{
+	return readWordRegister(*this, ID, SMS_STS_PROTECTION_CURRENT_L);
+}
+
+int SMS_STS::WriteOverloadTorque(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_OVERLOAD_TORQUE, value);
+}
+
+int SMS_STS::ReadOverloadTorque(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_OVERLOAD_TORQUE);
+}
+
+int SMS_STS::WriteReturnDelay(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_RETURN_DELAY, value);
+}
+
+int SMS_STS::ReadReturnDelay(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_RETURN_DELAY);
+}
+
+int SMS_STS::WriteDeadband(u8 ID, u8 value)
+{
+	if (unLockEeprom(ID) != 1) {
+		return 0;
+	}
+	if (writeByte(ID, SMS_STS_CW_DEAD, value) != 1) {
+		LockEeprom(ID);
+		return 0;
+	}
+	if (writeByte(ID, SMS_STS_CCW_DEAD, value) != 1) {
+		LockEeprom(ID);
+		return 0;
+	}
+	return LockEeprom(ID);
+}
+
+int SMS_STS::ReadDeadband(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_CW_DEAD);
+}
+
+int SMS_STS::WriteDTS(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_DTS, value);
+}
+
+int SMS_STS::ReadDTS(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_DTS);
+}
+
+int SMS_STS::WriteVMax(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_VMAX, value);
+}
+
+int SMS_STS::ReadVMax(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_VMAX);
+}
+
+int SMS_STS::WriteAMax(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_AMAX, value);
+}
+
+int SMS_STS::ReadAMax(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_AMAX);
+}
+
+int SMS_STS::WriteKAcc(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_KACC, value);
+}
+
+int SMS_STS::ReadKAcc(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_KACC);
+}
+
 /**
  * @brief Calibrate servo center position offset
  *

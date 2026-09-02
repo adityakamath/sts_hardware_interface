@@ -1780,6 +1780,85 @@ TEST(HardwareInterfaceInitTest, ValidReturnDelaySucceeds) {
 }
 
 // ============================================================
+// on_init: internal tuning register validation
+// internal_max_vel: [0, 254]; internal_max_acc: [0, 254];
+// internal_acc_coeff: [0, 254]; internal_control_period: [1, 254].
+// All modes, all optional — absent means "don't touch EEPROM".
+// ============================================================
+
+TEST(HardwareInterfaceInitTest, InvalidInternalMaxVelReturnsError) {
+  for (const char * val : {"-1", "255", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_max_vel"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidInternalMaxVelSucceeds) {
+  for (const char * val : {"0", "68", "254"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_max_vel"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, InvalidInternalMaxAccReturnsError) {
+  for (const char * val : {"-1", "255", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_max_acc"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidInternalMaxAccSucceeds) {
+  for (const char * val : {"0", "50", "254"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_max_acc"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, InvalidInternalAccCoeffReturnsError) {
+  for (const char * val : {"-1", "255", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_acc_coeff"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidInternalAccCoeffSucceeds) {
+  for (const char * val : {"0", "1", "100", "254"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_acc_coeff"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, InvalidInternalControlPeriodReturnsError) {
+  for (const char * val : {"-1", "0", "255", "not_a_number"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_control_period"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+  }
+}
+
+TEST(HardwareInterfaceInitTest, ValidInternalControlPeriodSucceeds) {
+  for (const char * val : {"1", "10", "20", "254"}) {
+    sts_hardware_interface::STSHardwareInterface hw;
+    auto info = make_valid_single_motor_info();
+    info.joints[0].parameters["internal_control_period"] = val;
+    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+  }
+}
+
+// ============================================================
 // on_init: deadband (CW_DEAD/CCW_DEAD position dead-zone) validation
 // Valid range: [0, 255]. Mode 0 (servo) only; ignored (with a warning),
 // not rejected, in Mode 1/2.
