@@ -80,6 +80,14 @@
 #define SMS_STS_TORQUE_LIMIT_H 49
 #define SMS_STS_LOCK 55
 
+// Undocumented extended EEPROM registers (STS3215 firmware 3.10+, community-discovered).
+// Must use unLockEeprom/LockEeprom to write
+// Setting these unlocks the servo's internal speed/acceleration caps for snappier response.
+#define SMS_STS_DTS  81  // Control loop update period (ms): default 20, set to 10 for faster updates
+#define SMS_STS_VMAX 84  // Internal max-speed cap (steps/s units): default ~68, set to 254 to unlock
+#define SMS_STS_AMAX 85  // Internal max-acceleration cap: default ~50, set to 254 to unlock
+#define SMS_STS_KACC 86  // Acceleration gain shaping factor: default 1, set to 100 for crisp response
+
 //-------SRAM (Read only)--------
 #define SMS_STS_PRESENT_POSITION_L 56
 #define SMS_STS_PRESENT_POSITION_H 57

@@ -264,8 +264,12 @@ Configure these per `<joint>` in your URDF:
 | `protection_current` | int | *(omit)* | 0–65535 | Hardware current cutoff written to EEPROM (6.5 mA/unit; e.g. 462 ≈ 3.0 A). When exceeded, the servo firmware itself cuts torque, independently of ROS. All modes, addr 28/29 (uint16). Omit to preserve existing EEPROM value. |
 | `overload_torque` | int | *(omit)* | 0–254 | Load percentage threshold that triggers overload protection, written to EEPROM. All modes, addr 36. Omit to preserve existing EEPROM value. |
 | `return_delay` | int | *(omit)* | 0–254 | Servo response delay written to EEPROM (2 µs/unit). All modes, addr 7. Omit to preserve existing EEPROM value. |
+| `vmax` | int | *(omit)* | 0–254 | Internal velocity cap register written to EEPROM. Firmware-dependent on STS models. Addr 84. Omit to preserve existing EEPROM value. |
+| `amax` | int | *(omit)* | 0–254 | Internal acceleration cap register written to EEPROM. Firmware-dependent on STS models. Addr 85. Omit to preserve existing EEPROM value. |
+| `kacc` | int | *(omit)* | 0–254 | Internal acceleration-profile coefficient written to EEPROM. Firmware-dependent on STS models. Addr 86. Omit to preserve existing EEPROM value. |
+| `dts_ms` | int | *(omit)* | 1–254 | Internal control-loop period register written to EEPROM. Firmware-dependent on STS models. Addr 81. Omit to preserve existing EEPROM value. |
 
-**Notes on EEPROM parameters (`p/d/i_coefficient`, `protection_current`, `overload_torque`, `return_delay`):**
+**Notes on EEPROM parameters (`p/d/i_coefficient`, `protection_current`, `overload_torque`, `return_delay`, `vmax`, `amax`, `kacc`, `dts_ms`):**
 
 - All six are optional. Omitting a parameter leaves the servo's existing EEPROM value unchanged — there is no software default that gets written.
 - Each EEPROM write requires an unlock/lock cycle (`unLockEeprom` → write → `LockEeprom`). PID and protection writes happen in two separate passes in `on_configure()`, once per motor that has any of those parameters set.

@@ -56,6 +56,11 @@
       <!-- <param name="overload_torque">80</param> -->      <!-- Load threshold for overload protection (0-254): addr 36 -->
       <!-- <param name="return_delay">0</param> -->          <!-- Response delay (0-254, 2µs units): addr 7 -->
       <!-- <param name="deadband">2</param> -->              <!-- Position insensitive-area (0-255): addr 26/27 (CW_DEAD/CCW_DEAD), both set to the same value (Mode 0 only; ignored in Mode 1/2) -->
+      <!-- Undocumented snappy-performance registers (STS3215 fw 3.10+, community-discovered — use at your own risk): -->
+      <!-- <param name="vmax">254</param> -->   <!-- Internal max-speed cap (0-254, default ~68): addr 84 — set to 254 to unlock full speed -->
+      <!-- <param name="amax">254</param> -->   <!-- Internal max-accel cap (0-254, default ~50): addr 85 — set to 254 to unlock full acceleration -->
+      <!-- <param name="kacc">100</param> -->   <!-- Acceleration gain shaping (0-254, default 1): addr 86 — set to 100 for crisp response -->
+      <!-- <param name="dts_ms">10</param> -->  <!-- Control loop period ms (1-254, default 20): addr 81 — effect uncertain -->
 
       <!-- Command Interfaces (Mode 1: Velocity) -->
       <command_interface name="velocity"/>  <!-- Target velocity in rad/s -->

@@ -235,6 +235,10 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   overload_torque_.resize(num_joints, std::nullopt);
   return_delay_.resize(num_joints, std::nullopt);
   deadband_.resize(num_joints, std::nullopt);
+  vmax_.resize(num_joints, std::nullopt);
+  amax_.resize(num_joints, std::nullopt);
+  kacc_.resize(num_joints, std::nullopt);
+  dts_ms_.resize(num_joints, std::nullopt);
 
   // Parse each joint
   for (size_t i = 0; i < num_joints; ++i) {
@@ -498,6 +502,12 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
     if (!parse_eeprom_param("protection_current", protection_current_, 0, 65535)) return hardware_interface::CallbackReturn::ERROR;
     if (!parse_eeprom_param("overload_torque",    overload_torque_,    0, 254))   return hardware_interface::CallbackReturn::ERROR;
     if (!parse_eeprom_param("return_delay",       return_delay_,       0, 254))   return hardware_interface::CallbackReturn::ERROR;
+
+    // Undocumented STS3215 snappy-performance registers (community-discovered by @devemin on X, Sep 2026).
+    if (!parse_eeprom_param("vmax",   vmax_,   0, 254)) return hardware_interface::CallbackReturn::ERROR;
+    if (!parse_eeprom_param("amax",   amax_,   0, 254)) return hardware_interface::CallbackReturn::ERROR;
+    if (!parse_eeprom_param("kacc",   kacc_,   0, 254)) return hardware_interface::CallbackReturn::ERROR;
+    if (!parse_eeprom_param("dts_ms", dts_ms_, 1, 254)) return hardware_interface::CallbackReturn::ERROR;
 
     // deadband (CW_DEAD/CCW_DEAD) is a position dead-zone: Mode 0 only, same restriction as d_coefficient.
     if (operating_modes_[i] == MODE_SERVO) {
@@ -820,6 +830,60 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
       has_ot ? std::to_string(overload_torque_[i].value()).c_str() : "(unchanged)",
       has_rd ? std::to_string(return_delay_[i].value()).c_str() : "(unchanged)",
       has_db ? std::to_string(deadband_[i].value()).c_str() : "(unchanged)");
+  }
+
+  // Write undocumented snappy-performance EEPROM registers.
+  // These unlock internal speed/acceleration caps that ship with conservative defaults.
+  for (size_t i = 0; i < motor_ids_.size(); ++i) {
+    bool has_vmax = vmax_[i].has_value();
+    bool has_amax = amax_[i].has_value();
+    bool has_kacc = kacc_[i].has_value();
+    bool has_dts  = dts_ms_[i].has_value();
+    if (!has_vmax && !has_amax && !has_kacc && !has_dts) continue;
+
+    int id = motor_ids_[i];
+    if (auto r = check(servo_->unLockEeprom(id), "unLockEeprom"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    if (has_vmax) {
+      if (auto r = check(servo_->writeByte(id, SMS_STS_VMAX, static_cast<u8>(vmax_[i].value())), "writeByte VMAX"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    if (has_amax) {
+      if (auto r = check(servo_->writeByte(id, SMS_STS_AMAX, static_cast<u8>(amax_[i].value())), "writeByte AMAX"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    if (has_kacc) {
+      if (auto r = check(servo_->writeByte(id, SMS_STS_KACC, static_cast<u8>(kacc_[i].value())), "writeByte KACC"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    if (has_dts) {
+      if (auto r = check(servo_->writeByte(id, SMS_STS_DTS, static_cast<u8>(dts_ms_[i].value())), "writeByte DTS"); r.has_value()) {
+        RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+        servo_->LockEeprom(id);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    if (auto r = check(servo_->LockEeprom(id), "LockEeprom"); r.has_value()) {
+      RCLCPP_ERROR(logger_, "Motor %d (joint '%s'): %s", id, joint_names_[i].c_str(), r->c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    RCLCPP_INFO(logger_, "Motor %d (joint '%s'): wrote snappy regs VMAX=%s AMAX=%s KACC=%s DTS=%s",
+      id, joint_names_[i].c_str(),
+      has_vmax ? std::to_string(vmax_[i].value()).c_str()   : "(unchanged)",
+      has_amax ? std::to_string(amax_[i].value()).c_str()   : "(unchanged)",
+      has_kacc ? std::to_string(kacc_[i].value()).c_str()   : "(unchanged)",
+      has_dts  ? std::to_string(dts_ms_[i].value()).c_str() : "(unchanged)");
   }
 
   RCLCPP_INFO(logger_, "Configuration complete");

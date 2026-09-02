@@ -193,6 +193,10 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `overload_torque` | int | *(omit)* | Load percentage threshold that triggers overload protection, written to EEPROM (0–254). All modes, addr 36. Omit to preserve existing EEPROM value. |
 | `return_delay` | int | *(omit)* | Servo response delay written to EEPROM (0–254, 2 µs/unit). All modes, addr 7. Omit to preserve existing EEPROM value. |
 | `deadband` | int | *(omit)* | Position insensitive-area written to EEPROM (0–255). Mode 0 only → addr 26 (CW_DEAD) and addr 27 (CCW_DEAD), both written to the same value (not independently tunable); Mode 1/2 → ignored (no position dead-zone concept). Omit to preserve existing EEPROM value. |
+| `vmax` | int | *(omit)* | Internal velocity cap register written to EEPROM (0–254), addr 84. Firmware-dependent on STS models. Omit to preserve existing EEPROM value. |
+| `amax` | int | *(omit)* | Internal acceleration cap register written to EEPROM (0–254), addr 85. Firmware-dependent on STS models. Omit to preserve existing EEPROM value. |
+| `kacc` | int | *(omit)* | Internal acceleration-profile coefficient written to EEPROM (0–254), addr 86. Firmware-dependent on STS models. Omit to preserve existing EEPROM value. |
+| `dts_ms` | int | *(omit)* | Internal control-loop period register written to EEPROM (1–254), addr 81. Firmware-dependent on STS models. Omit to preserve existing EEPROM value. |
 
 **Readonly joints:** A joint with **no `<command_interface>` entries** is treated as readonly. It still requires `motor_id` and `operating_mode` (the mode register is written to EEPROM so state feedback is interpreted correctly), but torque is disabled at activation and the joint is excluded from all write loops. All 7 state interfaces are still exported and read every cycle.
 

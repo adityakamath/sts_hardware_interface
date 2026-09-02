@@ -123,7 +123,16 @@ using Result = std::optional<std::string>;
  *                   existing value). All modes. addr 36 (uint8, writeByte).
  * - return_delay: Delay before the servo sends a response to each command (0-254, 2µs units, optional — omit to
  *                preserve existing value). All modes. addr 7 (uint8, writeByte).
+ * - vmax: Internal max-speed cap written to EEPROM (0-254, optional — omit to preserve). Undocumented reg 84;
+ *         STS3215 fw ships with ~68; set to 254 to unlock full hardware speed.
+ * - amax: Internal max-acceleration cap written to EEPROM (0-254, optional — omit to preserve). Undocumented reg 85;
+ *         STS3215 fw ships with ~50; set to 254 to unlock full hardware acceleration.
+ * - kacc: Acceleration gain shaping factor written to EEPROM (0-254, optional — omit to preserve). Undocumented reg 86;
+ *         STS3215 fw ships with 1; set to 100 for crisp acceleration profile.
+ * - dts_ms: Control loop update period (ms) written to EEPROM (1-254, optional — omit to preserve). Undocumented reg 81;
+ *           STS3215 3.10 ships with 20; set to 10 for faster internal control updates (effect uncertain).
 **/
+// NOTE: vmax/amax/kacc/dts_ms are undocumented registers discovered by community testing (@devemin on X, Sep 2026).
 class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(STSHardwareInterface)
@@ -283,6 +292,13 @@ private:
   std::vector<std::optional<int>> overload_torque_;     // Load threshold triggering overload protection (0-254): addr 36 (uint8, writeByte); all modes
   std::vector<std::optional<int>> return_delay_;        // Response delay (0-254, 2µs/unit): addr 7 (uint8, writeByte); all modes
   std::vector<std::optional<int>> deadband_;            // Position insensitive-area (0-255): addr 26/27 (CW_DEAD/CCW_DEAD, both uint8, writeByte); Mode 0 only
+
+  // ===== PER-JOINT SNAPPY-PERFORMANCE REGISTERS (optional, written to EEPROM in on_configure) =====
+  // Undocumented STS3215 registers. Unlock internal speed/acceleration caps.
+  std::vector<std::optional<int>> vmax_;   // Internal max-speed cap (0-254): addr 84 (SMS_STS_VMAX)
+  std::vector<std::optional<int>> amax_;   // Internal max-accel cap (0-254): addr 85 (SMS_STS_AMAX)
+  std::vector<std::optional<int>> kacc_;   // Acceleration gain shaping (0-254): addr 86 (SMS_STS_KACC)
+  std::vector<std::optional<int>> dts_ms_; // Control loop period ms (1-254): addr 81 (SMS_STS_DTS)
 
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;
