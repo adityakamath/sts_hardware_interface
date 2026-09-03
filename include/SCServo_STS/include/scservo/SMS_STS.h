@@ -83,7 +83,14 @@
 // Undocumented extended EEPROM registers (STS3215 firmware 3.10+, community-discovered).
 // Must use unLockEeprom/LockEeprom to write
 // Setting these unlocks the servo's internal speed/acceleration caps for snappier response.
+// 80/82/83 additionally sourced from firmware reverse-engineering (not the same
+// community source as 81/84/85/86); semantics are inferred, not vendor-documented,
+// and may vary by firmware version - see
+// https://github.com/0o8o0-blip/sts3215-firmware
+#define SMS_STS_MOVING_THRESHOLD 80  // Internal threshold used to decide moving vs. stopped state
 #define SMS_STS_DTS  81  // Control loop update period (ms): default 20, set to 10 for faster updates
+#define SMS_STS_VK_MS 82 // Internal velocity-profile/settling tuning ("Vk(ms)")
+#define SMS_STS_VMIN 83  // Internal minimum-speed / low-speed gating threshold
 #define SMS_STS_VMAX 84  // Internal max-speed cap (steps/s units): default ~68, set to 254 to unlock
 #define SMS_STS_AMAX 85  // Internal max-acceleration cap: default ~50, set to 254 to unlock
 #define SMS_STS_KACC 86  // Acceleration gain shaping factor: default 1, set to 100 for crisp response
@@ -269,8 +276,14 @@ class SMS_STS : public SCSerial
 	virtual int ReadReturnDelay(u8 ID);
 	virtual int WriteDeadband(u8 ID, u8 value);
 	virtual int ReadDeadband(u8 ID);
+	virtual int WriteMovingThreshold(u8 ID, u8 value);
+	virtual int ReadMovingThreshold(u8 ID);
 	virtual int WriteDTS(u8 ID, u8 value);
 	virtual int ReadDTS(u8 ID);
+	virtual int WriteVkMs(u8 ID, u8 value);
+	virtual int ReadVkMs(u8 ID);
+	virtual int WriteVMin(u8 ID, u8 value);
+	virtual int ReadVMin(u8 ID);
 	virtual int WriteVMax(u8 ID, u8 value);
 	virtual int ReadVMax(u8 ID);
 	virtual int WriteAMax(u8 ID, u8 value);

@@ -536,6 +536,16 @@ int SMS_STS::ReadDeadband(u8 ID)
 	return readByteRegister(*this, ID, SMS_STS_CW_DEAD);
 }
 
+int SMS_STS::WriteMovingThreshold(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_MOVING_THRESHOLD, value);
+}
+
+int SMS_STS::ReadMovingThreshold(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_MOVING_THRESHOLD);
+}
+
 int SMS_STS::WriteDTS(u8 ID, u8 value)
 {
 	return writeLockedByte(*this, ID, SMS_STS_DTS, value);
@@ -544,6 +554,26 @@ int SMS_STS::WriteDTS(u8 ID, u8 value)
 int SMS_STS::ReadDTS(u8 ID)
 {
 	return readByteRegister(*this, ID, SMS_STS_DTS);
+}
+
+int SMS_STS::WriteVkMs(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_VK_MS, value);
+}
+
+int SMS_STS::ReadVkMs(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_VK_MS);
+}
+
+int SMS_STS::WriteVMin(u8 ID, u8 value)
+{
+	return writeLockedByte(*this, ID, SMS_STS_VMIN, value);
+}
+
+int SMS_STS::ReadVMin(u8 ID)
+{
+	return readByteRegister(*this, ID, SMS_STS_VMIN);
 }
 
 int SMS_STS::WriteVMax(u8 ID, u8 value)

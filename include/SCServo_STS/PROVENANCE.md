@@ -100,12 +100,26 @@ STS-series tuning registers used by `sts_hardware_interface`:
 - `WriteOverloadTorque` / `ReadOverloadTorque`
 - `WriteReturnDelay` / `ReadReturnDelay`
 - `WriteDeadband` / `ReadDeadband`
-- `WriteDTS` / `ReadDTS`
-- `WriteVMax` / `ReadVMax`
-- `WriteAMax` / `ReadAMax`
-- `WriteKAcc` / `ReadKAcc`
+- `WriteMovingThreshold` / `ReadMovingThreshold` (addr 80)
+- `WriteDTS` / `ReadDTS` (addr 81)
+- `WriteVkMs` / `ReadVkMs` (addr 82)
+- `WriteVMin` / `ReadVMin` (addr 83)
+- `WriteVMax` / `ReadVMax` (addr 84)
+- `WriteAMax` / `ReadAMax` (addr 85)
+- `WriteKAcc` / `ReadKAcc` (addr 86)
 
 These helpers encapsulate the unlock/write/lock EEPROM sequence inside the SDK
 and are intended for the STS-series path only. The vendored copy remains a
 structural trim (fewer servo families, no examples, no repo tooling), not a
 functional fork of the broader SCServo protocol stack.
+
+Registers 80 (`WriteMovingThreshold`/`ReadMovingThreshold`), 82
+(`WriteVkMs`/`ReadVkMs`), and 83 (`WriteVMin`/`ReadVMin`) were added on top of
+the existing 81/84/85/86 tuning block, sourced from community firmware
+reverse-engineering rather than a Feetech datasheet - see
+[sts3215-firmware](https://github.com/0o8o0-blip/sts3215-firmware). Their
+semantics are inferred, not vendor-documented, and may vary by firmware
+version. These three were added upstream in
+[adityakamath/SCServo_Linux](https://github.com/adityakamath/SCServo_Linux) in
+the same change, keeping this vendored copy aligned per this file's own
+stated goal (§ intro).
