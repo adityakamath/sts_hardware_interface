@@ -304,6 +304,15 @@ private:
   int consecutive_read_errors_;
   int consecutive_write_errors_;
   static constexpr int MAX_CONSECUTIVE_ERRORS = 5;
+  /// Default per-command ACC (protocol units, 0-254) for position-mode joints with no
+  /// "acceleration" command interface (hw_cmd_acceleration_ then never gets written and would
+  /// otherwise stay at its resize default, 0). Confirmed empirically against a real servo, ROS
+  /// uninvolved: ACC=0 does NOT mean "instant" the way Speed=0 means "max" - the servo ignores
+  /// the commanded Speed entirely and creeps at a fixed slow internal rate regardless of the
+  /// Speed value. The same move with ACC=100 converged in a fraction of the time, and Speed then
+  /// actually took effect. 100 is the value tested working (clean, no overshoot); not swept to
+  /// find a lower bound.
+  static constexpr double DEFAULT_ACCELERATION = 100.0;
   // Ping retry/backoff, configurable via node parameters (see on_configure()).
   int configure_ping_retry_attempts_ = 5;
   int configure_ping_retry_delay_ms_ = 20;
