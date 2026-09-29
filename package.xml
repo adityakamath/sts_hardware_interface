@@ -28,6 +28,16 @@
   <depend>pluginlib</depend>
   <depend>std_srvs</depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
+  <!-- Installed example launch files and their controller plugins -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>velocity_controllers</exec_depend>
+  <exec_depend>effort_controllers</exec_depend>
 
   <!-- Diagnostics node dependencies -->
   <depend>diagnostic_msgs</depend>
@@ -40,9 +50,10 @@
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>launch_testing_ros</test_depend>
   <test_depend>launch_testing</test_depend>
-  <test_depend>launch</test_depend>
   <test_depend>rclpy</test_depend>
   <test_depend>python3-pytest</test_depend>
+  <test_depend>ament_index_python</test_depend>
+  <test_depend>sensor_msgs</test_depend>
 
   <member_of_group>rosidl_interface_packages</member_of_group>
 
