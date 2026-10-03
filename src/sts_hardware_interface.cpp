@@ -4,6 +4,7 @@
 #include "sts_hardware_interface/sts_hardware_interface.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -34,8 +35,21 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   // Store hardware info
   info_ = hardware_info;
 
+  // Defaults to info_.name, which ros2_control already requires to be unique per hardware
+  // component. Used below to give this instance its own logger name, and later (on_configure)
+  // its own node name and emergency-stop/one-key-calibration service names, so two instances
+  // (two buses, say) don't collide with each other or log under an indistinguishable name.
+  // Pass instance_id="" explicitly to opt back into the old shared "STSHardwareInterface"
+  // logger name and the old global "/emergency_stop" service name, for a single-component
+  // setup that wants those exact pre-existing names.
+  instance_id_ = hardware_info.hardware_parameters.count("instance_id") ?
+    hardware_info.hardware_parameters.at("instance_id") : hardware_info.name;
+  const std::string id_suffix_for_logger = sanitize_for_ros_name(instance_id_);
+
   // Initialize logger
-  logger_ = rclcpp::get_logger("STSHardwareInterface");
+  logger_ = rclcpp::get_logger(
+    id_suffix_for_logger.empty() ?
+      "STSHardwareInterface" : "STSHardwareInterface." + id_suffix_for_logger);
 
   RCLCPP_INFO(logger_, "Initializing STS Hardware Interface: %s", info_.name.c_str());
 
@@ -617,12 +631,23 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
 {
   RCLCPP_INFO(logger_, "Configuring STS hardware interface...");
 
+  // instance_id_ defaults to info_.name (unique per hardware component by ros2_control's own
+  // requirement), so the node name and service names below are already collision-free across
+  // instances without any extra config. instance_id="" opts back into the old plain names.
+  const std::string id_suffix = sanitize_for_ros_name(instance_id_);
+  const std::string node_name = id_suffix.empty() ?
+    "sts_hardware_interface_node" : "sts_hardware_interface_node_" + id_suffix;
+  const std::string emergency_stop_name = id_suffix.empty() ?
+    "/emergency_stop" : "/emergency_stop_" + id_suffix;
+  const std::string one_key_calibration_name = id_suffix.empty() ?
+    "/one_key_calibration" : "/one_key_calibration_" + id_suffix;
+
   // Create ROS 2 node for emergency stop service (both mock and real hardware)
   if (!node_) {
-    node_ = std::make_shared<rclcpp::Node>("sts_hardware_interface_node");
-    RCLCPP_INFO(logger_, "Created ROS 2 node for emergency stop service");
+    node_ = std::make_shared<rclcpp::Node>(node_name);
+    RCLCPP_INFO(logger_, "Created ROS 2 node '%s' for emergency stop service", node_name.c_str());
 
-    // Ping retry/backoff, yaml-configurable via /**/sts_hardware_interface_node.
+    // Ping retry/backoff, yaml-configurable via /**/<node_name>.
     node_->declare_parameter<int>("configure_ping_retry_attempts", configure_ping_retry_attempts_);
     node_->declare_parameter<int>("configure_ping_retry_delay_ms", configure_ping_retry_delay_ms_);
     node_->declare_parameter<int>("recovery_ping_retry_attempts", recovery_ping_retry_attempts_);
@@ -635,14 +660,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
 
   // Create emergency stop service server (both mock and real hardware)
   emergency_stop_service_ = node_->create_service<std_srvs::srv::SetBool>(
-    "/emergency_stop",
+    emergency_stop_name,
     std::bind(&STSHardwareInterface::emergency_stop_callback, this,
       std::placeholders::_1, std::placeholders::_2));
 
   // One-key midpoint calibration is a general hardware-maintenance utility:
   // CalibrationOfs is a protocol-level servo command, independent of operating_mode.
   one_key_calibration_service_ = node_->create_service<sts_hardware_interface::srv::OneKeyCalibration>(
-    "/one_key_calibration",
+    one_key_calibration_name,
     std::bind(&STSHardwareInterface::one_key_calibration_callback, this,
       std::placeholders::_1, std::placeholders::_2));
 
@@ -670,7 +695,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
     node_->get_clock(),
     safety_qos,
     RCL_SERVICE_INTROSPECTION_CONTENTS);
-  RCLCPP_INFO(logger_, "Created /emergency_stop and /one_key_calibration services with introspection enabled");
+  RCLCPP_INFO(logger_, "Created '%s' and '%s' services with introspection enabled",
+    emergency_stop_name.c_str(), one_key_calibration_name.c_str());
 
   // Skip serial port initialization in mock mode
   if (enable_mock_mode_) {
@@ -1706,6 +1732,22 @@ bool STSHardwareInterface::parse_bool_param(const std::string& key, bool default
   return it->second == "true";
 }
 
+std::string STSHardwareInterface::sanitize_for_ros_name(const std::string & raw)
+{
+  if (raw.empty()) return raw;
+
+  std::string out = raw;
+  for (char & c : out) {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+      c = '_';
+    }
+  }
+  if (std::isdigit(static_cast<unsigned char>(out.front()))) {
+    out.insert(out.begin(), '_');
+  }
+  return out;
+}
+
 /** @brief Check a write SDK return code; logs, tracks recovery, returns error on failure */
 Result STSHardwareInterface::check_write(int result, size_t idx, const char* operation)
 {
@@ -1816,11 +1858,13 @@ void STSHardwareInterface::emergency_stop_callback(
 {
   hw_cmd_emergency_stop_ = req->data ? 1.0 : 0.0;
 
+  // logger_ already carries this instance's id (see on_init), no need to repeat a service
+  // path here that would go stale the moment instance_id changes the actual name.
   if (req->data) {
-    RCLCPP_WARN(logger_, "Emergency stop ACTIVATE received via /emergency_stop service");
+    RCLCPP_WARN(logger_, "Emergency stop ACTIVATE received");
     res->message = "Emergency stop activated";
   } else {
-    RCLCPP_INFO(logger_, "Emergency stop RELEASE received via /emergency_stop service");
+    RCLCPP_INFO(logger_, "Emergency stop RELEASE received");
     res->message = "Emergency stop released";
   }
   res->success = true;

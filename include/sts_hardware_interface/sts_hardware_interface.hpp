@@ -70,10 +70,17 @@ using Result = std::optional<std::string>;
  *
  * EMERGENCY STOP:
  * Emergency stop functionality is triggered via ROS 2 service (not a command interface):
- *    Service: /emergency_stop (std_srvs/SetBool)
+ *    Service: /emergency_stop (std_srvs/SetBool), or /emergency_stop_<instance_id> when
+ *             running more than one instance of this hardware component (see instance_id
+ *             below) - each instance's own log line at on_configure() names its actual
+ *             service, check that rather than assuming the plain name.
  *    Activate: ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
  *    Release:  ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
- * When activated, ALL motors stop immediately in both real and mock modes.
+ * When activated, ALL motors on THIS instance stop immediately in both real and mock modes.
+ * With more than one instance (e.g. one per serial bus), each has its own service and its
+ * own e-stop, calling one does not stop the others - call every instance's service, or stop
+ * upstream of this interface (e.g. controller_manager's switch_controller) for a stop that
+ * covers all of them at once.
  * The hardware interface creates an internal node and service server during on_configure().
  *
  * HARDWARE PARAMETERS (from ros2_control URDF):
@@ -82,6 +89,12 @@ using Result = std::optional<std::string>;
  * - communication_timeout_ms: Serial communication timeout, 1-1000 ms (default: 100)
  * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
  * - enable_mock_mode: Enable simulation mode without hardware (default: false)
+ * - instance_id: Disambiguates this instance's internal node name and emergency-stop /
+ *                one-key-calibration service names from any other instance in the same
+ *                process (default: this component's own <ros2_control name="..."> from the
+ *                URDF, which ros2_control already requires to be unique). Pass instance_id=""
+ *                explicitly to opt back into the plain global "/emergency_stop" name, e.g.
+ *                for a single-component setup that wants the exact pre-existing name.
  * - proportional_vel_max: SyncWrite only. Velocity [0–max_velocity_steps] assigned to the joint
  *                         with the largest |target_position - current_position| delta; all others
  *                         scaled proportionally. Capped to the smallest per-joint max_velocity_steps
@@ -210,6 +223,14 @@ private:
 
   // Lifecycle parameter
   bool reset_states_on_activate_;  // Reset position/velocity states on activation (default: true)
+
+  // Identifies this hardware component instance in the node name and the emergency-stop /
+  // one-key-calibration service names, so two instances (e.g. two buses) don't collide on
+  // the same absolute service name. Defaults to info_.name (the <ros2_control name="..."> in
+  // the URDF), which ros2_control already requires to be unique per component. Override with
+  // the "instance_id" hardware param, e.g. instance_id="" to get back the exact pre-existing
+  // global "/emergency_stop" name for a single-component setup.
+  std::string instance_id_;
 
   // ===== LOGGING =====
   rclcpp::Logger logger_;
@@ -350,6 +371,12 @@ private:
 
   /** @brief Parse a boolean hardware parameter with default value */
   bool parse_bool_param(const std::string& key, bool default_value) const;
+
+  /** @brief Turn an arbitrary instance_id into a valid ROS node-name suffix:
+   *  non [A-Za-z0-9_] characters become '_', and a leading digit gets a '_'
+   *  prefix since ROS node names can't start with one. Empty input stays
+   *  empty (opts out of the suffix entirely). */
+  static std::string sanitize_for_ros_name(const std::string & raw);
 
   /** @brief Emergency stop service callback */
   void emergency_stop_callback(
