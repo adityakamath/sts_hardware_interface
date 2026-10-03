@@ -537,6 +537,11 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       case MODE_SERVO:
         servo_motor_indices_.push_back(i);
         servo_sync_ids_.push_back(static_cast<u8>(motor_ids_[i]));
+        // Position-mode joints have no "acceleration" command interface, so this never gets
+        // overwritten - without it, ACC stays 0 and the servo ignores whatever Speed we send
+        // (see DEFAULT_ACCELERATION for why). Velocity-mode (wheel) joints keep ACC=0 by
+        // default, which their proportional-ACC scaling relies on.
+        hw_cmd_acceleration_[i] = DEFAULT_ACCELERATION;
         break;
       case MODE_VELOCITY:
         velocity_motor_indices_.push_back(i);
@@ -1316,9 +1321,17 @@ hardware_interface::return_type STSHardwareInterface::write(
           // This joint is already at its target: set speed to 0 (no move)
           servo_sync_speeds_[j] = 0;
         } else {
-          // Proportional scaling, but respect per-joint velocity_max
+          // Proportional scaling, but respect per-joint velocity_max. scaled is in raw steps/s
+          // (derived from proportional_vel_max_, itself raw); velocity_max_ is in rad/s - must
+          // convert before comparing, a bare std::min() here compared raw steps/s against rad/s
+          // directly, which for any realistic rad/s value picks that (tiny) number and treats it
+          // as if it were already in raw steps/s. Confirmed live: this silently capped every
+          // proportional-scaled move to single-digit raw speeds (~1-15 steps/s out of a ~3400
+          // range) regardless of any declared velocity limit - the actual cause of proportional-
+          // scaled trajectories crawling at a small fraction of their commanded speed.
+          double velocity_max_raw = conversions::rad_s_to_raw_speed(velocity_max_[idx], max_velocity_steps_[idx]);
           double scaled = (servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_;
-          double limited = std::min(scaled, velocity_max_[idx]);
+          double limited = std::min(scaled, velocity_max_raw);
           servo_sync_speeds_[j] = static_cast<u16>(std::clamp(static_cast<int>(std::round(limited)), 1, max_velocity_steps_[idx]));
         }
       }
