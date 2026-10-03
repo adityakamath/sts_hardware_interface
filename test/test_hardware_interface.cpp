@@ -1237,12 +1237,16 @@ TEST(HardwareInterfaceActivateResetTest, ActivateWithResetDisabledSucceeds) {
 
 namespace
 {
-/// Run a servo joint to 0.5 rad, zero its command, re-activate, and return the position command.
-double position_command_after_reactivate(const std::string & hold_param)
+/// Run a servo joint to 0.5 rad, set its position command to `cmd_before`, re-activate with the
+/// given parameters, and return the position command afterwards. An empty `hold_param` leaves
+/// hold_position_on_activate unset (default).
+double position_command_after_reactivate(
+  const std::string & hold_param, const std::string & reset_param = "false",
+  double cmd_before = 0.0)
 {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_servo_info_with_vel_acc();
-  info.hardware_parameters["reset_states_on_activate"] = "false";
+  info.hardware_parameters["reset_states_on_activate"] = reset_param;
   if (!hold_param.empty()) {
     info.hardware_parameters["hold_position_on_activate"] = hold_param;
   }
@@ -1268,7 +1272,7 @@ double position_command_after_reactivate(const std::string & hold_param)
   rclcpp::Duration d(0, 0);
   (void)pos_cmd->set_value(0.5);
   hw.read(t, d);   // state -> 0.5 rad
-  (void)pos_cmd->set_value(0.0);
+  (void)pos_cmd->set_value(cmd_before);
 
   EXPECT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
 
@@ -1279,15 +1283,57 @@ double position_command_after_reactivate(const std::string & hold_param)
 }  // namespace
 
 TEST(HardwareInterfaceHoldPositionTest, HoldEnabledSeedsCommandFromState) {
+  // State is preserved (reset off) at 0.5 rad, so the command must follow it.
   EXPECT_NEAR(position_command_after_reactivate("true"), 0.5, 1e-9);
 }
 
+TEST(HardwareInterfaceHoldPositionTest, HoldEnabledOverwritesAStaleCommand) {
+  // A non-zero command from before the re-activation is replaced by the state, not kept.
+  EXPECT_NEAR(position_command_after_reactivate("true", "false", 0.3), 0.5, 1e-9);
+}
+
+TEST(HardwareInterfaceHoldPositionTest, HoldIsIndependentOfStateReset) {
+  // reset_states_on_activate=true zeroes the state, so the seeded command is 0.0 - the stale
+  // 0.3 command must still be replaced.
+  EXPECT_NEAR(position_command_after_reactivate("true", "true", 0.3), 0.0, 1e-9);
+}
+
 TEST(HardwareInterfaceHoldPositionTest, DisabledByDefaultLeavesCommandUntouched) {
-  EXPECT_NEAR(position_command_after_reactivate(""), 0.0, 1e-9);
+  EXPECT_NEAR(position_command_after_reactivate("", "false", 0.3), 0.3, 1e-9);
 }
 
 TEST(HardwareInterfaceHoldPositionTest, ExplicitFalseLeavesCommandUntouched) {
-  EXPECT_NEAR(position_command_after_reactivate("false"), 0.0, 1e-9);
+  EXPECT_NEAR(position_command_after_reactivate("false", "false", 0.3), 0.3, 1e-9);
+}
+
+TEST(HardwareInterfaceHoldPositionTest, VelocityJointCommandIsNotAffected) {
+  // Only position-mode joints are seeded; a velocity joint's command must survive activation.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  info.hardware_parameters["hold_position_on_activate"] = "true";
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  auto cmd_ifaces = hw.export_command_interfaces();
+
+  rclcpp_lifecycle::State unconfigured(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
+  rclcpp_lifecycle::State inactive(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE, "inactive");
+  ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
+  ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
+
+  for (auto & iface : cmd_ifaces) {
+    if (iface.get_interface_name() == "velocity") {
+      (void)iface.set_value(2.0);
+    }
+  }
+  ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
+  for (auto & iface : cmd_ifaces) {
+    if (iface.get_interface_name() == "velocity") {
+      double v = 0.0;
+      (void)iface.get_value(v, true);
+      EXPECT_NEAR(v, 2.0, 1e-9);
+    }
+  }
 }
 
 // ============================================================

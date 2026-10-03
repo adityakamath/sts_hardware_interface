@@ -34,6 +34,7 @@
       <param name="use_sync_write">false</param>  <!-- Enable SyncWrite for multi-motor setups (default: true, disabled for single motor) -->
       <param name="enable_mock_mode">$(arg use_mock)</param>  <!-- Simulation mode without hardware (default: false) -->
       <param name="reset_states_on_activate">true</param>  <!-- Reset position/velocity to zero on activation (default: true) -->
+      <param name="hold_position_on_activate">false</param>  <!-- Seed position-mode commands from the real position on activation so servos hold still (default: false) -->
     </hardware>
 
     <joint name="arm_joint">
