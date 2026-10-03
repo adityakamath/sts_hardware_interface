@@ -143,12 +143,12 @@ class SCS
 	u8 Level; // Servo status return level
 	u8 End;   // Processor endianness structure
 	u8 Error; // Servo status
-	u8 syncReadRxPacketIndex;
-	u8 syncReadRxPacketLen;
-	u8* syncReadRxPacket;
-	u8* syncReadRxBuff;
-	u16 syncReadRxBuffLen;
-	u16 syncReadRxBuffMax;
+	u8 syncReadRxPacketIndex = 0;
+	u8 syncReadRxPacketLen = 0;
+	u8* syncReadRxPacket = nullptr;
+	u8* syncReadRxBuff = nullptr;
+	u16 syncReadRxBuffLen = 0;
+	u16 syncReadRxBuffMax = 0;
 
   protected:
 	virtual int writeSCS(unsigned char* nDat, int nLen) = 0;
