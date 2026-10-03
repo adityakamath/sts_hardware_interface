@@ -1232,6 +1232,65 @@ TEST(HardwareInterfaceActivateResetTest, ActivateWithResetDisabledSucceeds) {
 }
 
 // ============================================================
+// hold_position_on_activate
+// ============================================================
+
+namespace
+{
+/// Run a servo joint to 0.5 rad, zero its command, re-activate, and return the position command.
+double position_command_after_reactivate(const std::string & hold_param)
+{
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_servo_info_with_vel_acc();
+  info.hardware_parameters["reset_states_on_activate"] = "false";
+  if (!hold_param.empty()) {
+    info.hardware_parameters["hold_position_on_activate"] = hold_param;
+  }
+  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  auto cmd_ifaces = hw.export_command_interfaces();
+
+  rclcpp_lifecycle::State unconfigured(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
+  rclcpp_lifecycle::State inactive(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE, "inactive");
+  EXPECT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
+  EXPECT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
+
+  hardware_interface::CommandInterface * pos_cmd = nullptr;
+  for (auto & iface : cmd_ifaces) {
+    if (iface.get_interface_name() == "position") {pos_cmd = &iface;}
+  }
+  EXPECT_NE(pos_cmd, nullptr);
+  if (pos_cmd == nullptr) {return -1.0;}
+
+  // Mock servo with no velocity command reaches its target in one read().
+  rclcpp::Time t(0, 0, RCL_ROS_TIME);
+  rclcpp::Duration d(0, 0);
+  (void)pos_cmd->set_value(0.5);
+  hw.read(t, d);   // state -> 0.5 rad
+  (void)pos_cmd->set_value(0.0);
+
+  EXPECT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
+
+  double v = -1.0;
+  (void)pos_cmd->get_value(v, true);
+  return v;
+}
+}  // namespace
+
+TEST(HardwareInterfaceHoldPositionTest, HoldEnabledSeedsCommandFromState) {
+  EXPECT_NEAR(position_command_after_reactivate("true"), 0.5, 1e-9);
+}
+
+TEST(HardwareInterfaceHoldPositionTest, DisabledByDefaultLeavesCommandUntouched) {
+  EXPECT_NEAR(position_command_after_reactivate(""), 0.0, 1e-9);
+}
+
+TEST(HardwareInterfaceHoldPositionTest, ExplicitFalseLeavesCommandUntouched) {
+  EXPECT_NEAR(position_command_after_reactivate("false"), 0.0, 1e-9);
+}
+
+// ============================================================
 // PWM mode mock read: effort command drives velocity and position
 // ============================================================
 

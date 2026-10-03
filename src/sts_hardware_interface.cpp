@@ -103,6 +103,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   enable_mock_mode_ = parse_bool_param("enable_mock_mode", false);
   use_sync_write_ = parse_bool_param("use_sync_write", true);
   reset_states_on_activate_ = parse_bool_param("reset_states_on_activate", true);
+  hold_position_on_activate_ = parse_bool_param("hold_position_on_activate", false);
 
   // Parse proportional acceleration parameters
   try {
@@ -879,6 +880,15 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
       RCLCPP_INFO(logger_, "Mock mode: State reset disabled - preserving existing odometry");
     }
 
+    // Hold position: command the simulated servos to where they already are.
+    if (hold_position_on_activate_) {
+      for (size_t i = 0; i < motor_ids_.size(); ++i) {
+        if (operating_modes_[i] == MODE_SERVO && !is_readonly_[i]) {
+          hw_cmd_position_[i] = hw_state_position_[i];
+        }
+      }
+    }
+
     return hardware_interface::CallbackReturn::SUCCESS;
   }
 
@@ -905,6 +915,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
     RCLCPP_INFO(logger_, "All motors activated and ready - odometry initialized to zero (position and velocity)");
   } else {
     RCLCPP_INFO(logger_, "All motors activated and ready - state reset disabled, preserving existing odometry");
+  }
+
+  // Independent of reset_states_on_activate: that flag decides what odometry reports, this one
+  // decides where the servos are told to go. Without it hw_cmd_position_ stays at its initial
+  // 0.0 and write() sends it as a target until a controller writes its own command.
+  if (hold_position_on_activate_ && !seed_servo_commands_from_feedback()) {
+    return hardware_interface::CallbackReturn::ERROR;
   }
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -1769,6 +1786,43 @@ int STSHardwareInterface::stop_motor(size_t idx, int acceleration)
     default:
       return -1;
   }
+}
+
+/** @brief Seed servo position commands from the motors' real positions (hold on activate) */
+bool STSHardwareInterface::seed_servo_commands_from_feedback()
+{
+  for (size_t idx : servo_motor_indices_) {
+    if (is_readonly_[idx]) {
+      continue;  // never commanded
+    }
+
+    int raw_position = -1;
+    for (int attempt = 1; attempt <= configure_ping_retry_attempts_; ++attempt) {
+      raw_position = servo_->ReadPos(motor_ids_[idx]);
+      if (raw_position != -1) {
+        break;
+      }
+      if (attempt < configure_ping_retry_attempts_) {
+        RCLCPP_WARN(logger_, "Motor %d (joint '%s') position read %d/%d failed, retrying...",
+          motor_ids_[idx], joint_names_[idx].c_str(), attempt, configure_ping_retry_attempts_);
+        std::this_thread::sleep_for(std::chrono::milliseconds(configure_ping_retry_delay_ms_));
+      }
+    }
+    if (raw_position == -1) {
+      RCLCPP_ERROR(logger_,
+        "hold_position_on_activate: could not read position of motor %d (joint '%s') after %d "
+        "attempts - refusing to activate with an unknown command",
+        motor_ids_[idx], joint_names_[idx].c_str(), configure_ping_retry_attempts_);
+      return false;
+    }
+
+    double position = conversions::raw_position_to_radians(raw_position, position_center_[idx]);
+    if (has_position_limits_[idx]) {
+      position = std::clamp(position, position_min_[idx], position_max_[idx]);
+    }
+    hw_cmd_position_[idx] = position;
+  }
+  return true;
 }
 
 /** @brief Attempt to recover from communication errors by pinging motors */
