@@ -282,6 +282,17 @@ private:
   std::vector<int> position_center_;  // Raw step for 0 rad per joint (default: STS_DEFAULT_CENTER=4095)
   std::vector<int> max_velocity_steps_;  // Per-joint motor max velocity in steps/s, model-dependent (default: DEFAULT_MAX_VELOCITY_STEPS)
 
+  // ===== MULTI-TURN POSITION UNWRAP (MODE_VELOCITY joints only) =====
+  // PRESENT_POSITION feedback is single-turn, 0..4095 steps per revolution (see
+  // conversions::raw_position_to_radians) - fine for a MODE_SERVO joint with real limits
+  // inside one revolution, wrong for a continuously spinning MODE_VELOCITY joint (a wheel),
+  // where diff_drive_controller's open_loop:false path needs position to keep
+  // increasing/decreasing across revolutions instead of resetting every revolution.
+  // read() unwraps by accumulating the wrap-safe delta between consecutive single-turn
+  // readings.
+  std::vector<double> last_raw_angle_;      // previous single-turn angle (rad); NaN = needs reseed
+  std::vector<double> unwrapped_position_;  // accumulated multi-turn position (rad), MODE_VELOCITY only
+
   // ===== PER-JOINT PID COEFFICIENTS (optional, written to EEPROM in on_configure) =====
   std::vector<std::optional<int>> p_coefficient_;  // Proportional gain (0-255): Mode 0 → SMS_STS_MODE0_P_COEF (addr 21); Mode 1 → SMS_STS_MODE1_P_COEF (addr 37)
   std::vector<std::optional<int>> d_coefficient_;  // Derivative gain   (0-255): Mode 0 → SMS_STS_MODE0_D_COEF (addr 22) only; Mode 1/2: ignored
