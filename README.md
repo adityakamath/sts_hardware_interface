@@ -173,6 +173,7 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `proportional_acc_max` | int | 100 | **SyncWrite only.** Acceleration value [0–254] assigned to the wheel with the largest `\|target_velocity - current_velocity\|` delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to `0` to disable (falls back to per-joint commanded acceleration, or 0 if the interface is not declared). Has no effect when `use_sync_write=false`. |
 | `proportional_acc_deadband` | double | 0.05 | **SyncWrite only.** Minimum max-delta (rad/s) below which acceleration 0 is sent to all wheels (steady-state cruise, avoids noise-driven jitter). Has no effect when `use_sync_write=false` or `proportional_acc_max=0`. |
 | `reset_states_on_activate` | bool | true | Reset position/velocity states to zero on activation for clean odometry |
+| `hold_position_on_activate` | bool | false | Seed each commanded position-mode joint's `position` command from the motor's real position on activation, so the servo holds still instead of moving to the initial 0.0 command until a controller writes its own. Independent of `reset_states_on_activate`. On real hardware, activation fails if a motor's position cannot be read (retried using `configure_ping_retry_attempts`/`configure_ping_retry_delay_ms`). |
 
 ## Joint Parameters
 

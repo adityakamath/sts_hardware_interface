@@ -94,6 +94,11 @@ using Result = std::optional<std::string>;
  * - proportional_acc_deadband: SyncWrite only. Min max-delta (rad/s) below which ACC 0 is sent
  *                              to all wheels (steady-state cruise). (default: 0.05)
  * - reset_states_on_activate: Reset position/velocity states to zero on activation (default: true)
+ * - hold_position_on_activate: Seed each commanded MODE_SERVO joint's position command from the
+ *                              motor's real position on activation, so the servo holds still
+ *                              instead of moving to the initial 0.0 command until a controller
+ *                              writes. Real hardware: activation fails if a position cannot be
+ *                              read. Independent of reset_states_on_activate. (default: false)
  *
  * JOINT PARAMETERS (from ros2_control URDF, per joint):
  * - motor_id: Motor ID on the serial bus (1-253) [required]
@@ -210,6 +215,7 @@ private:
 
   // Lifecycle parameter
   bool reset_states_on_activate_;  // Reset position/velocity states on activation (default: true)
+  bool hold_position_on_activate_;  // Seed servo position commands from the real position on activation (default: false)
 
   // ===== LOGGING =====
   rclcpp::Logger logger_;
@@ -347,6 +353,10 @@ private:
   static constexpr int MODE_SERVO = 0;      // Position control mode
   static constexpr int MODE_VELOCITY = 1;   // Velocity control mode
   static constexpr int MODE_PWM = 2;        // PWM/effort control mode
+
+  /** @brief Seed hw_cmd_position_ of every commanded MODE_SERVO joint from the motor's real
+   *  position (retrying each motor). Returns false if any motor cannot be read. */
+  bool seed_servo_commands_from_feedback();
 
   /** @brief Attempt to recover from communication errors by pinging motors */
   bool attempt_error_recovery();

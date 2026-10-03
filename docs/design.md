@@ -48,7 +48,7 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 - **on_init()** → parses URDF params; detects read-only joints (no `<command_interface>` entries → `torque=0`, excluded from all write loops); builds servo/velocity/PWM mode index groups
 - **on_configure()** → creates `/emergency_stop` service (even in mock mode); opens serial port; pings all motors; writes optional EEPROM params (PID coefficients, `protection_current`, `overload_torque`, `return_delay`) per joint
 - **on_configure()** → creates `/one_key_calibration` (`sts_hardware_interface/srv/OneKeyCalibration`) unconditionally — calibration is mode-agnostic
-- **on_activate()** → `InitMotor(motor_id, mode, torque)` per joint — commanded joints: `torque=1`; read-only joints: `torque=0`
+- **on_activate()** → `InitMotor(motor_id, mode, torque)` per joint — commanded joints: `torque=1`; read-only joints: `torque=0`. With `hold_position_on_activate=true`, each commanded position-mode joint's `position` command is then seeded from the motor's real position (retried per motor; activation fails if a position cannot be read) so the servo holds still instead of moving to the initial 0.0 command
 - **Active cycle** → `read()` calls `FeedBack(motor_id)` per joint (individual reads, 7 state interfaces); `write()` uses SyncWrite per mode group when `use_sync_write=true` and >1 joint/group, else individual writes; read-only joints excluded from all write groups
 - **on_deactivate()** → `stop_motor()` per joint (individual writes), `EnableTorque(0)` all joints; returns to INACTIVE — may call `on_activate()` again or `on_cleanup()` to close serial
 - **on_cleanup() / on_shutdown()** → disables torque, closes serial port
@@ -237,6 +237,7 @@ Configure these at the `<hardware>` level in your URDF:
 | `proportional_acc_max` | int | 100 | 0–254 | **SyncWrite only.** Acceleration value [0–254] assigned to the velocity joint with the largest \|target_velocity − current_velocity\| delta. All others are scaled proportionally so every wheel finishes ramping at the same time. Set to `0` to disable (falls back to per-joint commanded acceleration, or ACC=0 if the interface is not declared). Has no effect when `use_sync_write=false`. |
 | `proportional_acc_deadband` | double | 0.05 | ≥ 0.0 rad/s | **SyncWrite only.** Minimum velocity delta (rad/s) below which ACC=0 is sent to all wheels (avoids jitter during steady-state cruise). Has no effect when `use_sync_write=false` or `proportional_acc_max=0`. |
 | `reset_states_on_activate` | bool | true | true/false | Reset position/velocity states to zero on activation for clean odometry |
+| `hold_position_on_activate` | bool | false | true/false | Seed each commanded position-mode joint's `position` command from the motor's real position on activation, so the servo holds still instead of moving to the initial 0.0 command until a controller writes its own. Independent of `reset_states_on_activate`. On real hardware, activation fails if a motor's position cannot be read (retried using `configure_ping_retry_attempts`/`configure_ping_retry_delay_ms`). |
 
 **Protocol Constants (hardcoded, same for all STS motors):**
 
@@ -676,7 +677,7 @@ on_init → on_configure → on_activate → on_deactivate
                       ↘ on_shutdown  ↗ on_cleanup → on_error
 ```
 
-Each transition is asserted to return `CallbackReturn::SUCCESS`. The `reset_states_on_activate = false` path is tested separately (states persist across deactivate/reactivate cycles).
+Each transition is asserted to return `CallbackReturn::SUCCESS`. The `reset_states_on_activate = false` path is tested separately (states persist across deactivate/reactivate cycles). The real-hardware part of `hold_position_on_activate` (per-motor `ReadPos` with retries, `ERROR` on failure) needs a serial device and is not covered by the mock-mode tests.
 
 **Read/Write behavior (mock mode):**
 
@@ -687,6 +688,9 @@ Each transition is asserted to return `CallbackReturn::SUCCESS`. The `reset_stat
 | Position mode negative error | Correct direction of step when current > target |
 | PWM mode read | Effort command scaled to velocity (×10.0 rad/s) and integrated |
 | `reset_states_on_activate = false` | Position state preserved after reactivation |
+| `hold_position_on_activate = true` | Position command is seeded from the joint's state on re-activation, replacing a stale command; independent of `reset_states_on_activate` |
+| `hold_position_on_activate` unset / `false` | Position command is left untouched on activation |
+| `hold_position_on_activate = true`, velocity joint | Velocity command is not affected |
 | Multi-joint | Two joints in different modes updated independently |
 | Write cycle | Command interfaces written without errors in all modes |
 
