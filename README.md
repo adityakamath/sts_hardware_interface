@@ -208,7 +208,7 @@ This node is recommended for all robots using STS motors to ensure safe operatio
   - `use_sync_write=true` and `proportional_vel_max != 0`: proportional velocity always wins; this command interface is ignored.
   - `use_sync_write=true` and `proportional_vel_max == 0`: per-joint commanded max speed is used (0 = hardware max speed).
   - `use_sync_write=false`: per-joint commanded max speed is always used directly, `proportional_vel_max` has no effect.
-- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). When omitted: ACC 0 (hardware default).
+- `acceleration` *(optional)* - Acceleration (0-254, unitless protocol value). When omitted: ACC 100 (`DEFAULT_ACCELERATION`). ACC 0 is not "instant" on STS servos - the servo then ignores the commanded speed and creeps at a fixed slow rate.
 
 **Mode 1 (Velocity):**
 - `velocity` - Target velocity (rad/s)

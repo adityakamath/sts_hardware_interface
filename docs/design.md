@@ -473,7 +473,7 @@ Test controllers without hardware by setting `enable_mock_mode: true` in hardwar
 - **Current:** Proportional to effort (up to ~1A at maximum load)
 
 **Emergency Stop Behavior:**
-Mock mode emergency stop clears all command interfaces (velocity, position, effort, acceleration) to match real hardware behavior, ensuring consistent controller behavior when switching between mock and real hardware.
+Mock mode emergency stop clears the velocity, position and effort command interfaces. Acceleration is left unchanged: it has no effect once those are cleared, and position-mode joints rely on a non-zero default (`DEFAULT_ACCELERATION`, 100) when no `acceleration` interface is declared.
 
 Mock mode provides realistic command/state behavior for controller development without hardware.
 
