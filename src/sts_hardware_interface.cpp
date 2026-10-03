@@ -1232,7 +1232,8 @@ hardware_interface::return_type STSHardwareInterface::write(
         hw_cmd_velocity_[i] = 0.0;
         hw_cmd_position_[i] = hw_state_position_[i];  // Hold current position
         hw_cmd_effort_[i] = 0.0;
-        hw_cmd_acceleration_[i] = 0.0;
+        // hw_cmd_acceleration_ is deliberately left alone: with velocity/position/effort cleared
+        // it has no effect, and zeroing it would discard the MODE_SERVO DEFAULT_ACCELERATION.
       }
     }
 

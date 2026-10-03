@@ -493,6 +493,39 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityMode) {
   EXPECT_NE(std::find(names.begin(), names.end(), "acceleration"), names.end());
 }
 
+/// Read the current value of a named command interface of an initialised hardware interface.
+static double get_cmd_value(
+  std::vector<hardware_interface::CommandInterface> & ifaces, const std::string & name)
+{
+  for (auto & iface : ifaces) {
+    if (iface.get_interface_name() == name) {
+      double v = -1.0;
+      (void)iface.get_value(v, true);
+      return v;
+    }
+  }
+  ADD_FAILURE() << "command interface not found: " << name;
+  return -1.0;
+}
+
+TEST(HardwareInterfaceExportTest, ServoAccelerationDefaultsToNonZero) {
+  // Position-mode joints must not start at ACC=0: the servo then ignores the commanded Speed.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_servo_info_with_vel_acc();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_NEAR(get_cmd_value(cmd_ifaces, "acceleration"), 100.0, 1e-9);
+}
+
+TEST(HardwareInterfaceExportTest, VelocityAccelerationDefaultsToZero) {
+  // Wheel joints keep ACC=0; their proportional-ACC scaling relies on it during steady cruise.
+  sts_hardware_interface::STSHardwareInterface hw;
+  auto info = make_valid_single_motor_info();
+  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_NEAR(get_cmd_value(cmd_ifaces, "acceleration"), 0.0, 1e-9);
+}
+
 TEST(HardwareInterfaceExportTest, CommandInterfacesPositionMode) {
   // Mode 0 with position-only URDF (make_valid_position_motor_info) → 1 command interface
   sts_hardware_interface::STSHardwareInterface hw;
@@ -574,7 +607,7 @@ class HardwareInterfaceMockTest : public ::testing::Test {
 protected:
   void SetUp() override {
     hw_ = std::make_unique<sts_hardware_interface::STSHardwareInterface>();
-    info_ = make_valid_single_motor_info();
+    info_ = make_info();
     ASSERT_EQ(hw_->on_init(info_), CallbackReturn::SUCCESS);
 
     // Export interfaces BEFORE configure (they point into hw_'s internal storage)
@@ -598,6 +631,9 @@ protected:
     hw_->on_deactivate(active);
     hw_->on_cleanup(inactive);
   }
+
+  // Joint configuration under test; derived fixtures override this.
+  virtual hardware_interface::HardwareInfo make_info() { return make_valid_single_motor_info(); }
 
   // Find a command interface by interface name
   hardware_interface::CommandInterface * find_cmd(const std::string & name) {
@@ -979,6 +1015,48 @@ TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopReleaseAllowsVelocityCom
   double vel_val = 0.0;
   (void)vel_cmd->get_value(vel_val, true);
   EXPECT_NEAR(vel_val, 3.0, 1e-9);
+}
+
+TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopLeavesAccelerationUnchanged) {
+  ASSERT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
+
+  auto * acc_cmd = find_cmd("acceleration");
+  ASSERT_NE(acc_cmd, nullptr);
+  (void)acc_cmd->set_value(42.0);
+
+  rclcpp::Time t(0, 0, RCL_ROS_TIME);
+  rclcpp::Duration d(0, 0);
+  ASSERT_TRUE(call_estop(true));
+  hw_->write(t, d);  // emergency stop clears motion commands
+
+  double acc_val = 0.0;
+  (void)acc_cmd->get_value(acc_val, true);
+  EXPECT_NEAR(acc_val, 42.0, 1e-9);
+}
+
+/// Same emergency-stop fixture, but with a position-mode joint that declares acceleration.
+class HardwareInterfaceServoEmergencyStopTest : public HardwareInterfaceEmergencyStopTest
+{
+protected:
+  hardware_interface::HardwareInfo make_info() override { return make_servo_info_with_vel_acc(); }
+};
+
+TEST_F(HardwareInterfaceServoEmergencyStopTest, EmergencyStopKeepsServoDefaultAcceleration) {
+  ASSERT_TRUE(estop_client_->wait_for_service(std::chrono::seconds(5)));
+
+  auto * acc_cmd = find_cmd("acceleration");
+  ASSERT_NE(acc_cmd, nullptr);
+
+  rclcpp::Time t(0, 0, RCL_ROS_TIME);
+  rclcpp::Duration d(0, 0);
+  ASSERT_TRUE(call_estop(true));
+  hw_->write(t, d);
+  ASSERT_TRUE(call_estop(false));
+  hw_->write(t, d);
+
+  double acc_val = 0.0;
+  (void)acc_cmd->get_value(acc_val, true);
+  EXPECT_NEAR(acc_val, 100.0, 1e-9);
 }
 
 // ============================================================
