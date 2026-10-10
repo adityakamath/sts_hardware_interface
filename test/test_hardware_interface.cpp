@@ -51,22 +51,22 @@ hardware_interface::HardwareInfo make_valid_single_motor_info(
   const std::string & motor_id = "1",
   const std::string & operating_mode = "1")
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = serial_port;
   info.hardware_parameters["enable_mock_mode"] = "true";
   info.hardware_parameters["baud_rate"] = "1000000";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "wheel_joint";
   joint.parameters["motor_id"] = motor_id;
   joint.parameters["operating_mode"] = operating_mode;
 
   // Mode 1 (velocity) requires: velocity + acceleration command interfaces
-  hardware_interface::InterfaceInfo vel_iface;
+  hardware_interface::InterfaceInfo vel_iface{};
   vel_iface.name = "velocity";
   joint.command_interfaces.push_back(vel_iface);
 
-  hardware_interface::InterfaceInfo acc_iface;
+  hardware_interface::InterfaceInfo acc_iface{};
   acc_iface.name = "acceleration";
   joint.command_interfaces.push_back(acc_iface);
 
@@ -77,11 +77,11 @@ hardware_interface::HardwareInfo make_valid_single_motor_info(
 /// Build info for a position-mode (mode 0) motor.
 hardware_interface::HardwareInfo make_valid_position_motor_info()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "arm_joint";
   joint.parameters["motor_id"] = "2";
   joint.parameters["operating_mode"] = "0";
@@ -89,7 +89,7 @@ hardware_interface::HardwareInfo make_valid_position_motor_info()
   // Mode 0 (position): only the position interface is required.
   // velocity and acceleration are optional — omitting them makes the hardware
   // use its max speed (raw 0) and default ramp (ACC 0) for position moves.
-  hardware_interface::InterfaceInfo pos_iface;
+  hardware_interface::InterfaceInfo pos_iface{};
   pos_iface.name = "position";
   joint.command_interfaces.push_back(pos_iface);
 
@@ -100,16 +100,16 @@ hardware_interface::HardwareInfo make_valid_position_motor_info()
 /// Build info for an effort-mode (mode 2) motor.
 hardware_interface::HardwareInfo make_valid_effort_motor_info()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "gripper_joint";
   joint.parameters["motor_id"] = "3";
   joint.parameters["operating_mode"] = "2";
 
-  hardware_interface::InterfaceInfo eff_iface;
+  hardware_interface::InterfaceInfo eff_iface{};
   eff_iface.name = "effort";
   joint.command_interfaces.push_back(eff_iface);
 
@@ -121,17 +121,17 @@ hardware_interface::HardwareInfo make_valid_effort_motor_info()
 /// Use this for mock tests that exercise the velocity command path (max-speed control).
 hardware_interface::HardwareInfo make_servo_info_with_velocity()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "arm_joint";
   joint.parameters["motor_id"] = "2";
   joint.parameters["operating_mode"] = "0";
 
   for (const auto & name : {"position", "velocity"}) {
-    hardware_interface::InterfaceInfo iface;
+    hardware_interface::InterfaceInfo iface{};
     iface.name = name;
     joint.command_interfaces.push_back(iface);
   }
@@ -142,17 +142,17 @@ hardware_interface::HardwareInfo make_servo_info_with_velocity()
 /// Build info for a servo-mode motor with all three command interfaces.
 hardware_interface::HardwareInfo make_servo_info_with_vel_acc()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "arm_joint";
   joint.parameters["motor_id"] = "2";
   joint.parameters["operating_mode"] = "0";
 
   for (const auto & name : {"position", "velocity", "acceleration"}) {
-    hardware_interface::InterfaceInfo iface;
+    hardware_interface::InterfaceInfo iface{};
     iface.name = name;
     joint.command_interfaces.push_back(iface);
   }
@@ -163,16 +163,16 @@ hardware_interface::HardwareInfo make_servo_info_with_vel_acc()
 /// Build info for a velocity-mode motor WITHOUT the optional acceleration interface.
 hardware_interface::HardwareInfo make_velocity_info_no_acc()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "wheel_joint";
   joint.parameters["motor_id"] = "1";
   joint.parameters["operating_mode"] = "1";
 
-  hardware_interface::InterfaceInfo vel_iface;
+  hardware_interface::InterfaceInfo vel_iface{};
   vel_iface.name = "velocity";
   joint.command_interfaces.push_back(vel_iface);
   info.joints.push_back(joint);
@@ -182,13 +182,13 @@ hardware_interface::HardwareInfo make_velocity_info_no_acc()
 /// Build a HardwareInfo with a velocity-mode motor and a position-mode motor.
 hardware_interface::HardwareInfo make_two_motor_info()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
   // Motor 1: velocity mode (mode 1)
   {
-    hardware_interface::ComponentInfo joint;
+    hardware_interface::ComponentInfo joint{};
     joint.name = "wheel_joint";
     joint.parameters["motor_id"] = "1";
     joint.parameters["operating_mode"] = "1";
@@ -202,12 +202,12 @@ hardware_interface::HardwareInfo make_two_motor_info()
 
   // Motor 2: position mode (mode 0)
   {
-    hardware_interface::ComponentInfo joint;
+    hardware_interface::ComponentInfo joint{};
     joint.name = "arm_joint";
     joint.parameters["motor_id"] = "2";
     joint.parameters["operating_mode"] = "0";
     // position interface only — velocity and acceleration are optional
-    hardware_interface::InterfaceInfo pos_iface;
+    hardware_interface::InterfaceInfo pos_iface{};
     pos_iface.name = "position";
     joint.command_interfaces.push_back(pos_iface);
     info.joints.push_back(joint);
@@ -220,11 +220,11 @@ hardware_interface::HardwareInfo make_two_motor_info()
 /// readonly per on_init's `is_readonly_[i] = joint.command_interfaces.empty()`.
 hardware_interface::HardwareInfo make_readonly_joint_info()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "sensor_joint";
   joint.parameters["motor_id"] = "4";
   joint.parameters["operating_mode"] = "1";  // mode is irrelevant once readonly
@@ -236,23 +236,23 @@ hardware_interface::HardwareInfo make_readonly_joint_info()
 /// one normal velocity-mode joint, for mixed readonly/writable coverage.
 hardware_interface::HardwareInfo make_mixed_readonly_info()
 {
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
   {
-    hardware_interface::ComponentInfo joint;
+    hardware_interface::ComponentInfo joint{};
     joint.name = "sensor_joint";
     joint.parameters["motor_id"] = "4";
     joint.parameters["operating_mode"] = "1";
     info.joints.push_back(joint);
   }
   {
-    hardware_interface::ComponentInfo joint;
+    hardware_interface::ComponentInfo joint{};
     joint.name = "wheel_joint";
     joint.parameters["motor_id"] = "1";
     joint.parameters["operating_mode"] = "1";
-    hardware_interface::InterfaceInfo vel_iface;
+    hardware_interface::InterfaceInfo vel_iface{};
     vel_iface.name = "velocity";
     joint.command_interfaces.push_back(vel_iface);
     info.joints.push_back(joint);
@@ -310,7 +310,7 @@ TEST(HardwareInterfaceInitTest, InvalidBaudRateReturnsError) {
 
 TEST(HardwareInterfaceInitTest, NoJointsReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
   // No joints added
@@ -339,12 +339,12 @@ TEST(HardwareInterfaceInitTest, ValidMotorIdBoundaries) {
 
 TEST(HardwareInterfaceInitTest, DuplicateMotorIdsReturnError) {
   sts_hardware_interface::STSHardwareInterface hw;
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
   for (const auto & joint_name : {"joint1", "joint2"}) {
-    hardware_interface::ComponentInfo joint;
+    hardware_interface::ComponentInfo joint{};
     joint.name = joint_name;
     joint.parameters["motor_id"] = "1";  // same ID — duplicate!
     joint.parameters["operating_mode"] = "1";
@@ -450,6 +450,22 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsInvalidValues) {
   auto info3 = make_valid_position_motor_info();
   info3.joints[0].parameters["position_center_steps"] = "abc";
   EXPECT_EQ(init_hw(hw3, info3), CallbackReturn::ERROR);
+}
+
+TEST(HardwareInterfaceInitTest, NonDoubleInterfaceDataTypeFails) {
+  // Interfaces are read/written as double; other handle types would throw at runtime.
+  sts_hardware_interface::STSHardwareInterface hw1;
+  auto cmd_info = make_valid_single_motor_info();
+  cmd_info.joints[0].command_interfaces[0].data_type = "float32";
+  EXPECT_EQ(init_hw(hw1, cmd_info), CallbackReturn::ERROR);
+
+  sts_hardware_interface::STSHardwareInterface hw2;
+  auto state_info = make_valid_single_motor_info();
+  hardware_interface::InterfaceInfo pos_state{};
+  pos_state.name = "position";
+  pos_state.data_type = "bool";
+  state_info.joints[0].state_interfaces.push_back(pos_state);
+  EXPECT_EQ(init_hw(hw2, state_info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, PositionCenterStepsIgnoredInNonServoModes) {
@@ -575,7 +591,7 @@ protected:
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
-  hardware_interface::HardwareInfo info_;
+  hardware_interface::HardwareInfo info_{};
 };
 
 TEST_F(HardwareInterfaceLifecycleTest, ConfigureSucceeds) {
@@ -670,7 +686,7 @@ protected:
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
-  hardware_interface::HardwareInfo info_;
+  hardware_interface::HardwareInfo info_{};
   std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
   std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
@@ -1094,7 +1110,7 @@ protected:
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
-  hardware_interface::HardwareInfo info_;
+  hardware_interface::HardwareInfo info_{};
   std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
   std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
@@ -1212,11 +1228,11 @@ TEST(HardwareInterfaceInitTest, ValidMaxEffortSetsLimitSucceeds) {
 TEST(HardwareInterfaceInitTest, DefaultOperatingModeUsesVelocityMode) {
   // No operating_mode parameter → defaults to MODE_VELOCITY via else branch
   sts_hardware_interface::STSHardwareInterface hw;
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "default_mode_joint";
   joint.parameters["motor_id"] = "5";
   // No operating_mode key — triggers the else branch (line 169-171 in source)
@@ -1405,7 +1421,7 @@ protected:
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
-  hardware_interface::HardwareInfo info_;
+  hardware_interface::HardwareInfo info_{};
   std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
   std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
@@ -1499,7 +1515,7 @@ protected:
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
-  hardware_interface::HardwareInfo info_;
+  hardware_interface::HardwareInfo info_{};
   std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
   std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
@@ -1635,17 +1651,17 @@ TEST(HardwareInterfaceInitTest, ServoModeWithAllInterfaces) {
 TEST(HardwareInterfaceInitTest, ServoModeWithoutPositionReturnsError) {
   // MODE_SERVO without the mandatory position interface → ERROR
   sts_hardware_interface::STSHardwareInterface hw;
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "arm_joint";
   joint.parameters["motor_id"] = "2";
   joint.parameters["operating_mode"] = "0";
 
   // Only velocity — position is missing
-  hardware_interface::InterfaceInfo vel_iface;
+  hardware_interface::InterfaceInfo vel_iface{};
   vel_iface.name = "velocity";
   joint.command_interfaces.push_back(vel_iface);
 
@@ -1668,17 +1684,17 @@ TEST(HardwareInterfaceInitTest, VelocityModeWithVelocityOnly) {
 TEST(HardwareInterfaceInitTest, VelocityModeWithoutVelocityReturnsError) {
   // MODE_VELOCITY without the mandatory velocity interface → ERROR
   sts_hardware_interface::STSHardwareInterface hw;
-  hardware_interface::HardwareInfo info;
+  hardware_interface::HardwareInfo info{};
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
 
-  hardware_interface::ComponentInfo joint;
+  hardware_interface::ComponentInfo joint{};
   joint.name = "wheel_joint";
   joint.parameters["motor_id"] = "1";
   joint.parameters["operating_mode"] = "1";
 
   // Only acceleration — velocity is missing
-  hardware_interface::InterfaceInfo acc_iface;
+  hardware_interface::InterfaceInfo acc_iface{};
   acc_iface.name = "acceleration";
   joint.command_interfaces.push_back(acc_iface);
 

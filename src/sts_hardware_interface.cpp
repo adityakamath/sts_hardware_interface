@@ -382,6 +382,18 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       has_effort_limits_[i] = true;
     }
 
+    // Values are read and written as double; any other handle type would throw in set_state()/get_command().
+    for (const auto * interfaces : {&joint.state_interfaces, &joint.command_interfaces}) {
+      for (const auto & iface : *interfaces) {
+        if (iface.data_type != "double") {
+          RCLCPP_ERROR(
+            logger_, "Joint '%s': interface '%s' has data_type '%s'; only 'double' is supported",
+            joint.name.c_str(), iface.name.c_str(), iface.data_type.c_str());
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+      }
+    }
+
     // A joint with no command interfaces is readonly: torque disabled at activation,
     // excluded from all write loops, state still read every cycle.
     is_readonly_[i] = joint.command_interfaces.empty();
@@ -983,6 +995,7 @@ double STSHardwareInterface::cmd_default(CmdKind kind, size_t i) const
   return 0.0;
 }
 
+/** @brief Read a joint state (0.0 if the handle is absent) */
 double STSHardwareInterface::state_val(StateKind kind, size_t i) const
 {
   const auto & handle = state_handles_[kind][i];
@@ -991,12 +1004,14 @@ double STSHardwareInterface::state_val(StateKind kind, size_t i) const
   return value;
 }
 
+/** @brief Write a joint state (no-op if the handle is absent) */
 void STSHardwareInterface::put_state(StateKind kind, size_t i, double value)
 {
   const auto & handle = state_handles_[kind][i];
   if (handle) (void)set_state(handle, value, true);
 }
 
+/** @brief Read a joint command (cmd_default() if the interface is not declared) */
 double STSHardwareInterface::cmd_val(CmdKind kind, size_t i) const
 {
   const auto & handle = cmd_handles_[kind][i];
@@ -1005,6 +1020,7 @@ double STSHardwareInterface::cmd_val(CmdKind kind, size_t i) const
   return value;
 }
 
+/** @brief Write a joint command (no-op if the interface is not declared) */
 void STSHardwareInterface::put_cmd(CmdKind kind, size_t i, double value)
 {
   const auto & handle = cmd_handles_[kind][i];
