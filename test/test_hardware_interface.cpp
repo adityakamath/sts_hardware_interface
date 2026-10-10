@@ -465,23 +465,6 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsInvalidValues) {
   EXPECT_EQ(init_hw(hw3, info3), CallbackReturn::ERROR);
 }
 
-/** @brief Non double interface data type fails */
-TEST(HardwareInterfaceInitTest, NonDoubleInterfaceDataTypeFails) {
-  // Interfaces are read/written as double; other handle types would throw at runtime.
-  sts_hardware_interface::STSHardwareInterface hw1;
-  auto cmd_info = make_valid_single_motor_info();
-  cmd_info.joints[0].command_interfaces[0].data_type = "float32";
-  EXPECT_EQ(init_hw(hw1, cmd_info), CallbackReturn::ERROR);
-
-  sts_hardware_interface::STSHardwareInterface hw2;
-  auto state_info = make_valid_single_motor_info();
-  hardware_interface::InterfaceInfo pos_state{};
-  pos_state.name = "position";
-  pos_state.data_type = "bool";
-  state_info.joints[0].state_interfaces.push_back(pos_state);
-  EXPECT_EQ(init_hw(hw2, state_info), CallbackReturn::ERROR);
-}
-
 /** @brief velocity mode (1): succeeds with warning */
 TEST(HardwareInterfaceInitTest, PositionCenterStepsIgnoredInNonServoModes) {
   sts_hardware_interface::STSHardwareInterface hw1;

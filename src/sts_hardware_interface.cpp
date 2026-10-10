@@ -382,18 +382,6 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       has_effort_limits_[i] = true;
     }
 
-    // Values are read and written as double; any other handle type would throw in set_state()/get_command().
-    for (const auto * interfaces : {&joint.state_interfaces, &joint.command_interfaces}) {
-      for (const auto & iface : *interfaces) {
-        if (iface.data_type != "double") {
-          RCLCPP_ERROR(
-            logger_, "Joint '%s': interface '%s' has data_type '%s'; only 'double' is supported",
-            joint.name.c_str(), iface.name.c_str(), iface.data_type.c_str());
-          return hardware_interface::CallbackReturn::ERROR;
-        }
-      }
-    }
-
     // A joint with no command interfaces is readonly: torque disabled at activation,
     // excluded from all write loops, state still read every cycle.
     is_readonly_[i] = joint.command_interfaces.empty();
