@@ -153,7 +153,7 @@ motor_diagnostics_node:
 
 **Node Details:**
 - **Node name:** `motor_diagnostics_node`
-- **Subscribed topics:** `/dynamic_joint_states` (from hardware interface)
+- **Subscribed topics:** `/dynamic_joint_states` (from `joint_state_broadcaster`; not published on Lyrical and newer, so the node receives no data there yet)
 - **Published topics:** `/diagnostics` (diagnostic_msgs/DiagnosticArray)
 - **Parameters:** See config YAML above
 

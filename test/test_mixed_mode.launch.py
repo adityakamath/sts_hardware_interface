@@ -163,6 +163,9 @@ class TestMixedModeLaunch(unittest.TestCase):
         )
         self.node.destroy_client(client)
 
+    @unittest.skipIf(
+        os.environ.get('ROS_DISTRO') in ('lyrical', 'rolling'),
+        'joint_state_broadcaster no longer publishes /dynamic_joint_states on Lyrical+')
     def test_dynamic_joint_states_published(self):
         """Verify /dynamic_joint_states is published (custom interfaces)."""
         from control_msgs.msg import DynamicJointState
