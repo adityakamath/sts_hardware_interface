@@ -286,7 +286,7 @@ ros2 launch sts_hardware_interface single_motor_pwm.launch.py use_mock:=true
 2. Starts `ros2_control` node with mock or real hardware
 3. Spawns two controllers:
    - `joint_state_broadcaster` - publishes all 7 state interfaces to `/dynamic_joint_states`
-   - `pwm_controller` (`effort_controllers/JointGroupEffortController`) - accepts duty-cycle commands on `/pwm_controller/commands`
+   - `pwm_controller` (`forward_command_controller/ForwardCommandController` with `interface_name: effort`) - accepts duty-cycle commands on `/pwm_controller/commands`
 
 **Mock Mode Behavior:**
 

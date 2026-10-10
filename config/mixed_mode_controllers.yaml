@@ -12,11 +12,11 @@ controller_manager:
 
     # Wheel Controller - Velocity control (Mode 1) - 2 motors
     wheel_controller:
-      type: velocity_controllers/JointGroupVelocityController
+      type: forward_command_controller/ForwardCommandController
 
     # Gripper Controller - PWM/Effort control (Mode 2) - 2 motors
     gripper_controller:
-      type: effort_controllers/JointGroupEffortController
+      type: forward_command_controller/ForwardCommandController
 
 # Joint State Broadcaster configuration
 # Publishes standard state (position, velocity, effort) to /joint_states

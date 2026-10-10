@@ -8,7 +8,7 @@ controller_manager:
 
     # Velocity Controller - Commands velocity to the wheel joint
     velocity_controller:
-      type: velocity_controllers/JointGroupVelocityController
+      type: forward_command_controller/ForwardCommandController
 
 # Joint State Broadcaster configuration
 # Publishes standard state (position, velocity, effort) to /joint_states

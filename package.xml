@@ -36,8 +36,7 @@
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>
-  <exec_depend>velocity_controllers</exec_depend>
-  <exec_depend>effort_controllers</exec_depend>
+  <exec_depend>forward_command_controller</exec_depend>
 
   <!-- Diagnostics node dependencies -->
   <depend>diagnostic_msgs</depend>

@@ -115,28 +115,44 @@ def generate_launch_description():
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'joint_state_broadcaster',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
     )
 
     # Joint trajectory controller (for arm in servo mode)
     arm_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['arm_controller', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'arm_controller',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
     )
 
     # Velocity controller (for wheel in velocity mode)
     wheel_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['wheel_controller', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'wheel_controller',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
     )
 
     # Effort controller (for gripper in PWM mode)
     gripper_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['gripper_controller', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'gripper_controller',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
     )
 
     nodes = [

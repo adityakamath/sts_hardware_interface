@@ -7,14 +7,13 @@ controller_manager:
       type: joint_state_broadcaster/JointStateBroadcaster
 
     # Effort Controller - Commands PWM duty cycle to the pwm_joint (Mode 2: open-loop)
-    # effort_controllers/JointGroupEffortController publishes to:
+    # forward_command_controller/ForwardCommandController (interface_name: effort) subscribes to:
     #   /pwm_controller/commands  (std_msgs/Float64MultiArray)
-    # and subscribes to commands on the same topic.
     # To send a command in mock mode:
     #   ros2 topic pub /pwm_controller/commands std_msgs/msg/Float64MultiArray \
     #     "data: [0.5]"   # 50 % duty cycle forward
     pwm_controller:
-      type: effort_controllers/JointGroupEffortController
+      type: forward_command_controller/ForwardCommandController
 
 # Joint State Broadcaster configuration
 # Publishes standard state (position, velocity, effort) to /joint_states
@@ -50,3 +49,5 @@ pwm_controller:
   ros__parameters:
     joints:
       - pwm_joint
+
+    interface_name: effort  # Command interface forwarded to the joint

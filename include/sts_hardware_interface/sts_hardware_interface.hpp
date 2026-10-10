@@ -283,9 +283,13 @@ private:
   void bind_handles();
   /** @brief Value of a command that is undeclared or not yet written */
   double cmd_default(CmdKind kind, size_t i) const;
+  /** @brief Read a joint state (0.0 if the handle is absent) */
   double state_val(StateKind kind, size_t i) const;
+  /** @brief Write a joint state (no-op if the handle is absent) */
   void put_state(StateKind kind, size_t i, double value);
+  /** @brief Read a joint command (cmd_default() if the interface is not declared) */
   double cmd_val(CmdKind kind, size_t i) const;
+  /** @brief Write a joint command (no-op if the interface is not declared) */
   void put_cmd(CmdKind kind, size_t i, double value);
 
   // ===== BROADCAST EMERGENCY STOP =====

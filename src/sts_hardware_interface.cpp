@@ -1608,6 +1608,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_error(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
+/** @brief Execute a queued one-key calibration request inside write() */
 void STSHardwareInterface::process_pending_one_key_calibration()
 {
   PendingCalibrationRequest request;
@@ -1686,6 +1687,7 @@ void STSHardwareInterface::process_pending_one_key_calibration()
   }
 }
 
+/** @brief Mock-mode calibration: set simulated position to the encoder midpoint */
 void STSHardwareInterface::process_pending_one_key_calibration_mock()
 {
   PendingCalibrationRequest request;
@@ -1883,6 +1885,7 @@ void STSHardwareInterface::emergency_stop_callback(
   res->success = true;
 }
 
+/** @brief Queue one-key calibration requests for safe execution in write() */
 void STSHardwareInterface::one_key_calibration_callback(
   const sts_hardware_interface::srv::OneKeyCalibration::Request::SharedPtr req,
   sts_hardware_interface::srv::OneKeyCalibration::Response::SharedPtr res)

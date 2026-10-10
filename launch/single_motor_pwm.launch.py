@@ -8,7 +8,7 @@ ros2_control stack including:
 - Robot state publisher for TF transforms
 - Controller manager for hardware interface lifecycle
 - Joint state broadcaster for publishing joint states
-- JointGroupEffortController for sending PWM duty-cycle commands
+- ForwardCommandController (effort interface) for sending PWM duty-cycle commands
 
 Mode 2 is open-loop: the motor runs at the commanded duty cycle with no position
 feedback.  Use this launch file with use_mock:=true to verify the full mode 2
@@ -165,14 +165,22 @@ def generate_launch_description():
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'joint_state_broadcaster',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
     )
 
     # PWM effort controller (Mode 2)
     pwm_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['pwm_controller', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'pwm_controller',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
     )
 
     nodes = [

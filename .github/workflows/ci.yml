@@ -36,7 +36,7 @@ jobs:
       - name: Create workspace
         run: |
           mkdir -p ~/ros2_ws/src
-          cp -r ${{ github.workspace }} ~/ros2_ws/src/sts_hardware_interface
+          cp -r "$GITHUB_WORKSPACE" ~/ros2_ws/src/sts_hardware_interface
 
       - name: Build with compile_commands.json
         shell: bash
@@ -137,7 +137,7 @@ jobs:
             ros-${{ matrix.ros_distro }}-control-msgs \
             ros-${{ matrix.ros_distro }}-controller-manager \
             ros-${{ matrix.ros_distro }}-diagnostic-msgs \
-            ros-${{ matrix.ros_distro }}-effort-controllers \
+            ros-${{ matrix.ros_distro }}-forward-command-controller \
             ros-${{ matrix.ros_distro }}-hardware-interface \
             ros-${{ matrix.ros_distro }}-joint-state-broadcaster \
             ros-${{ matrix.ros_distro }}-joint-trajectory-controller \
@@ -148,7 +148,6 @@ jobs:
             ros-${{ matrix.ros_distro }}-rclcpp-lifecycle \
             ros-${{ matrix.ros_distro }}-robot-state-publisher \
             ros-${{ matrix.ros_distro }}-std-srvs \
-            ros-${{ matrix.ros_distro }}-velocity-controllers \
             ros-${{ matrix.ros_distro }}-xacro
 
       # gtest (test_conversions, test_hardware_interface) and the launch tests
