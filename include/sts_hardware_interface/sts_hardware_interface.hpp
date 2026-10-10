@@ -1,6 +1,7 @@
 #ifndef SMS_STS_HARDWARE_INTERFACE_SMS_STS_HARDWARE_INTERFACE_HPP_
 #define SMS_STS_HARDWARE_INTERFACE_SMS_STS_HARDWARE_INTERFACE_HPP_
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -146,7 +147,7 @@ public:
 
   /** @brief Parse URDF parameters and validate configuration */
   hardware_interface::CallbackReturn on_init(
-    const hardware_interface::HardwareInfo & hardware_info) override;
+    const hardware_interface::HardwareComponentInterfaceParams & params) override;
 
   /** @brief Initialize serial communication and verify motors */
   hardware_interface::CallbackReturn on_configure(
@@ -172,11 +173,9 @@ public:
   hardware_interface::CallbackReturn on_error(
     const rclcpp_lifecycle::State & previous_state) override;
 
-  /** @brief Export state interfaces for all joints */
-  std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
-
-  /** @brief Export command interfaces for all joints */
-  std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
+  /** @brief Export the state interfaces missing from the URDF (all 7 are always exported) */
+  std::vector<hardware_interface::InterfaceDescription>
+  export_unlisted_state_interface_descriptions() override;
 
   /** @brief Read motor states from hardware */
   hardware_interface::return_type read(
@@ -258,20 +257,36 @@ private:
   // in on_configure, freed via syncReadEnd in on_cleanup/on_shutdown) =====
   std::vector<u8> read_sync_ids_;
 
-  // ===== PER-JOINT STATE INTERFACES (indexed by joint) =====
-  std::vector<double> hw_state_position_;
-  std::vector<double> hw_state_velocity_;
-  std::vector<double> hw_state_effort_;
-  std::vector<double> hw_state_voltage_;
-  std::vector<double> hw_state_temperature_;
-  std::vector<double> hw_state_current_;
-  std::vector<double> hw_state_is_moving_;
+  // ===== PER-JOINT STATE / COMMAND HANDLES (framework-owned, indexed by [kind][joint]) =====
+  // State handles always exist (URDF-declared or exported as unlisted); a command handle is null
+  // when the interface is not declared in the URDF, in which case cmd_val() returns cmd_default().
+  enum StateKind : size_t {
+    ST_POSITION, ST_VELOCITY, ST_EFFORT, ST_VOLTAGE, ST_TEMPERATURE, ST_CURRENT, ST_IS_MOVING,
+    STATE_KIND_COUNT
+  };
+  enum CmdKind : size_t {
+    CMD_POSITION, CMD_VELOCITY, CMD_ACCELERATION, CMD_EFFORT,
+    CMD_KIND_COUNT
+  };
+  static constexpr std::array<const char *, STATE_KIND_COUNT> kStateNames = {
+    "position", "velocity", "effort", "voltage", "temperature", "current", "is_moving"};
+  static constexpr std::array<const char *, CMD_KIND_COUNT> kCommandNames = {
+    "position", "velocity", "acceleration", "effort"};
 
-  // ===== PER-JOINT COMMAND INTERFACES (indexed by joint) =====
-  std::vector<double> hw_cmd_position_;      // Mode 0
-  std::vector<double> hw_cmd_velocity_;      // Mode 0, 1
-  std::vector<double> hw_cmd_acceleration_;  // Mode 0, 1
-  std::vector<double> hw_cmd_effort_;        // Mode 2
+  std::array<std::vector<hardware_interface::StateInterface::SharedPtr>, STATE_KIND_COUNT>
+  state_handles_;
+  std::array<std::vector<hardware_interface::CommandInterface::SharedPtr>, CMD_KIND_COUNT>
+  cmd_handles_;
+  bool handles_bound_ = false;  // initial values are written on the first bind only
+
+  /** @brief Fetch the framework-owned handles (call in on_configure, after interfaces are exported) */
+  void bind_handles();
+  /** @brief Value of a command that is undeclared or not yet written */
+  double cmd_default(CmdKind kind, size_t i) const;
+  double state_val(StateKind kind, size_t i) const;
+  void put_state(StateKind kind, size_t i, double value);
+  double cmd_val(CmdKind kind, size_t i) const;
+  void put_cmd(CmdKind kind, size_t i, double value);
 
   // ===== BROADCAST EMERGENCY STOP =====
   double hw_cmd_emergency_stop_;  // Stops ALL motors when > 0.5

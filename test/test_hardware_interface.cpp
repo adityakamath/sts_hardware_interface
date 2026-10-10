@@ -33,6 +33,18 @@ using hardware_interface::return_type;
 
 // ---- Helpers ----
 
+/// Framework entry point: init() calls on_init() and prepares the URDF-declared interface handles.
+static CallbackReturn init_hw(
+  sts_hardware_interface::STSHardwareInterface & hw, const hardware_interface::HardwareInfo & info)
+{
+  hardware_interface::HardwareComponentParams params;
+  params.hardware_info = info;
+  // The URDF parser fills in the component types; the framework needs them to create handles.
+  params.hardware_info.type = "system";
+  for (auto & joint : params.hardware_info.joints) {joint.type = "joint";}
+  return hw.init(params);
+}
+
 /// Build a minimal valid HardwareInfo for a single velocity-mode motor.
 hardware_interface::HardwareInfo make_valid_single_motor_info(
   const std::string & serial_port = "/dev/ttyACM0",
@@ -255,15 +267,15 @@ TEST(HardwareInterfaceInitTest, ValidOperatingModes) {
   // All three supported operating modes initialise successfully
   {
     sts_hardware_interface::STSHardwareInterface hw;
-    EXPECT_EQ(hw.on_init(make_valid_single_motor_info()), CallbackReturn::SUCCESS);
+    EXPECT_EQ(init_hw(hw, make_valid_single_motor_info()), CallbackReturn::SUCCESS);
   }
   {
     sts_hardware_interface::STSHardwareInterface hw;
-    EXPECT_EQ(hw.on_init(make_valid_position_motor_info()), CallbackReturn::SUCCESS);
+    EXPECT_EQ(init_hw(hw, make_valid_position_motor_info()), CallbackReturn::SUCCESS);
   }
   {
     sts_hardware_interface::STSHardwareInterface hw;
-    EXPECT_EQ(hw.on_init(make_valid_effort_motor_info()), CallbackReturn::SUCCESS);
+    EXPECT_EQ(init_hw(hw, make_valid_effort_motor_info()), CallbackReturn::SUCCESS);
   }
 }
 
@@ -273,7 +285,7 @@ TEST(HardwareInterfaceInitTest, MissingSerialPortReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.hardware_parameters.erase("serial_port");
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ---- on_init: baud_rate validation ----
@@ -283,7 +295,7 @@ TEST(HardwareInterfaceInitTest, ValidBaudRates) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.hardware_parameters["baud_rate"] = baud;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "Baud rate " << baud << " should be valid";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "Baud rate " << baud << " should be valid";
   }
 }
 
@@ -291,7 +303,7 @@ TEST(HardwareInterfaceInitTest, InvalidBaudRateReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.hardware_parameters["baud_rate"] = "999999";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ---- on_init: no joints ----
@@ -302,7 +314,7 @@ TEST(HardwareInterfaceInitTest, NoJointsReturnsError) {
   info.hardware_parameters["serial_port"] = "/dev/ttyACM0";
   info.hardware_parameters["enable_mock_mode"] = "true";
   // No joints added
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ---- on_init: motor_id validation ----
@@ -312,7 +324,7 @@ TEST(HardwareInterfaceInitTest, InvalidMotorIdBoundariesReturnError) {
   for (const char * id : {"0", "254"}) {
     sts_hardware_interface::STSHardwareInterface hw;
     EXPECT_EQ(
-      hw.on_init(make_valid_single_motor_info("/dev/ttyACM0", id)),
+      init_hw(hw, make_valid_single_motor_info("/dev/ttyACM0", id)),
       CallbackReturn::ERROR) << "Motor ID " << id << " should be invalid";
   }
 }
@@ -321,7 +333,7 @@ TEST(HardwareInterfaceInitTest, ValidMotorIdBoundaries) {
   for (const auto & id : {"1", "127", "253"}) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info("/dev/ttyACM0", id);
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "Motor ID " << id << " should be valid";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "Motor ID " << id << " should be valid";
   }
 }
 
@@ -342,7 +354,7 @@ TEST(HardwareInterfaceInitTest, DuplicateMotorIdsReturnError) {
     joint.command_interfaces.push_back(a);
     info.joints.push_back(joint);
   }
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ---- on_init: operating_mode validation ----
@@ -350,7 +362,7 @@ TEST(HardwareInterfaceInitTest, DuplicateMotorIdsReturnError) {
 TEST(HardwareInterfaceInitTest, InvalidOperatingModeReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info("/dev/ttyACM0", "1", "99");
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ---- on_init: optional parameter validation ----
@@ -359,14 +371,14 @@ TEST(HardwareInterfaceInitTest, InvalidCommunicationTimeoutReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.hardware_parameters["communication_timeout_ms"] = "0";  // must be 1–1000
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, InvalidMaxVelocityStepsReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.joints[0].parameters["max_velocity_steps"] = "0";  // must be > 0
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, MinPositionGreaterThanMaxPositionReturnsError) {
@@ -374,28 +386,28 @@ TEST(HardwareInterfaceInitTest, MinPositionGreaterThanMaxPositionReturnsError) {
   auto info = make_valid_single_motor_info();
   info.joints[0].parameters["min_position"] = "5.0";
   info.joints[0].parameters["max_position"] = "1.0";  // min > max
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, InvalidMaxVelocityReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.joints[0].parameters["max_velocity"] = "0.0";  // must be > 0
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, InvalidMaxEffortReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_effort_motor_info();
   info.joints[0].parameters["max_effort"] = "1.5";  // must be in (0, 1]
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, ZeroMaxEffortReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_effort_motor_info();
   info.joints[0].parameters["max_effort"] = "0.0";  // must be > 0
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ---- on_init: position_center_steps validation ----
@@ -405,19 +417,19 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsValidValues) {
   sts_hardware_interface::STSHardwareInterface hw1;
   auto info1 = make_valid_position_motor_info();
   info1.joints[0].parameters["position_center_steps"] = "2048";
-  EXPECT_EQ(hw1.on_init(info1), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw1, info1), CallbackReturn::SUCCESS);
 
   // boundary: 0 succeeds
   sts_hardware_interface::STSHardwareInterface hw2;
   auto info2 = make_valid_position_motor_info();
   info2.joints[0].parameters["position_center_steps"] = "0";
-  EXPECT_EQ(hw2.on_init(info2), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw2, info2), CallbackReturn::SUCCESS);
 
   // boundary: 4095 succeeds
   sts_hardware_interface::STSHardwareInterface hw3;
   auto info3 = make_valid_position_motor_info();
   info3.joints[0].parameters["position_center_steps"] = "4095";
-  EXPECT_EQ(hw3.on_init(info3), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw3, info3), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, PositionCenterStepsInvalidValues) {
@@ -425,19 +437,19 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsInvalidValues) {
   sts_hardware_interface::STSHardwareInterface hw1;
   auto info1 = make_valid_position_motor_info();
   info1.joints[0].parameters["position_center_steps"] = "5000";
-  EXPECT_EQ(hw1.on_init(info1), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw1, info1), CallbackReturn::ERROR);
 
   // negative value
   sts_hardware_interface::STSHardwareInterface hw2;
   auto info2 = make_valid_position_motor_info();
   info2.joints[0].parameters["position_center_steps"] = "-1";
-  EXPECT_EQ(hw2.on_init(info2), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw2, info2), CallbackReturn::ERROR);
 
   // non-numeric string
   sts_hardware_interface::STSHardwareInterface hw3;
   auto info3 = make_valid_position_motor_info();
   info3.joints[0].parameters["position_center_steps"] = "abc";
-  EXPECT_EQ(hw3.on_init(info3), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw3, info3), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, PositionCenterStepsIgnoredInNonServoModes) {
@@ -445,49 +457,49 @@ TEST(HardwareInterfaceInitTest, PositionCenterStepsIgnoredInNonServoModes) {
   sts_hardware_interface::STSHardwareInterface hw1;
   auto info1 = make_valid_single_motor_info("/dev/ttyACM0", "1", "1");
   info1.joints[0].parameters["position_center_steps"] = "2048";
-  EXPECT_EQ(hw1.on_init(info1), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw1, info1), CallbackReturn::SUCCESS);
 
   // PWM mode (2): succeeds with warning
   sts_hardware_interface::STSHardwareInterface hw2;
   auto info2 = make_valid_effort_motor_info();
   info2.joints[0].parameters["position_center_steps"] = "2048";
-  EXPECT_EQ(hw2.on_init(info2), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw2, info2), CallbackReturn::SUCCESS);
 }
 
-// ---- export_state_interfaces ----
+// ---- on_export_state_interfaces ----
 
 TEST(HardwareInterfaceExportTest, StateInterfaces) {
   // Each joint always exports exactly 7 state interfaces with the correct names
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto state_ifaces = hw.export_state_interfaces();
+  auto state_ifaces = hw.on_export_state_interfaces();
   EXPECT_EQ(state_ifaces.size(), 7u);
 
   std::vector<std::string> names;
   for (const auto & iface : state_ifaces) {
-    names.push_back(iface.get_interface_name());
+    names.push_back(iface->get_interface_name());
   }
   for (const auto & expected : {"position", "velocity", "effort", "voltage", "temperature", "current", "is_moving"}) {
     EXPECT_NE(std::find(names.begin(), names.end(), expected), names.end()) << "Missing: " << expected;
   }
 }
 
-// ---- export_command_interfaces ----
+// ---- on_export_command_interfaces ----
 
 TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityMode) {
   // Mode 1: velocity + acceleration = 2 command interfaces with correct names
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto cmd_ifaces = hw.export_command_interfaces();
+  auto cmd_ifaces = hw.on_export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 2u);
 
   std::vector<std::string> names;
   for (const auto & iface : cmd_ifaces) {
-    names.push_back(iface.get_interface_name());
+    names.push_back(iface->get_interface_name());
   }
   EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
   EXPECT_NE(std::find(names.begin(), names.end(), "acceleration"), names.end());
@@ -495,12 +507,12 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityMode) {
 
 /// Read the current value of a named command interface of an initialised hardware interface.
 static double get_cmd_value(
-  std::vector<hardware_interface::CommandInterface> & ifaces, const std::string & name)
+  std::vector<hardware_interface::CommandInterface::SharedPtr> & ifaces, const std::string & name)
 {
   for (auto & iface : ifaces) {
-    if (iface.get_interface_name() == name) {
+    if (iface->get_interface_name() == name) {
       double v = -1.0;
-      (void)iface.get_value(v, true);
+      (void)iface->get_value(v, true);
       return v;
     }
   }
@@ -512,8 +524,11 @@ TEST(HardwareInterfaceExportTest, ServoAccelerationDefaultsToNonZero) {
   // Position-mode joints must not start at ACC=0: the servo then ignores the commanded Speed.
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_servo_info_with_vel_acc();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-  auto cmd_ifaces = hw.export_command_interfaces();
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
+  auto cmd_ifaces = hw.on_export_command_interfaces();
+  ASSERT_EQ(hw.on_configure(rclcpp_lifecycle::State(
+      lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured")),
+    CallbackReturn::SUCCESS);
   EXPECT_NEAR(get_cmd_value(cmd_ifaces, "acceleration"), 100.0, 1e-9);
 }
 
@@ -521,8 +536,11 @@ TEST(HardwareInterfaceExportTest, VelocityAccelerationDefaultsToZero) {
   // Wheel joints keep ACC=0; their proportional-ACC scaling relies on it during steady cruise.
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-  auto cmd_ifaces = hw.export_command_interfaces();
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
+  auto cmd_ifaces = hw.on_export_command_interfaces();
+  ASSERT_EQ(hw.on_configure(rclcpp_lifecycle::State(
+      lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured")),
+    CallbackReturn::SUCCESS);
   EXPECT_NEAR(get_cmd_value(cmd_ifaces, "acceleration"), 0.0, 1e-9);
 }
 
@@ -530,9 +548,9 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesPositionMode) {
   // Mode 0 with position-only URDF (make_valid_position_motor_info) → 1 command interface
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_position_motor_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto cmd_ifaces = hw.export_command_interfaces();
+  auto cmd_ifaces = hw.on_export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 1u);
 }
 
@@ -540,9 +558,9 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesEffortMode) {
   // Mode 2: effort = 1 command interface
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_effort_motor_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto cmd_ifaces = hw.export_command_interfaces();
+  auto cmd_ifaces = hw.on_export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 1u);
 }
 
@@ -553,7 +571,7 @@ protected:
   void SetUp() override {
     hw_ = std::make_unique<sts_hardware_interface::STSHardwareInterface>();
     info_ = make_valid_single_motor_info();
-    ASSERT_EQ(hw_->on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(init_hw(*hw_, info_), CallbackReturn::SUCCESS);
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
@@ -608,11 +626,11 @@ protected:
   void SetUp() override {
     hw_ = std::make_unique<sts_hardware_interface::STSHardwareInterface>();
     info_ = make_info();
-    ASSERT_EQ(hw_->on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(init_hw(*hw_, info_), CallbackReturn::SUCCESS);
 
     // Export interfaces BEFORE configure (they point into hw_'s internal storage)
-    state_ifaces_ = hw_->export_state_interfaces();
-    cmd_ifaces_ = hw_->export_command_interfaces();
+    state_ifaces_ = hw_->on_export_state_interfaces();
+    cmd_ifaces_ = hw_->on_export_command_interfaces();
 
     rclcpp_lifecycle::State unconfigured(
       lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
@@ -638,23 +656,23 @@ protected:
   // Find a command interface by interface name
   hardware_interface::CommandInterface * find_cmd(const std::string & name) {
     for (auto & iface : cmd_ifaces_) {
-      if (iface.get_interface_name() == name) return &iface;
+      if (iface->get_interface_name() == name) return iface.get();
     }
     return nullptr;
   }
 
   // Find a state interface by interface name
-  hardware_interface::StateInterface * find_state(const std::string & name) {
+  const hardware_interface::StateInterface * find_state(const std::string & name) {
     for (auto & iface : state_ifaces_) {
-      if (iface.get_interface_name() == name) return &iface;
+      if (iface->get_interface_name() == name) return iface.get();
     }
     return nullptr;
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
   hardware_interface::HardwareInfo info_;
-  std::vector<hardware_interface::StateInterface> state_ifaces_;
-  std::vector<hardware_interface::CommandInterface> cmd_ifaces_;
+  std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
+  std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
 
 TEST_F(HardwareInterfaceMockTest, ReadSucceeds) {
@@ -742,7 +760,7 @@ TEST_F(HardwareInterfaceLifecycleTest, ShutdownSucceedsInAnyState) {
   // After configure
   {
     sts_hardware_interface::STSHardwareInterface hw;
-    ASSERT_EQ(hw.on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(init_hw(hw, info_), CallbackReturn::SUCCESS);
     ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
     EXPECT_EQ(hw.on_shutdown(inactive), CallbackReturn::SUCCESS);
   }
@@ -750,7 +768,7 @@ TEST_F(HardwareInterfaceLifecycleTest, ShutdownSucceedsInAnyState) {
   // After activate
   {
     sts_hardware_interface::STSHardwareInterface hw;
-    ASSERT_EQ(hw.on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(init_hw(hw, info_), CallbackReturn::SUCCESS);
     ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
     ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
     EXPECT_EQ(hw.on_shutdown(active), CallbackReturn::SUCCESS);
@@ -775,7 +793,7 @@ TEST_F(HardwareInterfaceLifecycleTest, OnErrorSucceedsRegardlessOfState) {
   // After activate
   {
     sts_hardware_interface::STSHardwareInterface hw;
-    ASSERT_EQ(hw.on_init(info_), CallbackReturn::SUCCESS);
+    ASSERT_EQ(init_hw(hw, info_), CallbackReturn::SUCCESS);
     ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
     ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
     EXPECT_EQ(hw.on_error(active), CallbackReturn::SUCCESS);
@@ -1070,15 +1088,15 @@ protected:
   {
     hw_ = std::make_unique<sts_hardware_interface::STSHardwareInterface>();
     info_ = make_two_motor_info();
-    ASSERT_EQ(hw_->on_init(info_), CallbackReturn::SUCCESS);
-    state_ifaces_ = hw_->export_state_interfaces();
-    cmd_ifaces_ = hw_->export_command_interfaces();
+    ASSERT_EQ(init_hw(*hw_, info_), CallbackReturn::SUCCESS);
+    state_ifaces_ = hw_->on_export_state_interfaces();
+    cmd_ifaces_ = hw_->on_export_command_interfaces();
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
   hardware_interface::HardwareInfo info_;
-  std::vector<hardware_interface::StateInterface> state_ifaces_;
-  std::vector<hardware_interface::CommandInterface> cmd_ifaces_;
+  std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
+  std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
 
 TEST_F(HardwareInterfaceMultiJointTest, AllInterfacesPresent) {
@@ -1095,7 +1113,7 @@ TEST_F(HardwareInterfaceMultiJointTest, AllInterfacesPresent) {
     for (const auto & iface_type : expected_types) {
       bool found = false;
       for (const auto & si : state_ifaces_) {
-        if (si.get_prefix_name() == joint_name && si.get_interface_name() == iface_type) {
+        if (si->get_prefix_name() == joint_name && si->get_interface_name() == iface_type) {
           found = true;
           break;
         }
@@ -1156,7 +1174,7 @@ TEST(HardwareInterfaceInitTest, MissingMotorIdReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.joints[0].parameters.erase("motor_id");
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, InvalidHardwareParameterStringReturnsError) {
@@ -1164,7 +1182,7 @@ TEST(HardwareInterfaceInitTest, InvalidHardwareParameterStringReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.hardware_parameters["baud_rate"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, InvalidJointParameterStringReturnsError) {
@@ -1172,7 +1190,7 @@ TEST(HardwareInterfaceInitTest, InvalidJointParameterStringReturnsError) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.joints[0].parameters["min_position"] = "not_a_number";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 TEST(HardwareInterfaceInitTest, ValidMaxVelocitySetsLimitSucceeds) {
@@ -1180,7 +1198,7 @@ TEST(HardwareInterfaceInitTest, ValidMaxVelocitySetsLimitSucceeds) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.joints[0].parameters["max_velocity"] = "5.0";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, ValidMaxEffortSetsLimitSucceeds) {
@@ -1188,7 +1206,7 @@ TEST(HardwareInterfaceInitTest, ValidMaxEffortSetsLimitSucceeds) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_effort_motor_info();
   info.joints[0].parameters["max_effort"] = "0.5";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, DefaultOperatingModeUsesVelocityMode) {
@@ -1209,7 +1227,7 @@ TEST(HardwareInterfaceInitTest, DefaultOperatingModeUsesVelocityMode) {
   joint.command_interfaces.push_back(a);
   info.joints.push_back(joint);
 
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 // ============================================================
@@ -1221,7 +1239,7 @@ TEST(HardwareInterfaceActivateResetTest, ActivateWithResetDisabledSucceeds) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.hardware_parameters["reset_states_on_activate"] = "false";
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
   rclcpp_lifecycle::State unconfigured(
     lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
@@ -1250,8 +1268,9 @@ double position_command_after_reactivate(
   if (!hold_param.empty()) {
     info.hardware_parameters["hold_position_on_activate"] = hold_param;
   }
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-  auto cmd_ifaces = hw.export_command_interfaces();
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
+  auto state_ifaces = hw.on_export_state_interfaces();  // the framework always exports both
+  auto cmd_ifaces = hw.on_export_command_interfaces();
 
   rclcpp_lifecycle::State unconfigured(
     lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
@@ -1262,7 +1281,7 @@ double position_command_after_reactivate(
 
   hardware_interface::CommandInterface * pos_cmd = nullptr;
   for (auto & iface : cmd_ifaces) {
-    if (iface.get_interface_name() == "position") {pos_cmd = &iface;}
+    if (iface->get_interface_name() == "position") {pos_cmd = iface.get();}
   }
   EXPECT_NE(pos_cmd, nullptr);
   if (pos_cmd == nullptr) {return -1.0;}
@@ -1311,8 +1330,8 @@ TEST(HardwareInterfaceHoldPositionTest, VelocityJointCommandIsNotAffected) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
   info.hardware_parameters["hold_position_on_activate"] = "true";
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
-  auto cmd_ifaces = hw.export_command_interfaces();
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
+  auto cmd_ifaces = hw.on_export_command_interfaces();
 
   rclcpp_lifecycle::State unconfigured(
     lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
@@ -1322,15 +1341,15 @@ TEST(HardwareInterfaceHoldPositionTest, VelocityJointCommandIsNotAffected) {
   ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
 
   for (auto & iface : cmd_ifaces) {
-    if (iface.get_interface_name() == "velocity") {
-      (void)iface.set_value(2.0);
+    if (iface->get_interface_name() == "velocity") {
+      (void)iface->set_value(2.0);
     }
   }
   ASSERT_EQ(hw.on_activate(inactive), CallbackReturn::SUCCESS);
   for (auto & iface : cmd_ifaces) {
-    if (iface.get_interface_name() == "velocity") {
+    if (iface->get_interface_name() == "velocity") {
       double v = 0.0;
-      (void)iface.get_value(v, true);
+      (void)iface->get_value(v, true);
       EXPECT_NEAR(v, 2.0, 1e-9);
     }
   }
@@ -1347,9 +1366,9 @@ protected:
   {
     hw_ = std::make_unique<sts_hardware_interface::STSHardwareInterface>();
     info_ = make_valid_effort_motor_info();
-    ASSERT_EQ(hw_->on_init(info_), CallbackReturn::SUCCESS);
-    state_ifaces_ = hw_->export_state_interfaces();
-    cmd_ifaces_ = hw_->export_command_interfaces();
+    ASSERT_EQ(init_hw(*hw_, info_), CallbackReturn::SUCCESS);
+    state_ifaces_ = hw_->on_export_state_interfaces();
+    cmd_ifaces_ = hw_->on_export_command_interfaces();
 
     rclcpp_lifecycle::State unconfigured(
       lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
@@ -1372,23 +1391,23 @@ protected:
   hardware_interface::CommandInterface * find_cmd(const std::string & name)
   {
     for (auto & iface : cmd_ifaces_) {
-      if (iface.get_interface_name() == name) { return &iface; }
+      if (iface->get_interface_name() == name) { return iface.get(); }
     }
     return nullptr;
   }
 
-  hardware_interface::StateInterface * find_state(const std::string & name)
+  const hardware_interface::StateInterface * find_state(const std::string & name)
   {
     for (auto & iface : state_ifaces_) {
-      if (iface.get_interface_name() == name) { return &iface; }
+      if (iface->get_interface_name() == name) { return iface.get(); }
     }
     return nullptr;
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
   hardware_interface::HardwareInfo info_;
-  std::vector<hardware_interface::StateInterface> state_ifaces_;
-  std::vector<hardware_interface::CommandInterface> cmd_ifaces_;
+  std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
+  std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
 
 TEST_F(HardwareInterfacePwmMockTest, PwmEffortCommandDrivesPositionChange) {
@@ -1441,9 +1460,9 @@ protected:
   {
     hw_ = std::make_unique<sts_hardware_interface::STSHardwareInterface>();
     info_ = make_servo_info_with_velocity();  // position + velocity for mock stepping tests
-    ASSERT_EQ(hw_->on_init(info_), CallbackReturn::SUCCESS);
-    state_ifaces_ = hw_->export_state_interfaces();
-    cmd_ifaces_ = hw_->export_command_interfaces();
+    ASSERT_EQ(init_hw(*hw_, info_), CallbackReturn::SUCCESS);
+    state_ifaces_ = hw_->on_export_state_interfaces();
+    cmd_ifaces_ = hw_->on_export_command_interfaces();
 
     rclcpp_lifecycle::State unconfigured(
       lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
@@ -1466,23 +1485,23 @@ protected:
   hardware_interface::CommandInterface * find_cmd(const std::string & name)
   {
     for (auto & iface : cmd_ifaces_) {
-      if (iface.get_interface_name() == name) { return &iface; }
+      if (iface->get_interface_name() == name) { return iface.get(); }
     }
     return nullptr;
   }
 
-  hardware_interface::StateInterface * find_state(const std::string & name)
+  const hardware_interface::StateInterface * find_state(const std::string & name)
   {
     for (auto & iface : state_ifaces_) {
-      if (iface.get_interface_name() == name) { return &iface; }
+      if (iface->get_interface_name() == name) { return iface.get(); }
     }
     return nullptr;
   }
 
   std::unique_ptr<sts_hardware_interface::STSHardwareInterface> hw_;
   hardware_interface::HardwareInfo info_;
-  std::vector<hardware_interface::StateInterface> state_ifaces_;
-  std::vector<hardware_interface::CommandInterface> cmd_ifaces_;
+  std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_ifaces_;
+  std::vector<hardware_interface::CommandInterface::SharedPtr> cmd_ifaces_;
 };
 
 TEST_F(HardwareInterfaceServoMockTest, PositionStepsWhenTargetFarAndSpeedSmall) {
@@ -1603,14 +1622,14 @@ TEST(HardwareInterfaceInitTest, ServoModeWithPositionAndVelocity) {
   // position + velocity → SUCCESS (velocity is optional in MODE_SERVO)
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_servo_info_with_velocity();
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, ServoModeWithAllInterfaces) {
   // position + velocity + acceleration → SUCCESS (both extras are optional)
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_servo_info_with_vel_acc();
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, ServoModeWithoutPositionReturnsError) {
@@ -1631,7 +1650,7 @@ TEST(HardwareInterfaceInitTest, ServoModeWithoutPositionReturnsError) {
   joint.command_interfaces.push_back(vel_iface);
 
   info.joints.push_back(joint);
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ============================================================
@@ -1643,7 +1662,7 @@ TEST(HardwareInterfaceInitTest, VelocityModeWithVelocityOnly) {
   // velocity only (no acceleration) → SUCCESS
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_velocity_info_no_acc();
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, VelocityModeWithoutVelocityReturnsError) {
@@ -1664,7 +1683,7 @@ TEST(HardwareInterfaceInitTest, VelocityModeWithoutVelocityReturnsError) {
   joint.command_interfaces.push_back(acc_iface);
 
   info.joints.push_back(joint);
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
 // ============================================================
@@ -1677,7 +1696,7 @@ TEST(HardwareInterfaceInitTest, InvalidProportionalAccDeadbandReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.hardware_parameters["proportional_acc_deadband"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -1687,7 +1706,7 @@ TEST(HardwareInterfaceInitTest, ValidProportionalAccDeadbandSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.hardware_parameters["proportional_acc_deadband"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -1701,7 +1720,7 @@ TEST(HardwareInterfaceInitTest, InvalidProportionalVelDeadbandReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.hardware_parameters["proportional_vel_deadband"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -1711,7 +1730,7 @@ TEST(HardwareInterfaceInitTest, ValidProportionalVelDeadbandSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.hardware_parameters["proportional_vel_deadband"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -1726,7 +1745,7 @@ TEST(HardwareInterfaceInitTest, InvalidProportionalVelMaxReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_position_motor_info();
     info.hardware_parameters["proportional_vel_max"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -1735,7 +1754,7 @@ TEST(HardwareInterfaceInitTest, ProportionalVelMaxZeroSucceeds) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_position_motor_info();
   info.hardware_parameters["proportional_vel_max"] = "0";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, ProportionalVelMaxWithSingleServoJointWarnsButSucceeds) {
@@ -1744,7 +1763,7 @@ TEST(HardwareInterfaceInitTest, ProportionalVelMaxWithSingleServoJointWarnsButSu
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_position_motor_info();
   info.hardware_parameters["proportional_vel_max"] = "500";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 // ============================================================
@@ -1755,14 +1774,14 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesServoModeWithVelocityAndAcc) 
   // Mode 0 with position + velocity + acceleration in URDF → exports 3 command interfaces
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_servo_info_with_vel_acc();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto cmd_ifaces = hw.export_command_interfaces();
+  auto cmd_ifaces = hw.on_export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 3u);
 
   std::vector<std::string> names;
   for (const auto & iface : cmd_ifaces) {
-    names.push_back(iface.get_interface_name());
+    names.push_back(iface->get_interface_name());
   }
   EXPECT_NE(std::find(names.begin(), names.end(), "position"), names.end());
   EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
@@ -1773,14 +1792,14 @@ TEST(HardwareInterfaceExportTest, CommandInterfacesVelocityModeWithoutAccelerati
   // Mode 1 with velocity-only URDF → exports 1 command interface (velocity only)
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_velocity_info_no_acc();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto cmd_ifaces = hw.export_command_interfaces();
+  auto cmd_ifaces = hw.on_export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 1u);
 
   std::vector<std::string> names;
   for (const auto & iface : cmd_ifaces) {
-    names.push_back(iface.get_interface_name());
+    names.push_back(iface->get_interface_name());
   }
   EXPECT_NE(std::find(names.begin(), names.end(), "velocity"), names.end());
   EXPECT_EQ(std::find(names.begin(), names.end(), "acceleration"), names.end());
@@ -1795,15 +1814,15 @@ TEST(HardwareInterfaceReadonlyTest, ReadonlyJointOnInitSucceeds) {
   // rather than rejected for missing required interfaces.
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_readonly_joint_info();
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceReadonlyTest, ReadonlyJointExportsNoCommandInterfaces) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_readonly_joint_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto cmd_ifaces = hw.export_command_interfaces();
+  auto cmd_ifaces = hw.on_export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 0u);
 }
 
@@ -1811,9 +1830,9 @@ TEST(HardwareInterfaceReadonlyTest, ReadonlyJointStillExportsStateInterfaces) {
   // State is still read every cycle for readonly joints — only writes are skipped.
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_readonly_joint_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto state_ifaces = hw.export_state_interfaces();
+  auto state_ifaces = hw.on_export_state_interfaces();
   EXPECT_GT(state_ifaces.size(), 0u);
 }
 
@@ -1822,17 +1841,17 @@ TEST(HardwareInterfaceReadonlyTest, MixedReadonlyAndWritableJointsExportCorrectl
   // only from the writable joint, state interfaces come from both.
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_mixed_readonly_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
-  auto cmd_ifaces = hw.export_command_interfaces();
+  auto cmd_ifaces = hw.on_export_command_interfaces();
   EXPECT_EQ(cmd_ifaces.size(), 1u);
-  EXPECT_EQ(cmd_ifaces[0].get_prefix_name(), "wheel_joint");
+  EXPECT_EQ(cmd_ifaces[0]->get_prefix_name(), "wheel_joint");
 }
 
 TEST_F(HardwareInterfaceLifecycleTest, ReadonlyJointFullLifecycleSucceeds) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_readonly_joint_info();
-  ASSERT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 
   rclcpp_lifecycle::State unconfigured(
     lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
@@ -1864,7 +1883,7 @@ TEST(HardwareInterfaceInitTest, InvalidPidCoefficientReturnsError) {
       sts_hardware_interface::STSHardwareInterface hw;
       auto info = make_valid_position_motor_info();  // mode 0: all three apply
       info.joints[0].parameters[param] = val;
-      EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR)
+      EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR)
         << param << "=\"" << val << "\" should fail";
     }
   }
@@ -1876,7 +1895,7 @@ TEST(HardwareInterfaceInitTest, ValidPidCoefficientSucceeds) {
       sts_hardware_interface::STSHardwareInterface hw;
       auto info = make_valid_position_motor_info();
       info.joints[0].parameters[param] = val;
-      EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS)
+      EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS)
         << param << "=\"" << val << "\" should succeed";
     }
   }
@@ -1888,7 +1907,7 @@ TEST(HardwareInterfaceInitTest, DCoefficientInVelocityModeIsIgnoredNotRejected) 
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();  // mode 1
   info.joints[0].parameters["d_coefficient"] = "100";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 TEST(HardwareInterfaceInitTest, PidCoefficientsInPwmModeAreIgnoredNotRejected) {
@@ -1899,7 +1918,7 @@ TEST(HardwareInterfaceInitTest, PidCoefficientsInPwmModeAreIgnoredNotRejected) {
   info.joints[0].parameters["p_coefficient"] = "999";
   info.joints[0].parameters["d_coefficient"] = "999";
   info.joints[0].parameters["i_coefficient"] = "999";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 // ============================================================
@@ -1913,7 +1932,7 @@ TEST(HardwareInterfaceInitTest, InvalidProtectionCurrentReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["protection_current"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -1922,7 +1941,7 @@ TEST(HardwareInterfaceInitTest, ValidProtectionCurrentSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["protection_current"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -1931,7 +1950,7 @@ TEST(HardwareInterfaceInitTest, InvalidOverloadTorqueReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["overload_torque"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -1940,7 +1959,7 @@ TEST(HardwareInterfaceInitTest, ValidOverloadTorqueSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["overload_torque"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -1949,7 +1968,7 @@ TEST(HardwareInterfaceInitTest, InvalidReturnDelayReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["return_delay"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -1958,7 +1977,7 @@ TEST(HardwareInterfaceInitTest, ValidReturnDelaySucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["return_delay"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -1974,7 +1993,7 @@ TEST(HardwareInterfaceInitTest, InvalidInternalMaxVelReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_max_vel"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -1983,7 +2002,7 @@ TEST(HardwareInterfaceInitTest, ValidInternalMaxVelSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_max_vel"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -1992,7 +2011,7 @@ TEST(HardwareInterfaceInitTest, InvalidInternalMaxAccReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_max_acc"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -2001,7 +2020,7 @@ TEST(HardwareInterfaceInitTest, ValidInternalMaxAccSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_max_acc"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -2010,7 +2029,7 @@ TEST(HardwareInterfaceInitTest, InvalidInternalAccCoeffReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_acc_coeff"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -2019,7 +2038,7 @@ TEST(HardwareInterfaceInitTest, ValidInternalAccCoeffSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_acc_coeff"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -2028,7 +2047,7 @@ TEST(HardwareInterfaceInitTest, InvalidInternalControlPeriodReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_control_period"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -2037,7 +2056,7 @@ TEST(HardwareInterfaceInitTest, ValidInternalControlPeriodSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_single_motor_info();
     info.joints[0].parameters["internal_control_period"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -2052,7 +2071,7 @@ TEST(HardwareInterfaceInitTest, InvalidDeadbandReturnsError) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_position_motor_info();  // mode 0
     info.joints[0].parameters["deadband"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR) << "value=\"" << val << "\" should fail";
   }
 }
 
@@ -2061,7 +2080,7 @@ TEST(HardwareInterfaceInitTest, ValidDeadbandSucceeds) {
     sts_hardware_interface::STSHardwareInterface hw;
     auto info = make_valid_position_motor_info();  // mode 0
     info.joints[0].parameters["deadband"] = val;
-    EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
+    EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS) << "value=\"" << val << "\" should succeed";
   }
 }
 
@@ -2071,7 +2090,7 @@ TEST(HardwareInterfaceInitTest, DeadbandOutsideModeZeroIsIgnoredNotRejected) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();  // mode 1
   info.joints[0].parameters["deadband"] = "999";
-  EXPECT_EQ(hw.on_init(info), CallbackReturn::SUCCESS);
+  EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
 // ============================================================

@@ -29,10 +29,14 @@ namespace {
 
 /** @brief Parse URDF parameters and validate configuration */
 hardware_interface::CallbackReturn STSHardwareInterface::on_init(
-  const hardware_interface::HardwareInfo & hardware_info)
+  const hardware_interface::HardwareComponentInterfaceParams & params)
 {
-  // Store hardware info
-  info_ = hardware_info;
+  // Base class stores info_ and prepares the framework-owned interface handles
+  if (hardware_interface::SystemInterface::on_init(params) !=
+    hardware_interface::CallbackReturn::SUCCESS)
+  {
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   // Initialize logger
   logger_ = rclcpp::get_logger("STSHardwareInterface");
@@ -202,18 +206,9 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   motor_ids_.resize(num_joints);
   operating_modes_.resize(num_joints, MODE_VELOCITY);  // Default to velocity mode
 
-  hw_state_position_.resize(num_joints, 0.0);
-  hw_state_velocity_.resize(num_joints, 0.0);
-  hw_state_effort_.resize(num_joints, 0.0);
-  hw_state_voltage_.resize(num_joints, 0.0);
-  hw_state_temperature_.resize(num_joints, 0.0);
-  hw_state_current_.resize(num_joints, 0.0);
-  hw_state_is_moving_.resize(num_joints, 0.0);
-
-  hw_cmd_position_.resize(num_joints, 0.0);
-  hw_cmd_velocity_.resize(num_joints, 0.0);
-  hw_cmd_acceleration_.resize(num_joints, 0.0);
-  hw_cmd_effort_.resize(num_joints, 0.0);
+  for (auto & handles : state_handles_) handles.assign(num_joints, nullptr);
+  for (auto & handles : cmd_handles_) handles.assign(num_joints, nullptr);
+  handles_bound_ = false;
 
   // Initialize broadcast emergency stop
   hw_cmd_emergency_stop_ = 0.0;
@@ -538,11 +533,6 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
       case MODE_SERVO:
         servo_motor_indices_.push_back(i);
         servo_sync_ids_.push_back(static_cast<u8>(motor_ids_[i]));
-        // Position-mode joints have no "acceleration" command interface, so this never gets
-        // overwritten - without it, ACC stays 0 and the servo ignores whatever Speed we send
-        // (see DEFAULT_ACCELERATION for why). Velocity-mode (wheel) joints keep ACC=0 by
-        // default, which their proportional-ACC scaling relies on.
-        hw_cmd_acceleration_[i] = DEFAULT_ACCELERATION;
         break;
       case MODE_VELOCITY:
         velocity_motor_indices_.push_back(i);
@@ -622,6 +612,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(logger_, "Configuring STS hardware interface...");
+
+  bind_handles();
 
   // Create ROS 2 node for emergency stop service (both mock and real hardware)
   if (!node_) {
@@ -872,8 +864,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
     // Zero position and velocity for all joints (if enabled)
     if (reset_states_on_activate_) {
       for (size_t i = 0; i < motor_ids_.size(); ++i) {
-        hw_state_position_[i] = 0.0;
-        hw_state_velocity_[i] = 0.0;
+        put_state(ST_POSITION, i, 0.0);
+        put_state(ST_VELOCITY, i, 0.0);
       }
       RCLCPP_INFO(logger_, "Mock mode: Odometry initialized to zero (position and velocity)");
     } else {
@@ -884,7 +876,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
     if (hold_position_on_activate_) {
       for (size_t i = 0; i < motor_ids_.size(); ++i) {
         if (operating_modes_[i] == MODE_SERVO && !is_readonly_[i]) {
-          hw_cmd_position_[i] = hw_state_position_[i];
+          put_cmd(CMD_POSITION, i, state_val(ST_POSITION, i));
         }
       }
     }
@@ -909,8 +901,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
   // Zero position and velocity for all joints to initialize odometry (if enabled)
   if (reset_states_on_activate_) {
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      hw_state_position_[i] = 0.0;
-      hw_state_velocity_[i] = 0.0;
+      put_state(ST_POSITION, i, 0.0);
+      put_state(ST_VELOCITY, i, 0.0);
     }
     RCLCPP_INFO(logger_, "All motors activated and ready - odometry initialized to zero (position and velocity)");
   } else {
@@ -918,7 +910,7 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
   }
 
   // Independent of reset_states_on_activate: that flag decides what odometry reports, this one
-  // decides where the servos are told to go. Without it hw_cmd_position_ stays at its initial
+  // decides where the servos are told to go. Without it the position command stays at its initial
   // 0.0 and write() sends it as a target until a controller writes its own command.
   if (hold_position_on_activate_ && !seed_servo_commands_from_feedback()) {
     return hardware_interface::CallbackReturn::ERROR;
@@ -927,115 +919,96 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-/** @brief Export state interfaces for all joints */
-std::vector<hardware_interface::StateInterface>
-STSHardwareInterface::export_state_interfaces()
+/** @brief Describe the state interfaces not declared in the URDF (all 7 are always exported) */
+std::vector<hardware_interface::InterfaceDescription>
+STSHardwareInterface::export_unlisted_state_interface_descriptions()
 {
-  std::vector<hardware_interface::StateInterface> state_interfaces;
+  std::vector<hardware_interface::InterfaceDescription> descriptions;
 
-  for (size_t i = 0; i < joint_names_.size(); ++i) {
-    const std::string & joint_name = joint_names_[i];
-
-    // Export all state interfaces
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, hardware_interface::HW_IF_POSITION, &hw_state_position_[i]));
-
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, hardware_interface::HW_IF_VELOCITY, &hw_state_velocity_[i]));
-
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, hardware_interface::HW_IF_EFFORT, &hw_state_effort_[i]));
-
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "voltage", &hw_state_voltage_[i]));
-
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "temperature", &hw_state_temperature_[i]));
-
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "current", &hw_state_current_[i]));
-
-    state_interfaces.emplace_back(
-      hardware_interface::StateInterface(
-        joint_name, "is_moving", &hw_state_is_moving_[i]));
+  for (const auto & joint : info_.joints) {
+    for (const char * name : kStateNames) {
+      const bool declared = std::any_of(
+        joint.state_interfaces.begin(), joint.state_interfaces.end(),
+        [name](const hardware_interface::InterfaceInfo & si) {return si.name == name;});
+      if (!declared) {
+        hardware_interface::InterfaceInfo info;
+        info.name = name;
+        descriptions.emplace_back(joint.name, info);
+      }
+    }
   }
 
-  RCLCPP_INFO(
-    logger_,
-    "Exported %zu state interfaces for %zu joints",
-    state_interfaces.size(), joint_names_.size());
-
-  return state_interfaces;
+  return descriptions;
 }
 
-/** @brief Export command interfaces for all joints */
-std::vector<hardware_interface::CommandInterface>
-STSHardwareInterface::export_command_interfaces()
+/** @brief Fetch the framework-owned handles and set initial values on first bind */
+void STSHardwareInterface::bind_handles()
 {
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
+  const bool first_bind = !handles_bound_;
+  const size_t num_joints = joint_names_.size();
 
-  for (size_t i = 0; i < joint_names_.size(); ++i) {
-    if (is_readonly_[i]) continue;  // readonly joint — no command interfaces exported
-    const std::string & joint_name = joint_names_[i];
-
-    // Mode-dependent command interfaces (per joint)
-    switch (operating_modes_[i]) {
-      case MODE_SERVO:  // Position control
-        command_interfaces.emplace_back(
-          hardware_interface::CommandInterface(
-            joint_name, hardware_interface::HW_IF_POSITION, &hw_cmd_position_[i]));
-        // velocity and acceleration are optional: export only if declared in the URDF.
-        // When velocity is omitted, raw speed 0 (= hardware max speed) is used.
-        // When acceleration is omitted, ACC 0 (= hardware default ramp) is used.
-        // proportional_vel_max drives velocity internally in SyncWrite when != 0.
-        for (const auto & cmd : info_.joints[i].command_interfaces) {
-          if (cmd.name == "velocity") {
-            command_interfaces.emplace_back(
-              hardware_interface::CommandInterface(
-                joint_name, hardware_interface::HW_IF_VELOCITY, &hw_cmd_velocity_[i]));
-          } else if (cmd.name == "acceleration") {
-            command_interfaces.emplace_back(
-              hardware_interface::CommandInterface(
-                joint_name, "acceleration", &hw_cmd_acceleration_[i]));
-          }
-        }
-        break;
-
-      case MODE_VELOCITY:  // Velocity control
-        command_interfaces.emplace_back(
-          hardware_interface::CommandInterface(
-            joint_name, hardware_interface::HW_IF_VELOCITY, &hw_cmd_velocity_[i]));
-        // acceleration is optional: export only if declared in the URDF.
-        // When omitted, proportional_acc_max drives ACC internally.
-        for (const auto & cmd : info_.joints[i].command_interfaces) {
-          if (cmd.name == "acceleration") {
-            command_interfaces.emplace_back(
-              hardware_interface::CommandInterface(
-                joint_name, "acceleration", &hw_cmd_acceleration_[i]));
-            break;
-          }
-        }
-        break;
-
-      case MODE_PWM:  // PWM/effort control
-        command_interfaces.emplace_back(
-          hardware_interface::CommandInterface(
-            joint_name, hardware_interface::HW_IF_EFFORT, &hw_cmd_effort_[i]));
-        break;
+  for (size_t k = 0; k < STATE_KIND_COUNT; ++k) {
+    state_handles_[k].assign(num_joints, nullptr);
+    for (size_t i = 0; i < num_joints; ++i) {
+      const std::string name = joint_names_[i] + "/" + kStateNames[k];
+      if (has_state(name)) {
+        state_handles_[k][i] = get_state_interface_handle(name);
+        if (first_bind) put_state(static_cast<StateKind>(k), i, 0.0);
+      }
     }
-
   }
 
-  RCLCPP_INFO(logger_, "Exported %zu command interfaces for %zu joints (per-joint modes)",
-    command_interfaces.size(), joint_names_.size());
+  for (size_t k = 0; k < CMD_KIND_COUNT; ++k) {
+    cmd_handles_[k].assign(num_joints, nullptr);
+    for (size_t i = 0; i < num_joints; ++i) {
+      const std::string name = joint_names_[i] + "/" + kCommandNames[k];
+      if (has_command(name)) {
+        cmd_handles_[k][i] = get_command_interface_handle(name);
+        if (first_bind) put_cmd(static_cast<CmdKind>(k), i, cmd_default(static_cast<CmdKind>(k), i));
+      }
+    }
+  }
 
-  return command_interfaces;
+  handles_bound_ = true;
+}
+
+/** @brief Value of a command that is not declared in the URDF or not yet written */
+double STSHardwareInterface::cmd_default(CmdKind kind, size_t i) const
+{
+  // Position-mode joints need a non-zero ACC or the servo ignores the Speed we send
+  // (see DEFAULT_ACCELERATION). Velocity-mode (wheel) joints keep ACC=0 for proportional scaling.
+  if (kind == CMD_ACCELERATION && operating_modes_[i] == MODE_SERVO) {
+    return DEFAULT_ACCELERATION;
+  }
+  return 0.0;
+}
+
+double STSHardwareInterface::state_val(StateKind kind, size_t i) const
+{
+  const auto & handle = state_handles_[kind][i];
+  double value = 0.0;
+  if (handle) (void)handle->get_value(value, true);
+  return value;
+}
+
+void STSHardwareInterface::put_state(StateKind kind, size_t i, double value)
+{
+  const auto & handle = state_handles_[kind][i];
+  if (handle) (void)set_state(handle, value, true);
+}
+
+double STSHardwareInterface::cmd_val(CmdKind kind, size_t i) const
+{
+  const auto & handle = cmd_handles_[kind][i];
+  double value = cmd_default(kind, i);
+  if (handle) (void)handle->get_value(value, true);
+  return value;
+}
+
+void STSHardwareInterface::put_cmd(CmdKind kind, size_t i, double value)
+{
+  const auto & handle = cmd_handles_[kind][i];
+  if (handle) (void)set_command(handle, value, true);
 }
 
 /** @brief Read motor states from hardware */
@@ -1052,52 +1025,52 @@ hardware_interface::return_type STSHardwareInterface::read(
     double dt = period.seconds();
 
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      double prev_position = hw_state_position_[i];
+      double prev_position = state_val(ST_POSITION, i);
 
       switch (operating_modes_[i]) {
         case MODE_SERVO: {
           // Simulate position control with first-order response
-          double position_error = hw_cmd_position_[i] - hw_state_position_[i];
-          double max_step = hw_cmd_velocity_[i] * dt;
+          double position_error = cmd_val(CMD_POSITION, i) - state_val(ST_POSITION, i);
+          double max_step = cmd_val(CMD_VELOCITY, i) * dt;
           if (std::abs(position_error) > max_step && max_step > 0) {
-            hw_state_position_[i] += (position_error > 0 ? max_step : -max_step);
+            put_state(ST_POSITION, i, state_val(ST_POSITION, i) + ((position_error > 0 ? max_step : -max_step)));
           } else {
-            hw_state_position_[i] = hw_cmd_position_[i];
+            put_state(ST_POSITION, i, cmd_val(CMD_POSITION, i));
           }
-          hw_state_velocity_[i] = (hw_state_position_[i] - prev_position) / (dt > 0 ? dt : 0.001);
+          put_state(ST_VELOCITY, i, (state_val(ST_POSITION, i) - prev_position) / (dt > 0 ? dt : 0.001));
           break;
         }
         case MODE_VELOCITY:
           // Simulate velocity control
-          hw_state_velocity_[i] = hw_cmd_velocity_[i];
-          hw_state_position_[i] += hw_state_velocity_[i] * dt;
+          put_state(ST_VELOCITY, i, cmd_val(CMD_VELOCITY, i));
+          put_state(ST_POSITION, i, state_val(ST_POSITION, i) + (state_val(ST_VELOCITY, i) * dt));
           break;
         case MODE_PWM:
           // Simulate PWM as torque control
-          hw_state_velocity_[i] = hw_cmd_effort_[i] * 10.0;
-          hw_state_position_[i] += hw_state_velocity_[i] * dt;
+          put_state(ST_VELOCITY, i, cmd_val(CMD_EFFORT, i) * 10.0);
+          put_state(ST_POSITION, i, state_val(ST_POSITION, i) + (state_val(ST_VELOCITY, i) * dt));
           break;
       }
 
       // Simulate load based on velocity (convert simulated load percentage to effort units)
-      double simulated_load_percentage = hw_state_velocity_[i] / (max_velocity_steps_[i] * STEPS_TO_RAD) * 100.0;
+      double simulated_load_percentage = state_val(ST_VELOCITY, i) / (max_velocity_steps_[i] * STEPS_TO_RAD) * 100.0;
       simulated_load_percentage = std::clamp(simulated_load_percentage, -100.0, 100.0);
       // Motor load is absolute - doesn't depend on max_effort limit
-      hw_state_effort_[i] = simulated_load_percentage / 100.0;
+      put_state(ST_EFFORT, i, simulated_load_percentage / 100.0);
 
       // Simulate voltage (STS3215 nominal: 12V, range: 10-14V under load)
-      double voltage_drop = std::abs(hw_state_effort_[i]) * 0.5;  // Up to 0.5V drop at max load
-      hw_state_voltage_[i] = 12.0 - voltage_drop;
+      double voltage_drop = std::abs(state_val(ST_EFFORT, i)) * 0.5;  // Up to 0.5V drop at max load
+      put_state(ST_VOLTAGE, i, 12.0 - voltage_drop);
 
       // Simulate temperature (ambient ~25°C + heating from load/velocity)
-      double thermal_load = std::abs(hw_state_velocity_[i]) * 2.0 + std::abs(hw_state_effort_[i]) * 5.0;
-      hw_state_temperature_[i] = 25.0 + thermal_load;
+      double thermal_load = std::abs(state_val(ST_VELOCITY, i)) * 2.0 + std::abs(state_val(ST_EFFORT, i)) * 5.0;
+      put_state(ST_TEMPERATURE, i, 25.0 + thermal_load);
 
       // Simulate current (proportional to effort: ~0-1000mA at full load)
-      hw_state_current_[i] = std::abs(hw_state_effort_[i]) * 1.0;  // ~1A at max effort
+      put_state(ST_CURRENT, i, std::abs(state_val(ST_EFFORT, i)) * 1.0);  // ~1A at max effort
 
       // Update is_moving state
-      hw_state_is_moving_[i] = (std::abs(hw_state_velocity_[i]) > 0.01) ? 1.0 : 0.0;
+      put_state(ST_IS_MOVING, i, (std::abs(state_val(ST_VELOCITY, i)) > 0.01) ? 1.0 : 0.0);
     }
 
     return hardware_interface::return_type::OK;
@@ -1181,14 +1154,14 @@ hardware_interface::return_type STSHardwareInterface::read(
       SMS_STS_PRESENT_POSITION_L - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_PRESENT_POSITION_H - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_DIRECTION_BIT_POS);
-    hw_state_position_[i] = conversions::raw_position_to_radians(raw_position, position_center_[i]);
+    put_state(ST_POSITION, i, conversions::raw_position_to_radians(raw_position, position_center_[i]));
 
     // Always clamp the reported position to URDF limits. A joint can drift past software limits
     // under gravity during estop, or be physically moved outside limits before startup. Clamping
     // here prevents JointSaturationLimiter from deactivating the controller; write() already
     // clamps commands, so the motor will be commanded to the nearest limit and return to range.
     if (has_position_limits_[i]) {
-      hw_state_position_[i] = std::clamp(hw_state_position_[i], position_min_[i], position_max_[i]);
+      put_state(ST_POSITION, i, std::clamp(state_val(ST_POSITION, i), position_min_[i], position_max_[i]));
     }
 
     int raw_velocity = ServoUtils::readSignedWordFromBuffer(
@@ -1196,7 +1169,7 @@ hardware_interface::return_type STSHardwareInterface::read(
       SMS_STS_PRESENT_SPEED_L - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_PRESENT_SPEED_H - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_DIRECTION_BIT_POS);
-    hw_state_velocity_[i] = conversions::raw_velocity_to_rad_s(raw_velocity);
+    put_state(ST_VELOCITY, i, conversions::raw_velocity_to_rad_s(raw_velocity));
 
     int raw_load = ServoUtils::readSignedWordFromBuffer(
       feedback,
@@ -1206,23 +1179,23 @@ hardware_interface::return_type STSHardwareInterface::read(
     // Convert load percentage to effort: (-100% to 100%) -> (-1.0 to 1.0)
     // Motor load is absolute - doesn't depend on max_effort limit
     double load_percentage = raw_load * LOAD_SCALE;  // 0.1 units per percent
-    hw_state_effort_[i] = load_percentage / 100.0;
+    put_state(ST_EFFORT, i, load_percentage / 100.0);
 
     int raw_voltage = feedback[SMS_STS_PRESENT_VOLTAGE - SMS_STS_PRESENT_POSITION_L];
-    hw_state_voltage_[i] = static_cast<double>(raw_voltage) * VOLTAGE_SCALE;
+    put_state(ST_VOLTAGE, i, static_cast<double>(raw_voltage) * VOLTAGE_SCALE);
 
     int raw_temperature = feedback[SMS_STS_PRESENT_TEMPERATURE - SMS_STS_PRESENT_POSITION_L];
-    hw_state_temperature_[i] = static_cast<double>(raw_temperature);
+    put_state(ST_TEMPERATURE, i, static_cast<double>(raw_temperature));
 
     int raw_current = ServoUtils::readSignedWordFromBuffer(
       feedback,
       SMS_STS_PRESENT_CURRENT_L - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_PRESENT_CURRENT_H - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_DIRECTION_BIT_POS);
-    hw_state_current_[i] = static_cast<double>(raw_current) * CURRENT_SCALE;
+    put_state(ST_CURRENT, i, static_cast<double>(raw_current) * CURRENT_SCALE);
 
     int raw_is_moving = feedback[SMS_STS_MOVING - SMS_STS_PRESENT_POSITION_L];
-    hw_state_is_moving_[i] = (raw_is_moving > 0) ? 1.0 : 0.0;
+    put_state(ST_IS_MOVING, i, (raw_is_moving > 0) ? 1.0 : 0.0);
   }
 
   return hardware_interface::return_type::OK;
@@ -1246,10 +1219,10 @@ hardware_interface::return_type STSHardwareInterface::write(
     // Continuously clear all commands while emergency stop is active
     if (emergency_stop_active_) {
       for (size_t i = 0; i < motor_ids_.size(); ++i) {
-        hw_cmd_velocity_[i] = 0.0;
-        hw_cmd_position_[i] = hw_state_position_[i];  // Hold current position
-        hw_cmd_effort_[i] = 0.0;
-        // hw_cmd_acceleration_ is deliberately left alone: with velocity/position/effort cleared
+        put_cmd(CMD_VELOCITY, i, 0.0);
+        put_cmd(CMD_POSITION, i, state_val(ST_POSITION, i));  // Hold current position
+        put_cmd(CMD_EFFORT, i, 0.0);
+        // The acceleration command is deliberately left alone: with velocity/position/effort cleared
         // it has no effect, and zeroing it would discard the MODE_SERVO DEFAULT_ACCELERATION.
       }
     }
@@ -1316,11 +1289,11 @@ hardware_interface::return_type STSHardwareInterface::write(
       double max_delta_rad = 0.0;
       for (size_t j = 0; j < servo_motor_indices_.size(); ++j) {
         size_t idx = servo_motor_indices_[j];
-        double target_position = conversions::apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
+        double target_position = conversions::apply_limit(cmd_val(CMD_POSITION, idx), position_min_[idx], position_max_[idx], has_position_limits_[idx]);
         servo_sync_positions_[j] = conversions::radians_to_raw_position(target_position, position_center_[idx]);
-        servo_sync_deltas_[j] = std::abs(target_position - hw_state_position_[idx]);
+        servo_sync_deltas_[j] = std::abs(target_position - state_val(ST_POSITION, idx));
         max_delta_rad = std::max(max_delta_rad, servo_sync_deltas_[j]);
-        servo_sync_accelerations_[j] = static_cast<u8>(conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
+        servo_sync_accelerations_[j] = static_cast<u8>(conversions::clamp_acceleration(cmd_val(CMD_ACCELERATION, idx)));
       }
 
       // Pass 2: assign speed proportional to each joint's displacement so all joints
@@ -1332,7 +1305,7 @@ hardware_interface::return_type STSHardwareInterface::write(
         if (proportional_vel_max_ == 0 || max_delta_rad < proportional_vel_deadband_rad_ || max_delta_rad == 0.0) {
           // Proportional velocity disabled, below deadband, or all joints at target: use each joint's commanded max speed.
           double max_speed = std::max(0.0,
-            conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]));
+            conversions::apply_limit(cmd_val(CMD_VELOCITY, idx), 0.0, velocity_max_[idx], has_velocity_limits_[idx]));
           servo_sync_speeds_[j] = static_cast<u16>(
             conversions::rad_s_to_raw_speed(max_speed, max_velocity_steps_[idx]));
         } else if (servo_sync_deltas_[j] == 0.0) {
@@ -1361,15 +1334,15 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single servo motor or when SyncWrite disabled
       for (size_t idx : servo_motor_indices_) {
-        double target_position = conversions::apply_limit(hw_cmd_position_[idx], position_min_[idx], position_max_[idx], has_position_limits_[idx]);
-        double max_speed = conversions::apply_limit(hw_cmd_velocity_[idx], 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
+        double target_position = conversions::apply_limit(cmd_val(CMD_POSITION, idx), position_min_[idx], position_max_[idx], has_position_limits_[idx]);
+        double max_speed = conversions::apply_limit(cmd_val(CMD_VELOCITY, idx), 0.0, velocity_max_[idx], has_velocity_limits_[idx]);
 
         int raw_position = conversions::radians_to_raw_position(target_position, position_center_[idx]);
         // rad_s_to_raw_speed: unsigned magnitude conversion for position mode — no sign inversion.
-        // hw_cmd_velocity_ == 0.0 (not declared / not written) → raw 0 = STS protocol max speed.
+        // velocity command == 0.0 (not declared / not written) → raw 0 = STS protocol max speed.
         int raw_max_speed = conversions::rad_s_to_raw_speed(
           std::max(0.0, max_speed), max_velocity_steps_[idx]);
-        int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
+        int acceleration = conversions::clamp_acceleration(cmd_val(CMD_ACCELERATION, idx));
 
         if (auto r = check_write(servo_->WritePosEx(motor_ids_[idx], raw_position, raw_max_speed, acceleration), idx, "position"); r.has_value()) {
           return hardware_interface::return_type::ERROR;
@@ -1389,9 +1362,9 @@ hardware_interface::return_type STSHardwareInterface::write(
       double max_delta_rad_s = 0.0;
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
         size_t idx = velocity_motor_indices_[j];
-        double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
+        double target_velocity = conversions::apply_limit(cmd_val(CMD_VELOCITY, idx), -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
         velocity_sync_velocities_[j] = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_[idx]);
-        velocity_sync_deltas_[j] = std::abs(target_velocity - hw_state_velocity_[idx]);
+        velocity_sync_deltas_[j] = std::abs(target_velocity - state_val(ST_VELOCITY, idx));
         max_delta_rad_s = std::max(max_delta_rad_s, velocity_sync_deltas_[j]);
       }
 
@@ -1399,14 +1372,14 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Priority:
       //   proportional_acc_max != 0 → proportional scaling wins; controller-set ACC is ignored.
       //     Below the deadband (steady-state cruise), ACC=0 lets the hardware follow naturally.
-      //   proportional_acc_max == 0 → use per-joint hw_cmd_acceleration_ set by the controller
+      //   proportional_acc_max == 0 → use per-joint acceleration command set by the controller
       //     (or ACC=0 if the acceleration command interface is not declared / not written).
       for (size_t j = 0; j < velocity_motor_indices_.size(); ++j) {
         size_t idx = velocity_motor_indices_[j];
         if (proportional_acc_max_ == 0 || max_delta_rad_s == 0.0) {
           // Proportional ACC disabled or all wheels at target: pass through controller-commanded ACC per joint.
           velocity_sync_accelerations_[j] = static_cast<u8>(
-            conversions::clamp_acceleration(hw_cmd_acceleration_[idx]));
+            conversions::clamp_acceleration(cmd_val(CMD_ACCELERATION, idx)));
         } else if (max_delta_rad_s < proportional_acc_deadband_rad_s_) {
           // Steady-state cruise: send ACC=0 so hardware follows naturally.
           velocity_sync_accelerations_[j] = 0;
@@ -1426,9 +1399,9 @@ hardware_interface::return_type STSHardwareInterface::write(
     } else {
       // Individual writes for single velocity motor or when SyncWrite disabled
       for (size_t idx : velocity_motor_indices_) {
-        double target_velocity = conversions::apply_limit(hw_cmd_velocity_[idx], -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
+        double target_velocity = conversions::apply_limit(cmd_val(CMD_VELOCITY, idx), -velocity_max_[idx], velocity_max_[idx], has_velocity_limits_[idx]);
         int raw_velocity = conversions::rad_s_to_raw_velocity(target_velocity, max_velocity_steps_[idx]);
-        int acceleration = conversions::clamp_acceleration(hw_cmd_acceleration_[idx]);
+        int acceleration = conversions::clamp_acceleration(cmd_val(CMD_ACCELERATION, idx));
 
         if (auto r = check_write(servo_->WriteSpe(motor_ids_[idx], raw_velocity, acceleration), idx, "velocity"); r.has_value()) {
           return hardware_interface::return_type::ERROR;
@@ -1444,7 +1417,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       for (size_t j = 0; j < pwm_motor_indices_.size(); ++j) {
         size_t idx = pwm_motor_indices_[j];
         pwm_sync_pwm_values_[j] = conversions::effort_to_raw_pwm(
-          conversions::normalize_effort(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx]));
+          conversions::normalize_effort(cmd_val(CMD_EFFORT, idx), effort_max_[idx], has_effort_limits_[idx]));
       }
 
       servo_->SyncWritePwm(pwm_sync_ids_.data(), pwm_sync_ids_.size(), pwm_sync_pwm_values_.data());
@@ -1453,7 +1426,7 @@ hardware_interface::return_type STSHardwareInterface::write(
       // Individual writes for single PWM motor or when SyncWrite disabled
       for (size_t idx : pwm_motor_indices_) {
         int raw_pwm = conversions::effort_to_raw_pwm(
-          conversions::normalize_effort(hw_cmd_effort_[idx], effort_max_[idx], has_effort_limits_[idx]));
+          conversions::normalize_effort(cmd_val(CMD_EFFORT, idx), effort_max_[idx], has_effort_limits_[idx]));
         if (auto r = check_write(servo_->WritePwm(motor_ids_[idx], raw_pwm), idx, "PWM"); r.has_value()) {
           return hardware_interface::return_type::ERROR;
         }
@@ -1477,8 +1450,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_deactivate(
   // Skip hardware deactivation in mock mode
   if (enable_mock_mode_) {
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
-      hw_state_velocity_[i] = 0.0;
-      hw_state_effort_[i] = 0.0;
+      put_state(ST_VELOCITY, i, 0.0);
+      put_state(ST_EFFORT, i, 0.0);
     }
     RCLCPP_INFO(
       logger_,
@@ -1713,9 +1686,9 @@ void STSHardwareInterface::process_pending_one_key_calibration_mock()
   for (size_t idx : request.motor_indices) {
     // Simulate CalibrationOfs: the motor's current physical position becomes
     // raw step 2048 (the Feetech STS encoder midpoint) without actually moving.
-    hw_state_position_[idx] = conversions::raw_position_to_radians(
-      conversions::STS_MIDPOINT_RAW_POSITION, position_center_[idx]);
-    hw_cmd_position_[idx] = hw_state_position_[idx];  // Hold at the new calibrated position
+    put_state(ST_POSITION, idx, conversions::raw_position_to_radians(
+        conversions::STS_MIDPOINT_RAW_POSITION, position_center_[idx]));
+    put_cmd(CMD_POSITION, idx, state_val(ST_POSITION, idx));  // Hold at the new calibrated position
 
     RCLCPP_INFO(logger_, "One-key calibration (mock): motor %d (joint '%s') position set to raw step %d",
       motor_ids_[idx], joint_names_[idx].c_str(), conversions::STS_MIDPOINT_RAW_POSITION);
@@ -1820,7 +1793,7 @@ bool STSHardwareInterface::seed_servo_commands_from_feedback()
     if (has_position_limits_[idx]) {
       position = std::clamp(position, position_min_[idx], position_max_[idx]);
     }
-    hw_cmd_position_[idx] = position;
+    put_cmd(CMD_POSITION, idx, position);
   }
   return true;
 }
