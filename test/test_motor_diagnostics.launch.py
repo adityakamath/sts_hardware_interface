@@ -36,6 +36,7 @@ from rclpy.qos import qos_profile_sensor_data
 @pytest.mark.launch_test
 @launch_testing.markers.keep_alive
 def generate_test_description():
+    """Launch the motor diagnostics node under test."""
     from launch.actions import IncludeLaunchDescription
     from launch.launch_description_sources import PythonLaunchDescriptionSource
     from ament_index_python.packages import get_package_share_directory
@@ -64,19 +65,24 @@ def generate_test_description():
 
 
 class TestMotorDiagnosticsIntegration(unittest.TestCase):
+    """Publish synthetic motor faults and check the diagnostics node reports them."""
 
     @classmethod
     def setUpClass(cls):
+        """Initialize rclpy once for the test class."""
         rclpy.init()
 
     @classmethod
     def tearDownClass(cls):
+        """Shut rclpy down after the last test."""
         rclpy.shutdown()
 
     def setUp(self):
+        """Create a fresh test node."""
         self.node = rclpy.create_node('test_motor_diagnostics_node')
 
     def tearDown(self):
+        """Destroy the test node."""
         self.node.destroy_node()
 
     def _wait_for_diagnostics(self, timeout_sec=30.0):
@@ -96,6 +102,7 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
         matched = []
 
         def on_diag(msg):
+            """Collect diagnostic statuses matching the expected level and keyword."""
             for s in msg.status:
                 if s.level == expected_level and keyword in s.message:
                     matched.append(s)

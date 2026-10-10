@@ -8,7 +8,7 @@ ros2_control stack including:
 - Robot state publisher for TF transforms
 - Controller manager for hardware interface lifecycle
 - Joint state broadcaster for publishing joint states
-- JointGroupEffortController for sending PWM duty-cycle commands
+- JointGroupEffortController (ForwardCommandController on Lyrical+) for PWM duty-cycle commands
 
 Mode 2 is open-loop: the motor runs at the commanded duty cycle with no position
 feedback.  Use this launch file with use_mock:=true to verify the full mode 2
@@ -43,6 +43,8 @@ Example usage
     ros2 launch sts_hardware_interface single_motor_pwm.launch.py use_mock:=true
     ros2 launch sts_hardware_interface single_motor_pwm.launch.py use_mock:=true max_effort:=0.5
 """
+
+import os
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -148,10 +150,15 @@ def generate_launch_description():
     )
 
     # Controller configuration
+    # Lyrical+ uses ForwardCommandController configs and no longer forwards the
+    # controller_manager ROS args to controllers, so spawners get the YAML directly.
+    lyrical_or_newer = os.environ.get('ROS_DISTRO') in ('lyrical', 'rolling')
+    yaml_suffix = '_lyrical' if lyrical_or_newer else ''
     controller_config = PathJoinSubstitution(
         [FindPackageShare('sts_hardware_interface'), 'config',
-         'single_motor_pwm_controllers.yaml']
+         f'single_motor_pwm_controllers{yaml_suffix}.yaml']
     )
+    spawner_params = ['--param-file', controller_config] if lyrical_or_newer else []
 
     # Controller manager
     controller_manager_node = Node(
@@ -165,14 +172,20 @@ def generate_launch_description():
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'joint_state_broadcaster', '--controller-manager', '/controller_manager',
+            *spawner_params,
+        ],
     )
 
     # PWM effort controller (Mode 2)
     pwm_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['pwm_controller', '--controller-manager', '/controller_manager'],
+        arguments=[
+            'pwm_controller', '--controller-manager', '/controller_manager',
+            *spawner_params,
+        ],
     )
 
     nodes = [

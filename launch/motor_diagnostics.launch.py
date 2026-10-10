@@ -18,6 +18,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    """Launch the motor diagnostics node with a configurable parameter file."""
     declared_arguments = [
         DeclareLaunchArgument(
             'config_file',

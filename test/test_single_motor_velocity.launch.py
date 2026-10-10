@@ -61,16 +61,20 @@ class TestSingleMotorLaunch(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        """Initialize rclpy once for the test class."""
         rclpy.init()
 
     @classmethod
     def tearDownClass(cls):
+        """Shut rclpy down after the last test."""
         rclpy.shutdown()
 
     def setUp(self):
+        """Create a fresh test node."""
         self.node = rclpy.create_node('test_single_motor_node')
 
     def tearDown(self):
+        """Destroy the test node."""
         self.node.destroy_node()
 
     def _wait_for_topic(self, topic_name, msg_type, timeout_sec=30.0):
@@ -78,6 +82,7 @@ class TestSingleMotorLaunch(unittest.TestCase):
         received = []
 
         def callback(msg):
+            """Record each received message."""
             received.append(msg)
 
         sub = self.node.create_subscription(msg_type, topic_name, callback, 10)

@@ -10,8 +10,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ros_distro: [kilted, jazzy]
-    runs-on: ubuntu-24.04
+        ros_distro: [lyrical, kilted, jazzy]
+    runs-on: ubuntu-latest
+    container: ros:${{ matrix.ros_distro }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -20,21 +21,13 @@ jobs:
 
       - name: Install clang-tidy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-18 clang++-18 clang-tidy-18
-          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 100
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
-
-      - name: Setup ROS 2
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: ${{ matrix.ros_distro }}
+          apt-get update
+          apt-get install -y clang clang-tidy
 
       - name: Install ROS 2 dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get update
+          apt-get install -y \
             ros-${{ matrix.ros_distro }}-hardware-interface \
             ros-${{ matrix.ros_distro }}-pluginlib \
             ros-${{ matrix.ros_distro }}-rclcpp \
@@ -43,7 +36,7 @@ jobs:
       - name: Create workspace
         run: |
           mkdir -p ~/ros2_ws/src
-          cp -r ${{ github.workspace }} ~/ros2_ws/src/sts_hardware_interface
+          cp -r "$GITHUB_WORKSPACE" ~/ros2_ws/src/sts_hardware_interface
 
       - name: Build with compile_commands.json
         shell: bash
@@ -55,8 +48,8 @@ jobs:
             --cmake-args \
               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
               -DCMAKE_BUILD_TYPE=Debug \
-              -DCMAKE_C_COMPILER=clang-18 \
-              -DCMAKE_CXX_COMPILER=clang++-18
+              -DCMAKE_C_COMPILER=clang \
+              -DCMAKE_CXX_COMPILER=clang++
 
       - name: Run clang-tidy
         shell: bash
@@ -125,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ros_distro: [kilted, jazzy]
+        ros_distro: [lyrical, kilted, jazzy]
     runs-on: ubuntu-latest
     container: ros:${{ matrix.ros_distro }}
     timeout-minutes: 15
@@ -144,7 +137,6 @@ jobs:
             ros-${{ matrix.ros_distro }}-control-msgs \
             ros-${{ matrix.ros_distro }}-controller-manager \
             ros-${{ matrix.ros_distro }}-diagnostic-msgs \
-            ros-${{ matrix.ros_distro }}-effort-controllers \
             ros-${{ matrix.ros_distro }}-hardware-interface \
             ros-${{ matrix.ros_distro }}-joint-state-broadcaster \
             ros-${{ matrix.ros_distro }}-joint-trajectory-controller \
@@ -155,8 +147,18 @@ jobs:
             ros-${{ matrix.ros_distro }}-rclcpp-lifecycle \
             ros-${{ matrix.ros_distro }}-robot-state-publisher \
             ros-${{ matrix.ros_distro }}-std-srvs \
-            ros-${{ matrix.ros_distro }}-velocity-controllers \
             ros-${{ matrix.ros_distro }}-xacro
+
+      # effort/velocity group controllers are deprecated in Lyrical (not in its apt repo)
+      - name: Install distro-specific controllers
+        run: |
+          if [ "${{ matrix.ros_distro }}" = "lyrical" ]; then
+            apt-get install -y --no-install-recommends ros-lyrical-forward-command-controller
+          else
+            apt-get install -y --no-install-recommends \
+              ros-${{ matrix.ros_distro }}-effort-controllers \
+              ros-${{ matrix.ros_distro }}-velocity-controllers
+          fi
 
       # gtest (test_conversions, test_hardware_interface) and the launch tests
       # (single_motor_velocity, single_motor_position, motor_diagnostics, mixed_mode) all run

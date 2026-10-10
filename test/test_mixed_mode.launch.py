@@ -61,16 +61,20 @@ class TestMixedModeLaunch(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        """Initialize rclpy once for the test class."""
         rclpy.init()
 
     @classmethod
     def tearDownClass(cls):
+        """Shut rclpy down after the last test."""
         rclpy.shutdown()
 
     def setUp(self):
+        """Create a fresh test node."""
         self.node = rclpy.create_node('test_mixed_mode_node')
 
     def tearDown(self):
+        """Destroy the test node."""
         self.node.destroy_node()
 
     def _wait_for_topic(self, topic_name, msg_type, timeout_sec=45.0):
@@ -159,6 +163,9 @@ class TestMixedModeLaunch(unittest.TestCase):
         )
         self.node.destroy_client(client)
 
+    @unittest.skipIf(
+        os.environ.get('ROS_DISTRO') in ('lyrical', 'rolling'),
+        'joint_state_broadcaster no longer publishes /dynamic_joint_states on Lyrical+')
     def test_dynamic_joint_states_published(self):
         """Verify /dynamic_joint_states is published (custom interfaces)."""
         from control_msgs.msg import DynamicJointState
