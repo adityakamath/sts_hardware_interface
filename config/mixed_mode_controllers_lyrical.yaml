@@ -86,7 +86,7 @@ arm_controller:
     allow_partial_joints_goal: false  # Reject goals that don't include all joints
     constraints:
       stopped_velocity_tolerance: 0.01  # rad/s - Velocity threshold for "stopped" state
-      goal_time: 0.0  # Seconds - Time tolerance for reaching goal (0 = no timeout)
+      goal_time: -1.0  # Seconds - negative waits indefinitely (Lyrical: 0.0 means no grace period)
 
 # Gripper Controller configuration (Mode 2: PWM/Effort) - 2 motors, SyncWrite enabled
 gripper_controller:
