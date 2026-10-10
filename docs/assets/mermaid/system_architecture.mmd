@@ -29,7 +29,7 @@ flowchart TB
     classDef dashed   fill:#FAFAF8,stroke:#AEB3A6,color:#6D706A,stroke-dasharray:5 3
 
     subgraph ros2["ROS 2 CONTROL"]
-        ctrl["JointTrajectoryController (mode 0)<br/>ForwardCommandController velocity (mode 1)<br/>ForwardCommandController effort (mode 2)"]
+        ctrl["JointTrajectoryController (mode 0)<br/>JointGroupVelocityController (mode 1)<br/>JointGroupEffortController (mode 2)"]
         estop["/emergency_stop<br/>std_srvs/SetBool<br/>all motors stop · torque disabled"]
         diag["joint_state_broadcaster<br/>→ /joint_states · /dynamic_joint_states<br/>motor_diagnostics_node → /diagnostics"]
     end

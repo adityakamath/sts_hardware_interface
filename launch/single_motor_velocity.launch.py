@@ -17,6 +17,8 @@ Example usage:
     ros2 launch sts_hardware_interface single_motor_velocity.launch.py use_mock:=true
 """
 
+import os
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
@@ -108,10 +110,15 @@ def generate_launch_description():
     )
 
     # Controller configuration
+    # Lyrical+ uses ForwardCommandController configs and no longer forwards the
+    # controller_manager ROS args to controllers, so spawners get the YAML directly.
+    lyrical_or_newer = os.environ.get('ROS_DISTRO') in ('lyrical', 'rolling')
+    yaml_suffix = '_lyrical' if lyrical_or_newer else ''
     controller_config = PathJoinSubstitution(
         [FindPackageShare('sts_hardware_interface'), 'config',
-         'single_motor_velocity_controllers.yaml']
+         f'single_motor_velocity_controllers{yaml_suffix}.yaml']
     )
+    spawner_params = ['--param-file', controller_config] if lyrical_or_newer else []
 
     # Controller manager
     controller_manager_node = Node(
@@ -126,9 +133,8 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            'joint_state_broadcaster',
-            '--controller-manager', '/controller_manager',
-            '--param-file', controller_config,
+            'joint_state_broadcaster', '--controller-manager', '/controller_manager',
+            *spawner_params,
         ],
     )
 
@@ -137,9 +143,8 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            'velocity_controller',
-            '--controller-manager', '/controller_manager',
-            '--param-file', controller_config,
+            'velocity_controller', '--controller-manager', '/controller_manager',
+            *spawner_params,
         ],
     )
 

@@ -1,0 +1,111 @@
+# Lyrical and newer: ForwardCommandController replaces the deprecated effort/velocity group
+# controllers, and joint_state_broadcaster must enable /dynamic_joint_states explicitly.
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz - Control loop frequency
+
+    # Joint State Broadcaster - Publishes joint states to /joint_states and /dynamic_joint_states
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Arm Controller - Position control with trajectory following (Mode 0) - 2 motors
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    # Wheel Controller - Velocity control (Mode 1) - 2 motors
+    wheel_controller:
+      type: forward_command_controller/ForwardCommandController
+
+    # Gripper Controller - PWM/Effort control (Mode 2) - 2 motors
+    gripper_controller:
+      type: forward_command_controller/ForwardCommandController
+
+# Joint State Broadcaster configuration
+# Publishes standard state (position, velocity, effort) to /joint_states
+# Publishes all configured interfaces to /dynamic_joint_states
+joint_state_broadcaster:
+  ros__parameters:
+    # Deprecated in Lyrical (default false) but still required for /dynamic_joint_states
+    publish_dynamic_joint_states: true
+
+    joints:
+      - arm_joint_1
+      - arm_joint_2
+      - wheel_joint_1
+      - wheel_joint_2
+      - gripper_joint_1
+      - gripper_joint_2
+
+    # State interfaces to publish to /dynamic_joint_states
+    # IMPORTANT: Must explicitly list ALL interfaces, including standard ones (position, velocity, effort)
+    interfaces:
+      - position       # Current position (radians)
+      - velocity       # Current velocity (rad/s)
+      - effort         # Motor load (-1.0 to +1.0)
+      - voltage        # Supply voltage (volts)
+      - temperature    # Internal temperature (°C)
+      - current        # Motor current draw (amperes)
+      - is_moving      # Motion status (1.0=moving, 0.0=stopped)
+
+# Wheel Controller configuration (Mode 1: Velocity) - 2 motors, SyncWrite enabled
+wheel_controller:
+  ros__parameters:
+    joints:
+      - wheel_joint_1
+      - wheel_joint_2
+
+    interface_name: velocity  # Interface type for command subscription
+
+    # Command interface used by this controller
+    command_interfaces:
+      - velocity  # Target velocity in rad/s
+
+    # State interfaces monitored by this controller
+    state_interfaces:
+      - position  # Current position (radians)
+      - velocity  # Current velocity (rad/s)
+
+# Arm Controller configuration (Mode 0: Position/Servo) - 2 motors, SyncWrite enabled
+arm_controller:
+  ros__parameters:
+    joints:
+      - arm_joint_1
+      - arm_joint_2
+
+    # Command interfaces used by this controller
+    command_interfaces:
+      - position  # Target position in radians
+      - velocity  # Max speed in rad/s (optional, for trajectory execution)
+
+    # State interfaces monitored by this controller
+    state_interfaces:
+      - position  # Current position (radians)
+      - velocity  # Current velocity (rad/s)
+
+    # Trajectory execution parameters
+    state_publish_rate: 50.0      # Hz - Rate to publish controller state
+    action_monitor_rate: 20.0     # Hz - Rate to check action goal status
+
+    # Trajectory constraints
+    allow_partial_joints_goal: false  # Reject goals that don't include all joints
+    constraints:
+      stopped_velocity_tolerance: 0.01  # rad/s - Velocity threshold for "stopped" state
+      goal_time: 0.0  # Seconds - Time tolerance for reaching goal (0 = no timeout)
+
+# Gripper Controller configuration (Mode 2: PWM/Effort) - 2 motors, SyncWrite enabled
+gripper_controller:
+  ros__parameters:
+    joints:
+      - gripper_joint_1
+      - gripper_joint_2
+
+    interface_name: effort  # Interface type for command subscription
+
+    # Command interface used by this controller
+    command_interfaces:
+      - effort  # PWM duty cycle (-max_effort to +max_effort)
+
+    # State interfaces monitored by this controller
+    state_interfaces:
+      - position  # Current position (radians)
+      - effort    # Motor load (-1.0 to +1.0)

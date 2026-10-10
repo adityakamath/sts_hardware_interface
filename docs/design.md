@@ -544,8 +544,8 @@ This hardware interface is compatible with any ros2_control controller that uses
 | Controller | Package | Use Case | Compatible Modes |
 | --- | --- | --- | --- |
 | `JointTrajectoryController` | joint_trajectory_controller | Arm manipulation, precise positioning | Mode 0 |
-| `ForwardCommandController` (`interface_name: velocity`) | forward_command_controller | Wheels, continuous motion | Mode 1 |
-| `ForwardCommandController` (`interface_name: effort`) | forward_command_controller | Force control, grippers | Mode 2 |
+| `JointGroupVelocityController` | velocity_controllers | Wheels, continuous motion | Mode 1 |
+| `JointGroupEffortController` | effort_controllers | Force control, grippers | Mode 2 |
 | `DiffDriveController` | diff_drive_controller | Differential drive robots | Mode 1 |
 | `MecanumDriveController` | mecanum_drive_controller | Mecanum wheel robots | Mode 1 |
 | `OmniDriveController` | admittance_controller | Omni-directional robots | Mode 1 |

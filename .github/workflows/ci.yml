@@ -137,7 +137,6 @@ jobs:
             ros-${{ matrix.ros_distro }}-control-msgs \
             ros-${{ matrix.ros_distro }}-controller-manager \
             ros-${{ matrix.ros_distro }}-diagnostic-msgs \
-            ros-${{ matrix.ros_distro }}-forward-command-controller \
             ros-${{ matrix.ros_distro }}-hardware-interface \
             ros-${{ matrix.ros_distro }}-joint-state-broadcaster \
             ros-${{ matrix.ros_distro }}-joint-trajectory-controller \
@@ -149,6 +148,17 @@ jobs:
             ros-${{ matrix.ros_distro }}-robot-state-publisher \
             ros-${{ matrix.ros_distro }}-std-srvs \
             ros-${{ matrix.ros_distro }}-xacro
+
+      # effort/velocity group controllers are deprecated in Lyrical (not in its apt repo)
+      - name: Install distro-specific controllers
+        run: |
+          if [ "${{ matrix.ros_distro }}" = "lyrical" ]; then
+            apt-get install -y --no-install-recommends ros-lyrical-forward-command-controller
+          else
+            apt-get install -y --no-install-recommends \
+              ros-${{ matrix.ros_distro }}-effort-controllers \
+              ros-${{ matrix.ros_distro }}-velocity-controllers
+          fi
 
       # gtest (test_conversions, test_hardware_interface) and the launch tests
       # (single_motor_velocity, single_motor_position, motor_diagnostics, mixed_mode) all run
