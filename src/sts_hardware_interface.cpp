@@ -1195,7 +1195,12 @@ hardware_interface::return_type STSHardwareInterface::read(
     // under gravity during estop, or be physically moved outside limits before startup. Clamping
     // here prevents JointSaturationLimiter from deactivating the controller; write() already
     // clamps commands, so the motor will be commanded to the nearest limit and return to range.
-    if (has_position_limits_[i]) {
+    //
+    // Not for MODE_VELOCITY: hw_state_position_ there is unwrapped_position_, a multi-turn
+    // odometry-style accumulator, not a bounded joint angle. Clamping it at a configured limit
+    // would silently pin it there forever once reached, no matter how far the wheel keeps
+    // turning - the exact failure this unwrap exists to avoid.
+    if (has_position_limits_[i] && operating_modes_[i] != MODE_VELOCITY) {
       put_state(ST_POSITION, i, std::clamp(state_val(ST_POSITION, i), position_min_[i], position_max_[i]));
     }
 
@@ -1662,6 +1667,16 @@ void STSHardwareInterface::process_pending_one_key_calibration()
       RCLCPP_ERROR(logger_, "One-key calibration: failed on motor %d (%s)", motor_id, r->c_str());
       all_ok = false;
       continue;
+    }
+
+    if (operating_modes_[idx] == MODE_VELOCITY) {
+      // CalibrationOfs just recentered the encoder, so the next read()'s raw angle is relative
+      // to a new reference - diffing it against last_raw_angle_ (the old reference) would be
+      // read as a huge, fake rotation and get folded into unwrapped_position_ permanently.
+      // Invalidate the reference so the next read() just reseeds it instead of diffing against
+      // it; unwrapped_position_ itself is untouched, so accumulated odometry survives
+      // calibration, same as it already does across activate (see reset_states_on_activate).
+      last_raw_angle_[idx] = std::numeric_limits<double>::quiet_NaN();
     }
 
     if (auto r = check(servo_->FeedBack(motor_id), "FeedBack"); r.has_value()) {
