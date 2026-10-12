@@ -223,6 +223,8 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_init(
   has_velocity_limits_.resize(num_joints, false);
   has_effort_limits_.resize(num_joints, false);
   position_center_.resize(num_joints, conversions::STS_DEFAULT_CENTER);  // 4095 = legacy default
+  last_raw_angle_.resize(num_joints, std::numeric_limits<double>::quiet_NaN());
+  unwrapped_position_.resize(num_joints, 0.0);
   is_readonly_.resize(num_joints, false);
   p_coefficient_.resize(num_joints, std::nullopt);
   d_coefficient_.resize(num_joints, std::nullopt);
@@ -903,6 +905,13 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_activate(
     for (size_t i = 0; i < motor_ids_.size(); ++i) {
       put_state(ST_POSITION, i, 0.0);
       put_state(ST_VELOCITY, i, 0.0);
+      // MODE_VELOCITY joints: the put_state above gets overwritten by the next read()
+      // regardless (it always reports unwrapped_position_ for these), so the reseed that
+      // actually matters is here - restart the multi-turn count from zero and force read()
+      // to treat the next raw angle as a fresh reference instead of diffing against a stale
+      // one from before this activation.
+      unwrapped_position_[i] = 0.0;
+      last_raw_angle_[i] = std::numeric_limits<double>::quiet_NaN();
     }
     RCLCPP_INFO(logger_, "All motors activated and ready - odometry initialized to zero (position and velocity)");
   } else {
@@ -1158,13 +1167,40 @@ hardware_interface::return_type STSHardwareInterface::read(
       SMS_STS_PRESENT_POSITION_L - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_PRESENT_POSITION_H - SMS_STS_PRESENT_POSITION_L,
       SMS_STS_DIRECTION_BIT_POS);
-    put_state(ST_POSITION, i, conversions::raw_position_to_radians(raw_position, position_center_[i]));
+    double raw_angle = conversions::raw_position_to_radians(raw_position, position_center_[i]);
+
+    if (operating_modes_[i] == MODE_VELOCITY) {
+      // Unwrap: accumulate the wrap-safe delta between consecutive single-turn readings
+      // instead of reporting the raw (2π-periodic) angle directly. Safe against aliasing at
+      // any realistic wheel speed - even at wheel_max_angular_velocity (4.6 rad/s) and a
+      // 100Hz control loop, one cycle's rotation (~0.046 rad) is nowhere near the ±π that
+      // would make a real revolution look like standing still. See the member comment on
+      // unwrapped_position_.
+      if (!std::isnan(last_raw_angle_[i])) {
+        double delta = raw_angle - last_raw_angle_[i];
+        if (delta > M_PI) {
+          delta -= 2.0 * M_PI;
+        } else if (delta < -M_PI) {
+          delta += 2.0 * M_PI;
+        }
+        unwrapped_position_[i] += delta;
+      }
+      last_raw_angle_[i] = raw_angle;
+      put_state(ST_POSITION, i, unwrapped_position_[i]);
+    } else {
+      put_state(ST_POSITION, i, raw_angle);
+    }
 
     // Always clamp the reported position to URDF limits. A joint can drift past software limits
     // under gravity during estop, or be physically moved outside limits before startup. Clamping
     // here prevents JointSaturationLimiter from deactivating the controller; write() already
     // clamps commands, so the motor will be commanded to the nearest limit and return to range.
-    if (has_position_limits_[i]) {
+    //
+    // Not for MODE_VELOCITY: hw_state_position_ there is unwrapped_position_, a multi-turn
+    // odometry-style accumulator, not a bounded joint angle. Clamping it at a configured limit
+    // would silently pin it there forever once reached, no matter how far the wheel keeps
+    // turning - the exact failure this unwrap exists to avoid.
+    if (has_position_limits_[i] && operating_modes_[i] != MODE_VELOCITY) {
       put_state(ST_POSITION, i, std::clamp(state_val(ST_POSITION, i), position_min_[i], position_max_[i]));
     }
 
@@ -1631,6 +1667,16 @@ void STSHardwareInterface::process_pending_one_key_calibration()
       RCLCPP_ERROR(logger_, "One-key calibration: failed on motor %d (%s)", motor_id, r->c_str());
       all_ok = false;
       continue;
+    }
+
+    if (operating_modes_[idx] == MODE_VELOCITY) {
+      // CalibrationOfs just recentered the encoder, so the next read()'s raw angle is relative
+      // to a new reference - diffing it against last_raw_angle_ (the old reference) would be
+      // read as a huge, fake rotation and get folded into unwrapped_position_ permanently.
+      // Invalidate the reference so the next read() just reseeds it instead of diffing against
+      // it; unwrapped_position_ itself is untouched, so accumulated odometry survives
+      // calibration, same as it already does across activate (see reset_states_on_activate).
+      last_raw_angle_[idx] = std::numeric_limits<double>::quiet_NaN();
     }
 
     if (auto r = check(servo_->FeedBack(motor_id), "FeedBack"); r.has_value()) {
