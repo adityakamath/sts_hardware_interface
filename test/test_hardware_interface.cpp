@@ -2295,6 +2295,52 @@ TEST_F(HardwareInterfaceMockTest, VelocityModeMotorCanBeExplicitlyCalibrated) {
   EXPECT_TRUE(res->accepted);
 }
 
+// ============================================================
+// instance_id (opt-in per-instance node and service names)
+// ============================================================
+
+namespace
+{
+bool service_exists(const std::string & name)
+{
+  auto node = rclcpp::Node::make_shared("test_service_exists_probe");
+  auto client = node->create_client<std_srvs::srv::SetBool>(name);
+  return client->wait_for_service(std::chrono::seconds(2));
+}
+}  // namespace
+
+/** @brief Without instance_id the plain global service names are used, unchanged. */
+TEST(HardwareInterfaceInstanceIdTest, DefaultKeepsPlainServiceNames) {
+  sts_hardware_interface::STSHardwareInterface hw;
+  ASSERT_EQ(init_hw(hw, make_valid_single_motor_info()), CallbackReturn::SUCCESS);
+  rclcpp_lifecycle::State unconfigured(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
+  ASSERT_EQ(hw.on_configure(unconfigured), CallbackReturn::SUCCESS);
+
+  EXPECT_TRUE(service_exists("/emergency_stop"));
+}
+
+/** @brief Two instances with distinct instance_id coexist, each with its own e-stop service. */
+TEST(HardwareInterfaceInstanceIdTest, DistinctIdsGiveSeparateServices) {
+  sts_hardware_interface::STSHardwareInterface hw_a;
+  sts_hardware_interface::STSHardwareInterface hw_b;
+  auto info_a = make_valid_single_motor_info();
+  info_a.hardware_parameters["instance_id"] = "bus_a";
+  auto info_b = make_valid_single_motor_info();
+  info_b.hardware_parameters["instance_id"] = "bus_b";
+  ASSERT_EQ(init_hw(hw_a, info_a), CallbackReturn::SUCCESS);
+  ASSERT_EQ(init_hw(hw_b, info_b), CallbackReturn::SUCCESS);
+
+  rclcpp_lifecycle::State unconfigured(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED, "unconfigured");
+  ASSERT_EQ(hw_a.on_configure(unconfigured), CallbackReturn::SUCCESS);
+  ASSERT_EQ(hw_b.on_configure(unconfigured), CallbackReturn::SUCCESS);
+
+  EXPECT_TRUE(service_exists("/emergency_stop_bus_a"));
+  EXPECT_TRUE(service_exists("/emergency_stop_bus_b"));
+  EXPECT_FALSE(service_exists("/emergency_stop"));
+}
+
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

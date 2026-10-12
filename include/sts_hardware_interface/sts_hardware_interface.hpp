@@ -71,10 +71,16 @@ using Result = std::optional<std::string>;
  *
  * EMERGENCY STOP:
  * Emergency stop functionality is triggered via ROS 2 service (not a command interface):
- *    Service: /emergency_stop (std_srvs/SetBool)
+ *    Service: /emergency_stop (std_srvs/SetBool), or /emergency_stop_<instance_id> when
+ *             the instance_id hardware param is set (see below) - each instance's own log
+ *             line at on_configure() names its actual service.
  *    Activate: ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
  *    Release:  ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
- * When activated, ALL motors stop immediately in both real and mock modes.
+ * When activated, ALL motors on THIS instance stop immediately in both real and mock modes.
+ * With more than one instance (e.g. one per serial bus), give each a distinct instance_id so
+ * each has its own service and e-stop. Calling one does not stop the others - call every
+ * instance's service, or stop upstream of this interface (e.g. controller_manager's
+ * switch_controller) for a stop that covers all of them at once.
  * The hardware interface creates an internal node and service server during on_configure().
  *
  * HARDWARE PARAMETERS (from ros2_control URDF):
@@ -83,6 +89,11 @@ using Result = std::optional<std::string>;
  * - communication_timeout_ms: Serial communication timeout, 1-1000 ms (default: 100)
  * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
  * - enable_mock_mode: Enable simulation mode without hardware (default: false)
+ * - instance_id: Optional suffix for this instance's internal node name and emergency-stop /
+ *                one-key-calibration service names, so several instances in the same process
+ *                (e.g. one per serial bus) don't collide. Required to be unique per instance
+ *                when set. (default: "", which keeps the plain "/emergency_stop" and
+ *                "/one_key_calibration" names)
  * - proportional_vel_max: SyncWrite only. Velocity [0–max_velocity_steps] assigned to the joint
  *                         with the largest |target_position - current_position| delta; all others
  *                         scaled proportionally. Capped to the smallest per-joint max_velocity_steps
@@ -215,6 +226,12 @@ private:
   // Lifecycle parameter
   bool reset_states_on_activate_;  // Reset position/velocity states on activation (default: true)
   bool hold_position_on_activate_;  // Seed servo position commands from the real position on activation (default: false)
+
+  // Identifies this hardware component instance in the node name and the emergency-stop /
+  // one-key-calibration service names, so two instances (e.g. two buses) don't collide on
+  // the same absolute service name. Set via the "instance_id" hardware param; empty (default)
+  // keeps the plain global "/emergency_stop" / "/one_key_calibration" names.
+  std::string instance_id_;
 
   // ===== LOGGING =====
   rclcpp::Logger logger_;
@@ -388,6 +405,12 @@ private:
 
   /** @brief Parse a boolean hardware parameter with default value */
   bool parse_bool_param(const std::string& key, bool default_value) const;
+
+  /** @brief Turn an arbitrary instance_id into a valid ROS node-name suffix:
+   *  non [A-Za-z0-9_] characters become '_', and a leading digit gets a '_'
+   *  prefix since ROS node names can't start with one. Empty input stays
+   *  empty (opts out of the suffix entirely). */
+  static std::string sanitize_for_ros_name(const std::string & raw);
 
   /** @brief Emergency stop service callback */
   void emergency_stop_callback(
