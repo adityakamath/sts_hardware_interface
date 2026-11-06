@@ -89,6 +89,11 @@ target_link_libraries(${PROJECT_NAME}_plugin
   ${std_srvs_TARGETS}
 )
 
+if(APPLE)
+  find_package(Python3 REQUIRED COMPONENTS Development)
+  target_link_libraries(${PROJECT_NAME}_plugin Python3::Python)
+endif()
+
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(${PROJECT_NAME}_plugin "${cpp_typesupport_target}")
 
