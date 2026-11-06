@@ -60,18 +60,18 @@
         <rect x="8"   y="122" width="190" height="106" rx="4" fill="#D8DDD3" stroke="#7C8076" stroke-width="1"/>
         <text x="103" y="137" text-anchor="middle" font-size="9.5" font-weight="700" fill="#141612">on_configure()</text>
         <line x1="8"  y1="141" x2="198" y2="141" stroke="#7C8076" stroke-width="0.75"/>
-        <text x="20"  y="155" font-size="8.5" fill="#404340">· /emergency_stop service</text>
+        <text x="20"  y="155" font-size="8.5" fill="#404340">· services (e-stop, calibration)</text>
         <text x="20"  y="168" font-size="8.5" fill="#404340">· open serial port</text>
         <text x="20"  y="181" font-size="8.5" fill="#404340">· ping all motors</text>
-        <text x="20"  y="194" font-size="8.5" fill="#404340">· unlockEeprom per joint →</text>
-        <text x="20"  y="207" font-size="8.5" fill="#404340">  write PID / protection /</text>
-        <text x="20"  y="220" font-size="8.5" fill="#404340">  return_delay → lockEeprom</text>
+        <text x="20"  y="194" font-size="8.5" fill="#404340">· write EEPROM settings per</text>
+        <text x="20"  y="207" font-size="8.5" fill="#404340">  joint (PID, protection,</text>
+        <text x="20"  y="220" font-size="8.5" fill="#404340">  deadband, internal regs)</text>
 
-        <!-- read(): FeedBack() per joint (not SyncRead) -->
+        <!-- read(): one SyncRead per cycle, time-boxed by read_cycle_budget_ms -->
         <rect x="208" y="122" width="158" height="106" rx="4" fill="#D8DDD3" stroke="#7C8076" stroke-width="1"/>
         <text x="287" y="137" text-anchor="middle" font-size="9.5" font-weight="700" fill="#141612">read()</text>
         <line x1="208" y1="141" x2="366" y2="141" stroke="#7C8076" stroke-width="0.75"/>
-        <text x="220" y="155" font-size="8.5" fill="#404340">FeedBack() per joint</text>
+        <text x="220" y="155" font-size="8.5" fill="#404340">one SyncRead per cycle</text>
         <text x="220" y="168" font-size="8.5" fill="#404340">(incl. read-only motors)</text>
         <text x="220" y="185" font-size="8.5" fill="#404340">7 state interfaces:</text>
         <text x="220" y="198" font-size="8.5" fill="#404340">pos · vel · effort</text>

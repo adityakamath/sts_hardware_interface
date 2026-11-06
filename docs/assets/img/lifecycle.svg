@@ -17,7 +17,7 @@
         <text x="84" y="33" text-anchor="middle" font-size="8"  fill="#404340">→ UNCONFIGURED</text>
         <text x="180" y="14" font-size="8.5" fill="#404340">· parse URDF params per joint: motor_id, operating_mode, limits, EEPROM params</text>
         <text x="180" y="27" font-size="8.5" fill="#404340">· read-only detection: joints with no &lt;command_interface&gt; → torque=0, excluded from write()</text>
-        <text x="180" y="40" font-size="8.5" fill="#404340">· build servo/velocity/PWM mode index groups (read-only excluded); resize all vectors</text>
+        <text x="180" y="40" font-size="8.5" fill="#404340">· build servo/velocity/PWM mode index groups (read-only excluded); pre-allocate the SyncWrite buffers</text>
 
         <!-- arrow 1→2 -->
         <line x1="84" y1="49" x2="84" y2="68" stroke="#585B54" stroke-width="1.5" marker-end="url(#ah)"/>
@@ -28,10 +28,10 @@
         <line x1="168" y1="70" x2="168" y2="131" stroke="#7C8076" stroke-width="0.75"/>
         <text x="84" y="87" text-anchor="middle" font-size="10" font-weight="700" fill="#141612">on_configure()</text>
         <text x="84" y="103" text-anchor="middle" font-size="8"  fill="#404340">→ INACTIVE</text>
-        <text x="180" y="84"  font-size="8.5" fill="#404340">· create /emergency_stop service (even in mock mode)</text>
+        <text x="180" y="84"  font-size="8.5" fill="#404340">· create /emergency_stop and /one_key_calibration services (even in mock mode)</text>
         <text x="180" y="97"  font-size="8.5" fill="#404340">· open serial port; ping all motors to verify communication</text>
-        <text x="180" y="110" font-size="8.5" fill="#404340">· per joint w/ EEPROM params: unlockEeprom → write PID + protection_current +</text>
-        <text x="180" y="123" font-size="8.5" fill="#404340">  overload_torque + return_delay → lockEeprom  (omit any param to preserve)</text>
+        <text x="180" y="110" font-size="8.5" fill="#404340">· per joint: write the optional EEPROM settings (PID, protection_current, overload_torque,</text>
+        <text x="180" y="123" font-size="8.5" fill="#404340">  return_delay, deadband, internal_* registers); params you omit are left unchanged</text>
 
         <!-- arrow 2→3 -->
         <line x1="84" y1="132" x2="84" y2="151" stroke="#585B54" stroke-width="1.5" marker-end="url(#ah)"/>
@@ -57,7 +57,7 @@
         <line x1="168" y1="223" x2="168" y2="297" stroke="#3A8A52" stroke-width="0.75"/>
         <text x="84" y="254" text-anchor="middle" font-size="10" font-weight="700" fill="#0C5022">active cycle</text>
         <text x="84" y="270" text-anchor="middle" font-size="8"  fill="#0C5022">ACTIVE state</text>
-        <text x="180" y="237" font-size="8.5" fill="#141612">· read():  FeedBack() per joint → pos · vel · effort · voltage · temp · current · is_moving</text>
+        <text x="180" y="237" font-size="8.5" fill="#141612">· read():  one SyncRead per cycle → pos · vel · effort · voltage · temp · current · is_moving</text>
         <text x="180" y="250" font-size="8.5" fill="#141612">· write(): SyncWrite per mode group when use_sync_write=true and &gt;1 joint per group;</text>
         <text x="180" y="263" font-size="8.5" fill="#141612">           else individual writes per joint  ·  read-only motors excluded from all groups</text>
         <text x="180" y="279" font-size="8.5" fill="#404340">· e-stop:  SetBool(true) → cmd=0 · torque=0 all joints | SetBool(false) → torque=1 commanded only</text>
