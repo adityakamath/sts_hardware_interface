@@ -46,10 +46,10 @@ The STS Hardware Interface is a `ros2_control` SystemInterface plugin that conne
 
 **Key transitions:**
 - **on_init()** → parses URDF params; detects read-only joints (no `<command_interface>` entries → `torque=0`, excluded from all write loops); builds servo/velocity/PWM mode index groups
-- **on_configure()** → creates `/emergency_stop` service (even in mock mode); opens serial port; pings all motors; writes optional EEPROM params (PID coefficients, `protection_current`, `overload_torque`, `return_delay`) per joint
+- **on_configure()** → creates `/emergency_stop` service (even in mock mode); opens serial port; pings all motors; writes optional EEPROM params (PID coefficients, `protection_current`, `overload_torque`, `return_delay`, `deadband`, `internal_*` registers) per joint
 - **on_configure()** → creates `/one_key_calibration` (`sts_hardware_interface/srv/OneKeyCalibration`) unconditionally — calibration is mode-agnostic
 - **on_activate()** → `InitMotor(motor_id, mode, torque)` per joint — commanded joints: `torque=1`; read-only joints: `torque=0`. With `hold_position_on_activate=true`, each commanded position-mode joint's `position` command is then seeded from the motor's real position (retried per motor; activation fails if a position cannot be read) so the servo holds still instead of moving to the initial 0.0 command
-- **Active cycle** → `read()` calls `FeedBack(motor_id)` per joint (individual reads, 7 state interfaces); `write()` uses SyncWrite per mode group when `use_sync_write=true` and >1 joint/group, else individual writes; read-only joints excluded from all write groups
+- **Active cycle** → `read()` sends one SyncRead request for every motor's feedback block, then collects each motor's reply (7 state interfaces); the whole read is time-boxed by `read_cycle_budget_ms`, and a motor that is skipped keeps its last state; `write()` uses SyncWrite per mode group when `use_sync_write=true` and >1 joint/group, else individual writes; read-only joints excluded from all write groups
 - **on_deactivate()** → `stop_motor()` per joint (individual writes), `EnableTorque(0)` all joints; returns to INACTIVE — may call `on_activate()` again or `on_cleanup()` to close serial
 - **on_cleanup() / on_shutdown()** → disables torque, closes serial port
 
@@ -224,6 +224,7 @@ Configure these at the `<hardware>` level in your URDF:
 | `serial_port` | string | *required* | Valid path | Serial port path (e.g., `/dev/ttyACM0`) |
 | `baud_rate` | int | 1000000 | 9600, 19200, 38400, 57600, 115200, 500000, 1000000 | Communication baud rate |
 | `communication_timeout_ms` | int | 100 | 1-1000 | Serial communication timeout (ms) |
+| `read_cycle_budget_ms` | int | 15 | 1-1000 | Time budget (ms) for the per-cycle SyncRead replies across all motors. Once it is spent, the remaining motors are skipped for that cycle (their last state is kept, and it is not counted as a read error). Without it, each unresponsive motor could block for up to `communication_timeout_ms` and the delays would stack within one cycle. |
 | `use_sync_write` | bool | true | true/false | Batch commands for multiple motors |
 | `enable_mock_mode` | bool | false | true/false | Simulation mode (no hardware required) |
 | `proportional_vel_max` | int | 0 | 0–(smallest per-joint `max_velocity_steps` among servo-mode joints) | **SyncWrite only.** Velocity (steps/s) assigned to the servo joint with the largest \|target_position − current_position\| delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to `0` to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when `use_sync_write=false`. |
@@ -301,7 +302,7 @@ Configure these per `<joint>` in your URDF:
 - **Best for:** Single motor setups, debugging communication failures
 
 **Proportional Acceleration (SyncWriteSpe path only):**
-When `use_sync_write: true` and multiple velocity-mode motors are active, the hardware interface uses per-wheel ACC scaling to keep all wheels in sync during velocity transitions. Each cycle it computes `delta_i = |target_velocity_i - current_velocity_i|` — where `target_velocity` is the limit-clamped value actually written to the servo, read from `hw_state_velocity_[idx]` populated by the preceding `read()` — and assigns ACC proportionally to the maximum delta across all wheels:
+When `use_sync_write: true` and multiple velocity-mode motors are active, the hardware interface uses per-wheel ACC scaling to keep all wheels in sync during velocity transitions. Each cycle it computes `delta_i = |target_velocity_i - current_velocity_i|` — where `target_velocity` is the limit-clamped value actually written to the servo, read from the joint's velocity state (`ST_VELOCITY`) populated by the preceding `read()` — and assigns ACC proportionally to the maximum delta across all wheels:
 
 ```
 delta_i  = |target_velocity_i - current_velocity_i|   (rad/s, clamped target)
@@ -545,6 +546,8 @@ This hardware interface is compatible with any ros2_control controller that uses
 | `MecanumDriveController` | mecanum_drive_controller | Mecanum wheel robots | Mode 1 |
 | `OmniDriveController` | admittance_controller | Omni-directional robots | Mode 1 |
 | `ForwardCommandController` | forward_command_controller | Direct control, testing | All modes |
+
+**Lyrical:** the `velocity_controllers` and `effort_controllers` packages are not used on Lyrical; use `ForwardCommandController` for Modes 1 and 2 there (see the `*_lyrical.yaml` configs).
 
 **Note:** This interface is also compatible with custom controllers that follow the ros2_control standards.
 

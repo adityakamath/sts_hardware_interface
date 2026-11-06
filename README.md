@@ -166,6 +166,7 @@ This node is recommended for all robots using STS motors to ensure safe operatio
 | `serial_port` | string | *required* | Serial port path (e.g., `/dev/ttyACM0`) |
 | `baud_rate` | int | 1000000 | Baud rate: 9600-1000000 |
 | `communication_timeout_ms` | int | 100 | Serial timeout: 1-1000 ms |
+| `read_cycle_budget_ms` | int | 15 | Time budget for the per-cycle SyncRead replies across all motors: 1-1000 ms. Motors not reached in time keep their last state. |
 | `use_sync_write` | bool | true | Enable SyncWrite for multi-motor setups |
 | `enable_mock_mode` | bool | false | Simulation mode (no hardware) |
 | `proportional_vel_max` | int | 0 | **SyncWrite only.** Velocity value [0–smallest per-joint `max_velocity_steps` among servo-mode joints] assigned to the joint with the largest `\|target_position - current_position\|` delta. All others are scaled proportionally so every joint arrives at its target at the same time. Set to `0` to disable (falls back to per-joint commanded velocity, or raw 0 = hardware max speed if the interface is not declared). Has no effect when `use_sync_write=false`. |
