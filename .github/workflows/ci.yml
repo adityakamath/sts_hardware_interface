@@ -146,6 +146,7 @@ jobs:
             ros-${{ matrix.ros_distro }}-rclcpp \
             ros-${{ matrix.ros_distro }}-rclcpp-lifecycle \
             ros-${{ matrix.ros_distro }}-robot-state-publisher \
+            ros-${{ matrix.ros_distro }}-state-interfaces-broadcaster \
             ros-${{ matrix.ros_distro }}-std-srvs \
             ros-${{ matrix.ros_distro }}-xacro
 

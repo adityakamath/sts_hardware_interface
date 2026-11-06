@@ -31,7 +31,7 @@ import launch_testing.markers
 import pytest
 import rclpy
 from rclpy.qos import (
-    DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data)
+    DurabilityPolicy, qos_profile_sensor_data, QoSProfile, ReliabilityPolicy)
 
 
 @pytest.mark.launch_test
