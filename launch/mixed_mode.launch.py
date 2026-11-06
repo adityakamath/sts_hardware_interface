@@ -159,10 +159,21 @@ def generate_launch_description():
         ],
     )
 
+    # State interfaces broadcaster (health data for motor_diagnostics_node)
+    state_interfaces_broadcaster_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'state_interfaces_broadcaster', '--controller-manager', '/controller_manager',
+            *spawner_params,
+        ],
+    )
+
     nodes = [
         robot_state_publisher_node,
         controller_manager_node,
         joint_state_broadcaster_spawner,
+        state_interfaces_broadcaster_spawner,
         arm_controller_spawner,
         wheel_controller_spawner,
         gripper_controller_spawner,

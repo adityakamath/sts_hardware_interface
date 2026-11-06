@@ -8,7 +8,7 @@
 
 `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 
-**✅ Status:** All three operating modes are implemented. **Modes 0 (Position) and 1 (Velocity)** have been tested and validated on physical hardware. **Mode 2 (PWM/Effort)** direction has been validated on physical hardware (a sign-inversion bug in `effort_to_raw_pwm` was found and fixed); torque-magnitude calibration is still in progress.
+**✅ Status:** All three operating modes are implemented. **Modes 0 (Position), 1 (Velocity), and 2 (PWM/Effort)** have been tested and validated on physical hardware; torque-magnitude calibration is still in progress.
 
 **⚠️ One-key Calibration Status:** The `/one_key_calibration` service is newly added. Mock-mode behavior has unit test coverage, but it is **untested on physical hardware**, and neither mode has been exercised through the full launch stack.
 
@@ -148,11 +148,12 @@ motor_diagnostics_node:
     temp_warn: 60.0                # °C - temperature warning threshold
     temp_error: 75.0               # °C - temperature error threshold
     current_max: 3.0               # A - maximum acceptable motor current
+    state_topic: /state_interfaces_broadcaster  # name of the state_interfaces_broadcaster controller
 ```
 
 **Node Details:**
 - **Node name:** `motor_diagnostics_node`
-- **Subscribed topics:** `/dynamic_joint_states` (from `joint_state_broadcaster`; on Lyrical and newer the broadcaster no longer publishes it, even with `publish_dynamic_joint_states: true`, so the node receives no data there yet)
+- **Subscribed topics:** `/state_interfaces_broadcaster/names` (control_msgs/Keys, latched) and `/state_interfaces_broadcaster/values` (control_msgs/Float64Values), from the `state_interfaces_broadcaster` controller that the bundled launch files spawn. Works the same on Kilted and Lyrical; the topic prefix is the `state_topic` parameter
 - **Published topics:** `/diagnostics` (diagnostic_msgs/DiagnosticArray)
 - **Parameters:** See config YAML above
 

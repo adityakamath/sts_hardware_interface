@@ -23,7 +23,7 @@ After launching with use_mock:=true, send a command:
 
 Then inspect states:
 
-    ros2 topic echo /dynamic_joint_states
+    ros2 topic echo /state_interfaces_broadcaster/values
 
 Expected behaviour (mock):
     effort   ≈ 0.5   (tracks command)
@@ -188,10 +188,21 @@ def generate_launch_description():
         ],
     )
 
+    # State interfaces broadcaster (health data for motor_diagnostics_node)
+    state_interfaces_broadcaster_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'state_interfaces_broadcaster', '--controller-manager', '/controller_manager',
+            *spawner_params,
+        ],
+    )
+
     nodes = [
         robot_state_publisher_node,
         controller_manager_node,
         joint_state_broadcaster_spawner,
+        state_interfaces_broadcaster_spawner,
         pwm_controller_spawner,
     ]
 

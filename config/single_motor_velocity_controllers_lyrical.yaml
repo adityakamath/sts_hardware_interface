@@ -7,6 +7,10 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+    # State Interfaces Broadcaster - Publishes health interfaces for motor_diagnostics_node
+    state_interfaces_broadcaster:
+      type: state_interfaces_broadcaster/StateInterfacesBroadcaster
+
     # Velocity Controller - Commands velocity to the wheel joint
     velocity_controller:
       type: forward_command_controller/ForwardCommandController
@@ -30,6 +34,18 @@ joint_state_broadcaster:
       # - temperature    # Internal temperature (°C)
       # - current        # Motor current draw (amperes)
       # - is_moving      # Motion status (1.0=moving, 0.0=stopped)
+
+# State Interfaces Broadcaster configuration
+# Publishes the listed <joint>/<interface> values to /state_interfaces_broadcaster/values
+# (names on /state_interfaces_broadcaster/names); read by motor_diagnostics_node on Kilted and Lyrical
+state_interfaces_broadcaster:
+  ros__parameters:
+    interfaces:
+      - wheel_joint/effort
+      - wheel_joint/voltage
+      - wheel_joint/temperature
+      - wheel_joint/current
+      - wheel_joint/is_moving
 
 # Velocity Controller configuration (Mode 1)
 velocity_controller:

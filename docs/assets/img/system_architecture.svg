@@ -39,12 +39,12 @@
         <text x="472" y="55" text-anchor="middle" font-size="8" fill="#404340">mode 2</text>
         <text x="472" y="65" text-anchor="middle" font-size="8" fill="#404340">effort</text>
 
-        <!-- joint_state_broadcaster (ros2_control broadcaster) -->
+        <!-- state broadcasters (ros2_control) -->
         <rect x="569" y="28" width="179" height="44" rx="4" fill="#D8DDD3" stroke="#7C8076" stroke-width="1"/>
-        <text x="659" y="39" text-anchor="middle" font-size="9" font-weight="600" fill="#141612">joint_state_broadcaster</text>
+        <text x="659" y="39" text-anchor="middle" font-size="9" font-weight="600" fill="#141612">state broadcasters</text>
         <line x1="569" y1="45" x2="748" y2="45" stroke="#7C8076" stroke-width="0.75"/>
-        <text x="659" y="55" text-anchor="middle" font-size="8" fill="#404340">pub → /joint_states</text>
-        <text x="659" y="65" text-anchor="middle" font-size="8" fill="#404340">pub → /dynamic_joint_states</text>
+        <text x="659" y="55" text-anchor="middle" font-size="7.5" fill="#404340">joint_state_broadcaster → /joint_states</text>
+        <text x="659" y="65" text-anchor="middle" font-size="7.5" fill="#404340">state_interfaces_broadcaster → …/values</text>
 
         <!-- ── INTER-LAYER ARROWS: ROS 2 ↔ HW INTERFACE ── -->
         <!-- command interfaces down — x=285 = center of 3 controller columns -->
@@ -115,7 +115,7 @@
         <rect x="288" y="236" width="272" height="44" rx="4" fill="#D8DDD3" stroke="#7C8076" stroke-width="1"/>
         <text x="424" y="249" text-anchor="middle" font-size="9.5" font-weight="700" fill="#141612">motor_diagnostics_node</text>
         <line x1="288" y1="253" x2="560" y2="253" stroke="#7C8076" stroke-width="0.75"/>
-        <text x="424" y="263" text-anchor="middle" font-size="8" fill="#404340">sub ← /dynamic_joint_states</text>
+        <text x="424" y="263" text-anchor="middle" font-size="8" fill="#404340">sub ← /state_interfaces_broadcaster/values</text>
         <text x="424" y="274" text-anchor="middle" font-size="8" fill="#404340">pub → /diagnostics</text>
 
         <!-- Mock mode (dashed) – full inner width -->

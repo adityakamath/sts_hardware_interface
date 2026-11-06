@@ -6,6 +6,10 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+    # State Interfaces Broadcaster - Publishes health interfaces for motor_diagnostics_node
+    state_interfaces_broadcaster:
+      type: state_interfaces_broadcaster/StateInterfacesBroadcaster
+
     # Arm Controller - Position control with trajectory following (Mode 0) - 2 motors
     arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
@@ -41,6 +45,43 @@ joint_state_broadcaster:
       - temperature    # Internal temperature (°C)
       - current        # Motor current draw (amperes)
       - is_moving      # Motion status (1.0=moving, 0.0=stopped)
+
+# State Interfaces Broadcaster configuration
+# Publishes the listed <joint>/<interface> values to /state_interfaces_broadcaster/values
+# (names on /state_interfaces_broadcaster/names); read by motor_diagnostics_node on Kilted and Lyrical
+state_interfaces_broadcaster:
+  ros__parameters:
+    interfaces:
+      - arm_joint_1/effort
+      - arm_joint_1/voltage
+      - arm_joint_1/temperature
+      - arm_joint_1/current
+      - arm_joint_1/is_moving
+      - arm_joint_2/effort
+      - arm_joint_2/voltage
+      - arm_joint_2/temperature
+      - arm_joint_2/current
+      - arm_joint_2/is_moving
+      - wheel_joint_1/effort
+      - wheel_joint_1/voltage
+      - wheel_joint_1/temperature
+      - wheel_joint_1/current
+      - wheel_joint_1/is_moving
+      - wheel_joint_2/effort
+      - wheel_joint_2/voltage
+      - wheel_joint_2/temperature
+      - wheel_joint_2/current
+      - wheel_joint_2/is_moving
+      - gripper_joint_1/effort
+      - gripper_joint_1/voltage
+      - gripper_joint_1/temperature
+      - gripper_joint_1/current
+      - gripper_joint_1/is_moving
+      - gripper_joint_2/effort
+      - gripper_joint_2/voltage
+      - gripper_joint_2/temperature
+      - gripper_joint_2/current
+      - gripper_joint_2/is_moving
 
 # Wheel Controller configuration (Mode 1: Velocity) - 2 motors, SyncWrite enabled
 wheel_controller:

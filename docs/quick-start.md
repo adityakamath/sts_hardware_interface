@@ -120,7 +120,7 @@ ros2 topic pub /velocity_controller/commands std_msgs/msg/Float64MultiArray "dat
 ros2 topic echo /joint_states
 
 # Monitor additional state (voltage, temperature, current, is_moving)
-ros2 topic echo /dynamic_joint_states
+ros2 topic echo /state_interfaces_broadcaster/values
  
 # (Optional) Monitor motor diagnostics in real time
 ros2 launch sts_hardware_interface motor_diagnostics.launch.py
@@ -177,7 +177,7 @@ ros2 action send_goal /arm_controller/follow_joint_trajectory \
 ros2 topic echo /joint_states
 
 # Monitor additional state (voltage, temperature, current, is_moving)
-ros2 topic echo /dynamic_joint_states
+ros2 topic echo /state_interfaces_broadcaster/values
 
 # (Optional) Monitor motor diagnostics in real time
 ros2 launch sts_hardware_interface motor_diagnostics.launch.py
@@ -285,7 +285,8 @@ ros2 launch sts_hardware_interface single_motor_pwm.launch.py use_mock:=true
    - Joint type is `continuous` (no position limits) to prevent `JointSaturationLimiter` from clamping effort commands
 2. Starts `ros2_control` node with mock or real hardware
 3. Spawns two controllers:
-   - `joint_state_broadcaster` - publishes all 7 state interfaces to `/dynamic_joint_states`
+   - `joint_state_broadcaster` - publishes position, velocity and effort to `/joint_states`
+   - `state_interfaces_broadcaster` - publishes effort, voltage, temperature, current and is_moving to `/state_interfaces_broadcaster/values`
    - `pwm_controller` (`effort_controllers/JointGroupEffortController`) - accepts duty-cycle commands on `/pwm_controller/commands`
 
 **Mock Mode Behavior:**
@@ -311,7 +312,7 @@ ros2 topic pub /pwm_controller/commands std_msgs/msg/Float64MultiArray "data: [-
 ros2 topic pub --once /pwm_controller/commands std_msgs/msg/Float64MultiArray "data: [0.0]"
 
 # Monitor all state interfaces (effort, velocity, is_moving, voltage, temperature, current)
-ros2 topic echo /dynamic_joint_states
+ros2 topic echo /state_interfaces_broadcaster/values
 ```
 
 > **Direction validated on physical hardware:** a sign-inversion bug in `effort_to_raw_pwm` was found and fixed; torque-magnitude calibration is still in progress.
@@ -348,29 +349,23 @@ Expected output shows available command and state interfaces for each joint.
 ros2 topic echo /joint_states  # position, velocity, effort
 ```
 
-**Additional state** (`/dynamic_joint_states`):
+**Additional state** (`/state_interfaces_broadcaster/{names,values}`):
 
 ```bash
-ros2 topic echo /dynamic_joint_states  # All interfaces including voltage, temperature, current, is_moving
+ros2 topic echo /state_interfaces_broadcaster/values  # Order given by /state_interfaces_broadcaster/names
 ```
 
-To enable `/dynamic_joint_states`, **explicitly list ALL desired state interfaces** (standard and custom) in your controller YAML:
+The bundled controller YAMLs already enable this. To change it, list the `<joint>/<interface>` keys you want in your controller YAML (`/dynamic_joint_states` is not published on Lyrical and newer, so the same setup is used on Kilted):
 
 ```yaml
-joint_state_broadcaster:
+state_interfaces_broadcaster:
   ros__parameters:
-    joints:
-      - wheel_joint
-      - arm_joint
-    # IMPORTANT: Must list ALL standard interfaces, custom interfaces are optional
     interfaces:
-      - position      # Standard
-      - velocity      # Standard
-      - effort        # Standard
-      - voltage       # Custom
-      - temperature   # Custom
-      - current       # Custom
-      - is_moving     # Custom
+      - wheel_joint/voltage
+      - wheel_joint/temperature
+      - wheel_joint/current
+      - wheel_joint/is_moving
+      - wheel_joint/effort
 ```
 
 See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for complete example.
@@ -418,7 +413,7 @@ Notes:
 
 ### 6. Monitor Motor Diagnostics
 
-The `motor_diagnostics_node` provides real-time health monitoring for all motors. It subscribes to `/dynamic_joint_states` and publishes aggregated diagnostic status to `/diagnostics`, which can be viewed in rqt or echoed in the terminal.
+The `motor_diagnostics_node` provides real-time health monitoring for all motors. It subscribes to `/state_interfaces_broadcaster/{names,values}` and publishes aggregated diagnostic status to `/diagnostics`, which can be viewed in rqt or echoed in the terminal.
 
 **How to launch:**
 
@@ -560,7 +555,7 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
 
 3. **Check motor error states:**
    ```bash
-   ros2 topic echo /dynamic_joint_states
+   ros2 topic echo /state_interfaces_broadcaster/values
    ```
 
 ### Mock Mode Not Working
@@ -581,7 +576,7 @@ Edit `config/motor_diagnostics_config.yaml` to set warning/error levels for volt
 3. **Monitor simulated state:**
    ```bash
    ros2 topic echo /joint_states
-   ros2 topic echo /dynamic_joint_states  # Check voltage, temperature, current
+   ros2 topic echo /state_interfaces_broadcaster/values  # Check voltage, temperature, current
    ```
    Mock mode simulates realistic velocity integration and sensor feedback (voltage 11.5-12V with load-dependent drop, temperature 25-40°C, current proportional to effort up to ~1A).
 
@@ -638,7 +633,7 @@ colcon test --packages-select sts_hardware_interface \
 Summary: X tests, 0 errors, 0 failures, Y skipped
 ```
 
-- **Skipped** (not failed): `test_dynamic_joint_states_published` is skipped on Lyrical and newer, where `joint_state_broadcaster` no longer publishes `/dynamic_joint_states`. This is expected. The `cppcheck` linter also reports skipped files (the vendored SCServo SDK).
+- **Skipped** (not failed): the `cppcheck` linter reports skipped files (the vendored SCServo SDK).
 - **Run on their own ROS domain:** the launch tests start a real `controller_manager`, so run them with a free `ROS_DOMAIN_ID` (for example `env ROS_DOMAIN_ID=87 colcon test ...`) while another ROS 2 session is running.
 - All other tests must pass. If any fail, run `colcon test-result --verbose` and check the per-test logs in `log/latest_test/`.
 

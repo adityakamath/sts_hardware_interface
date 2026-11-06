@@ -163,12 +163,10 @@ class TestMixedModeLaunch(unittest.TestCase):
         )
         self.node.destroy_client(client)
 
-    @unittest.skipIf(
-        os.environ.get('ROS_DISTRO') in ('lyrical', 'rolling'),
-        'joint_state_broadcaster no longer publishes /dynamic_joint_states on Lyrical+')
-    def test_dynamic_joint_states_published(self):
-        """Verify /dynamic_joint_states is published (custom interfaces)."""
-        from control_msgs.msg import DynamicJointState
+    def test_state_interfaces_published(self):
+        """Verify state_interfaces_broadcaster publishes the custom interface values."""
+        from control_msgs.msg import Float64Values
         received = self._wait_for_topic(
-            '/dynamic_joint_states', DynamicJointState, timeout_sec=45.0)
-        self.assertTrue(received, '/dynamic_joint_states not received within 45 seconds')
+            '/state_interfaces_broadcaster/values', Float64Values, timeout_sec=45.0)
+        self.assertTrue(
+            received, '/state_interfaces_broadcaster/values not received within 45 seconds')

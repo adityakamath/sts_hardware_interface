@@ -137,7 +137,7 @@ A joint with **no `<command_interface>` entries** in the URDF is treated as a re
 
 - Torque is disabled at `on_activate()` via `InitMotor(id, mode, 0)` and remains disabled for the entire session, including after emergency stop release.
 - The joint is excluded from all mode-grouped write loops (`servo_motor_indices_`, `velocity_motor_indices_`, `pwm_motor_indices_`), so `write()` requires zero per-joint guards.
-- All 7 state interfaces are still exported and the motor is still read every cycle — readonly joints appear in `/joint_states` and `/dynamic_joint_states` normally.
+- All 7 state interfaces are still exported and the motor is still read every cycle — readonly joints appear in `/joint_states` and `/state_interfaces_broadcaster/values` normally.
 - No command interfaces are exported, so no controller can claim the joint for commanding.
 - `motor_id` and `operating_mode` are still required — `InitMotor` writes the mode register to EEPROM so feedback data (position, velocity) is interpreted correctly.
 - EEPROM parameters (`p/d/i_coefficient`, `protection_current`, `overload_torque`, `return_delay`) are still parsed and written if present — this protects the motor even if torque is enabled externally.
@@ -193,26 +193,20 @@ The `joint_state_broadcaster` publishes motor state to two topics:
 - Contains: `position`, `velocity`, and `effort` fields
 - Always available without configuration
 
-**Additional state (`/dynamic_joint_states`):**
-- Message type: `control_msgs/DynamicJointState`
-- Contains all configured state interfaces including extended diagnostics
-- **Requires explicit listing of ALL desired interfaces** (standard and custom) in controller YAML:
+**Additional state (`/state_interfaces_broadcaster/{names,values}`):**
+- Message types: `control_msgs/Keys` (latched, `<joint>/<interface>` names) and `control_msgs/Float64Values` (values in the same order)
+- Published by `state_interfaces_broadcaster`, the same on Kilted and Lyrical (`/dynamic_joint_states` is not published on Lyrical and newer)
+- **Requires explicit listing of the desired `<joint>/<interface>` keys** in controller YAML:
 
 ```yaml
-joint_state_broadcaster:
+state_interfaces_broadcaster:
   ros__parameters:
-    joints:
-      - wheel_joint
-      - arm_joint
-    # IMPORTANT: Must list ALL standard interfaces, custom interfaces are optional
     interfaces:
-      - position      # Standard - required for /dynamic_joint_states
-      - velocity      # Standard - required for /dynamic_joint_states
-      - effort        # Standard - required for /dynamic_joint_states
-      - voltage       # Custom
-      - temperature   # Custom
-      - current       # Custom
-      - is_moving     # Custom
+      - wheel_joint/effort
+      - wheel_joint/voltage
+      - wheel_joint/temperature
+      - wheel_joint/current
+      - wheel_joint/is_moving
 ```
 
 See [config/mixed_mode_controllers.yaml](../config/mixed_mode_controllers.yaml) for a complete example.
@@ -413,7 +407,7 @@ The hardware interface automatically recovers from communication failures:
 
 ### Motor Diagnostics
 
-The `motor_diagnostics_node` provides real-time health monitoring for all motors managed by the hardware interface. It subscribes to `/dynamic_joint_states` and publishes aggregated diagnostic status to the standard `/diagnostics` topic, enabling integration with ROS 2 diagnostic tools and dashboards.
+The `motor_diagnostics_node` provides real-time health monitoring for all motors managed by the hardware interface. It subscribes to `/state_interfaces_broadcaster/{names,values}` and publishes aggregated diagnostic status to the standard `/diagnostics` topic, enabling integration with ROS 2 diagnostic tools and dashboards.
 
 **Features:**
 - Monitors voltage, temperature, current, motion status, and effort for each joint
@@ -424,7 +418,7 @@ The `motor_diagnostics_node` provides real-time health monitoring for all motors
 - Compatible with rqt_robot_monitor and other ROS 2 diagnostic consumers
 
 **Architecture:**
-- **Input:** `control_msgs/DynamicJointState` from `/dynamic_joint_states` (joint_state_broadcaster)
+- **Input:** `control_msgs/Keys` and `control_msgs/Float64Values` from `/state_interfaces_broadcaster/{names,values}` (state_interfaces_broadcaster)
 - **Output:** `diagnostic_msgs/DiagnosticArray` on `/diagnostics`
 - **Config:** YAML file for thresholds and warning levels (see `config/motor_diagnostics_config.yaml`)
 
@@ -759,7 +753,7 @@ Spins up the `mixed_mode` example in mock mode (six motors: two position, two ve
 | `test_all_three_controllers_active` | `arm_controller`, `wheel_controller`, and `gripper_controller` all reach `active` state |
 | `test_joint_state_broadcaster_active` | `joint_state_broadcaster` is `active` |
 | `test_emergency_stop_service_available` | `/emergency_stop` service is reachable in mixed-mode configuration |
-| `test_dynamic_joint_states_published` | `/dynamic_joint_states` publishes `control_msgs/DynamicJointState` messages |
+| `test_state_interfaces_published` | `/state_interfaces_broadcaster/values` publishes `control_msgs/Float64Values` messages |
 
 ---
 
@@ -778,9 +772,9 @@ Spins up the `motor_diagnostics` and `single_motor_velocity` launch files togeth
 
 **Notable implementation details:**
 
-- Each fault test subscribes to `/diagnostics` and publishes injected `DynamicJointState` values in a loop, spinning concurrently until a matching diagnostic level + keyword is received. This avoids races with the hardware interface's continuous nominal data stream.
+- Each fault test subscribes to `/diagnostics` and publishes injected `Float64Values` (plus matching `Keys`) in a loop, spinning concurrently until a matching diagnostic level + keyword is received. This avoids races with the hardware interface's continuous nominal data stream.
 - Thresholds used in assertions match those in `config/motor_diagnostics_config.yaml`.
-- `test_diagnostics_ok_status` waits specifically for an `OK`-level message rather than trusting the first one that arrives: `motor_diagnostics_node` is stateless (each `/diagnostics` message reflects only the `/dynamic_joint_states` message that produced it), but all test methods share one running node stack, and `unittest` runs them in alphabetical order — so a fault-injecting test (e.g. `test_diagnostics_error_temperature`) can still have messages in flight right as this test starts.
+- `test_diagnostics_ok_status` waits specifically for an `OK`-level message rather than trusting the first one that arrives: `motor_diagnostics_node` is stateless (each `/diagnostics` message reflects only the `/state_interfaces_broadcaster/values` message that produced it), but all test methods share one running node stack, and `unittest` runs them in alphabetical order — so a fault-injecting test (e.g. `test_diagnostics_error_temperature`) can still have messages in flight right as this test starts.
 
 ---
 

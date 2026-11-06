@@ -31,7 +31,7 @@ flowchart TB
     subgraph ros2["ROS 2 CONTROL"]
         ctrl["JointTrajectoryController (mode 0)<br/>JointGroupVelocityController (mode 1)<br/>JointGroupEffortController (mode 2)"]
         estop["/emergency_stop<br/>std_srvs/SetBool<br/>all motors stop · torque disabled"]
-        diag["joint_state_broadcaster<br/>→ /joint_states · /dynamic_joint_states<br/>motor_diagnostics_node → /diagnostics"]
+        diag["joint_state_broadcaster → /joint_states<br/>state_interfaces_broadcaster → /state_interfaces_broadcaster/values<br/>motor_diagnostics_node → /diagnostics"]
     end
 
     subgraph hw["STS HARDWARE INTERFACE"]

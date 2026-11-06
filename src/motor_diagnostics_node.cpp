@@ -3,14 +3,18 @@
  * @brief Real-time motor health monitoring for STS servo motor chains
  *
  * Monitors motor temperature, voltage, current, and detects internal stalls
- * by analyzing dynamic joint state feedback from the hardware interface.
+ * by analyzing state interface feedback from the hardware interface (via state_interfaces_broadcaster).
  */
 
 #include <rclcpp/rclcpp.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
-#include <control_msgs/msg/dynamic_joint_state.hpp>
+#include <control_msgs/msg/float64_values.hpp>
+#include <control_msgs/msg/keys.hpp>
+#include <map>
+#include <string>
+#include <vector>
 #include <unordered_map>
 #include <memory>
 #include <cstdio>
@@ -19,7 +23,7 @@
  * @class MotorDiagnosticsNode
  * @brief Node for monitoring motor health and detecting failure conditions
  *
- * Subscribes to /dynamic_joint_states and publishes diagnostic messages
+ * Subscribes to <state_topic>/names and <state_topic>/values and publishes diagnostic messages
  * when motors exceed temperature, voltage, current, or stall thresholds.
  */
 class MotorDiagnosticsNode : public rclcpp::Node {
@@ -36,6 +40,7 @@ public:
     this->declare_parameter("temp_warn", 60.0);
     this->declare_parameter("temp_error", 75.0);
     this->declare_parameter("current_max", 3.0);
+    this->declare_parameter("state_topic", "/state_interfaces_broadcaster");
 
     // Get parameters
     effort_threshold_ = this->get_parameter("effort_threshold").as_double();
@@ -45,11 +50,15 @@ public:
     temp_warn_ = this->get_parameter("temp_warn").as_double();
     temp_error_ = this->get_parameter("temp_error").as_double();
     current_max_ = this->get_parameter("current_max").as_double();
+    const std::string state_topic = this->get_parameter("state_topic").as_string();
 
-    // Create subscription
-    subscription_ = this->create_subscription<control_msgs::msg::DynamicJointState>(
-        "/dynamic_joint_states", rclcpp::SensorDataQoS(),
-        std::bind(&MotorDiagnosticsNode::joint_states_callback, this, std::placeholders::_1));
+    // names is latched (transient local) and published once; values stream at the controller rate
+    names_sub_ = this->create_subscription<control_msgs::msg::Keys>(
+        state_topic + "/names", rclcpp::QoS(1).reliable().transient_local(),
+        std::bind(&MotorDiagnosticsNode::names_callback, this, std::placeholders::_1));
+    values_sub_ = this->create_subscription<control_msgs::msg::Float64Values>(
+        state_topic + "/values", rclcpp::SensorDataQoS(),
+        std::bind(&MotorDiagnosticsNode::values_callback, this, std::placeholders::_1));
 
     // Create publisher. Reliable, not SensorDataQoS - this carries stall/overheat/overcurrent
     // warnings, not a high-rate sensor stream, and a best-effort warning is a warning that can
@@ -72,22 +81,43 @@ private:
   double temp_error_; // Temperature error threshold (°C)
   double current_max_; // Maximum current limit (A)
 
-  rclcpp::Subscription<control_msgs::msg::DynamicJointState>::SharedPtr subscription_; // Subscription to dynamic joint states
+  rclcpp::Subscription<control_msgs::msg::Keys>::SharedPtr names_sub_; // "<joint>/<interface>" keys
+  rclcpp::Subscription<control_msgs::msg::Float64Values>::SharedPtr values_sub_; // Values, same order as keys
+  std::vector<std::string> keys_; // Latest keys from the broadcaster
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_; // Publisher for diagnostic messages
 
   /**
-   * @brief Process joint states and publish diagnostics
-   * @param msg Dynamic joint state message from hardware interface
+   * @brief Store the key list published by state_interfaces_broadcaster
+   * @param msg Keys of the form "<joint>/<interface>"
    */
-  void joint_states_callback(const control_msgs::msg::DynamicJointState::SharedPtr msg) {
+  void names_callback(const control_msgs::msg::Keys::SharedPtr msg) {
+    keys_ = msg->keys;
+  }
+
+  /**
+   * @brief Process state interface values and publish diagnostics
+   * @param msg Values in the same order as the latest keys
+   */
+  void values_callback(const control_msgs::msg::Float64Values::SharedPtr msg) {
+    if (keys_.empty() || msg->values.size() != keys_.size()) return;
+
+    // Group "<joint>/<interface>" into per-joint maps, keeping joint order of first appearance
+    std::vector<std::string> joint_order;
+    std::map<std::string, std::unordered_map<std::string, double>> joints;
+    for (size_t i = 0; i < keys_.size(); ++i) {
+      const auto slash = keys_[i].rfind('/');
+      if (slash == std::string::npos) continue;
+      const std::string joint = keys_[i].substr(0, slash);
+      if (!joints.count(joint)) joint_order.push_back(joint);
+      joints[joint][keys_[i].substr(slash + 1)] = msg->values[i];
+    }
+
     auto diagnostics = std::make_shared<diagnostic_msgs::msg::DiagnosticArray>();
     diagnostics->header.stamp = this->now();
     diagnostics->header.frame_id = "base_link";
 
-    for (size_t i = 0; i < msg->joint_names.size(); ++i) {
-      if (i >= msg->interface_values.size()) break;
-
-      const auto& joint_name = msg->joint_names[i];
+    for (const auto& joint_name : joint_order) {
+      const auto& values_dict = joints[joint_name];
       auto status = diagnostic_msgs::msg::DiagnosticStatus();
       // name, not just hardware_id: diagnostic_aggregator's GenericAnalyzer matches
       // (startswith/contains/regex) only against DiagnosticStatus.name, never hardware_id -
@@ -96,16 +126,8 @@ private:
       status.hardware_id = joint_name;
       status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
 
-      // Build values dictionary and add to status in one pass
-      std::unordered_map<std::string, double> values_dict;
-      const auto& iface_values = msg->interface_values[i];
-      status.values.reserve(iface_values.interface_names.size());
-      
-      for (size_t j = 0; j < iface_values.interface_names.size() && j < iface_values.values.size(); ++j) {
-        const std::string& key = iface_values.interface_names[j];
-        double value = iface_values.values[j];
-        values_dict[key] = value;
-
+      status.values.reserve(values_dict.size());
+      for (const auto& [key, value] : values_dict) {
         diagnostic_msgs::msg::KeyValue kv;
         kv.key = key;
         kv.value = std::to_string(value);

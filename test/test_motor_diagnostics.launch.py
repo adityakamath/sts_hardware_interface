@@ -22,7 +22,7 @@ import os
 import time
 import unittest
 
-from control_msgs.msg import DynamicJointState, InterfaceValue
+from control_msgs.msg import Float64Values, Keys
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 import launch
 import launch_testing
@@ -30,7 +30,8 @@ import launch_testing.actions
 import launch_testing.markers
 import pytest
 import rclpy
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import (
+    DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data)
 
 
 @pytest.mark.launch_test
@@ -109,15 +110,19 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
 
         sub = self.node.create_subscription(
             DiagnosticArray, '/diagnostics', on_diag, qos_profile_sensor_data)
-        pub = self.node.create_publisher(DynamicJointState, '/dynamic_joint_states', 10)
+        # Publish as state_interfaces_broadcaster would: latched keys + streaming values
+        names_pub = self.node.create_publisher(
+            Keys, '/state_interfaces_broadcaster/names',
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        pub = self.node.create_publisher(
+            Float64Values, '/state_interfaces_broadcaster/values', qos_profile_sensor_data)
 
-        msg = DynamicJointState()
-        msg.joint_names = [name]
-        iv = InterfaceValue()
-        for k, v in values.items():
-            iv.interface_names.append(k)
-            iv.values.append(float(v))
-        msg.interface_values.append(iv)
+        keys = Keys()
+        keys.keys = [f'{name}/{k}' for k in values]
+        names_pub.publish(keys)
+        msg = Float64Values()
+        msg.values = [float(v) for v in values.values()]
 
         deadline = time.time() + timeout_sec
         while time.time() < deadline and not matched:
@@ -125,6 +130,7 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
             rclpy.spin_once(self.node, timeout_sec=0.05)
 
         self.node.destroy_publisher(pub)
+        self.node.destroy_publisher(names_pub)
         self.node.destroy_subscription(sub)
         return matched
 
@@ -139,7 +145,7 @@ class TestMotorDiagnosticsIntegration(unittest.TestCase):
 
         Waits specifically for an OK-level message rather than trusting
         whatever arrives first: other test methods in this class inject
-        fault values into the shared /dynamic_joint_states stream, and
+        fault values into the shared /state_interfaces_broadcaster stream, and
         their in-flight messages can still be processed by the (stateless)
         diagnostics node right as this test starts, since test order across
         methods isn't controlled and all methods share one running stack.
