@@ -2,29 +2,33 @@
 #define SMS_STS_HARDWARE_INTERFACE_SMS_STS_HARDWARE_INTERFACE_HPP_
 
 #include <array>
+#include <atomic>
+#include <cmath>
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
-#include <chrono>
-#include <map>
-#include <mutex>
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/handle.hpp"
 #include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
+#include "rclcpp/clock.hpp"
+#include "rclcpp/duration.hpp"
+#include "rclcpp/logger.hpp"
 #include "rclcpp/macros.hpp"
-#include "rclcpp/rclcpp.hpp"
+#include "rclcpp/node.hpp"
+#include "rclcpp/service.hpp"
+#include "rclcpp/time.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "sts_hardware_interface/srv/one_key_calibration.hpp"
-
-// SCServo SDK
-#include <scservo/SMS_STS.h>
-
-// Conversion utilities
 #include "sts_hardware_interface/sts_conversions.hpp"
+
+// Feetech SCServo SDK servo class, defined in <scservo/SMS_STS.h> (included by the .cpp only)
+class SMS_STS;
 
 namespace sts_hardware_interface
 {
@@ -33,112 +37,24 @@ namespace sts_hardware_interface
 using Result = std::optional<std::string>;
 
 /**
- * @brief ros2_control SystemInterface for Feetech STS series servo motors (single or chain)
+ * @brief ros2_control SystemInterface for Feetech STS series servo motors (single motor or chain)
  *
- * Designed and tested with STS3215 servo motors. Compatible with other STS series motors
- * (STS3032, STS3235, etc.) but may require adjusting motor-specific parameters like
- * max_velocity to match the maximum speed in steps/s for your specific motor model.
+ * Designed and tested with STS3215; other STS models work by setting max_velocity_steps per joint.
+ * Several motors on one serial bus are driven with SyncWrite/SyncRead.
  *
- * Supports controlling a single motor or chain of motors on the same serial bus.
- * Uses SyncWrite functions for efficient multi-motor control.
+ * Operating mode per joint (`operating_mode`): 0 = servo (position, optional velocity and
+ * acceleration limits), 1 = velocity (default), 2 = PWM (open-loop effort in [-1, 1]).
+ * Every joint exports position, velocity, effort, voltage, temperature, current and is_moving
+ * states. A joint declaring no command interfaces is read-only: torque is disabled, but it is
+ * still read every cycle (e.g. a teleoperation leader arm).
  *
- * OPERATING MODES:
- * - Mode 0 (Servo): Position control with speed and acceleration limits
- * - Mode 1 (Velocity): Closed-loop velocity control (default)
- * - Mode 2 (PWM): Open-loop PWM/effort control
+ * Services: /emergency_stop (std_srvs/SetBool) stops all motors; /one_key_calibration
+ * (OneKeyCalibration) sets the current position as the encoder midpoint.
  *
- * STATE INTERFACES (Read from hardware - all modes, per joint):
- * - position: Current position in radians
- * - velocity: Current velocity in rad/s
- * - effort: Normalized motor load (-1.0 to +1.0, scaled by effort_max)
- * - voltage: Supply voltage in volts
- * - temperature: Internal temperature in degrees Celsius
- * - current: Motor current draw in amperes
- * - is_moving: Motion status (1.0=moving, 0.0=stopped)
- *
- * COMMAND INTERFACES (Write to hardware - mode dependent, per joint):
- * Mode 0: position (rad) [required], velocity (max speed, rad/s) [optional], acceleration (0-254) [optional]
- * Mode 1: velocity (rad/s) [required], acceleration (0-254) [optional]
- * Mode 2: effort (PWM duty cycle, -1.0 to +1.0) [required]
- *
- * READONLY JOINTS:
- * A joint with no <command_interface> entries in the URDF is treated as readonly.
- * Readonly joints have torque disabled at activation and are excluded from all write
- * loops, but are read every cycle and export all 7 state interfaces normally.
- * Intended for teleoperation leader arms: the arm is moved by hand, its joint positions
- * flow out through /joint_states, and a teleoperation node forwards them as commands
- * to a follower arm. Both arms can coexist in a single ros2_control system / URDF.
- *
- * EMERGENCY STOP:
- * Emergency stop functionality is triggered via ROS 2 service (not a command interface):
- *    Service: /emergency_stop (std_srvs/SetBool)
- *    Activate: ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
- *    Release:  ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
- * When activated, ALL motors stop immediately in both real and mock modes.
- * The hardware interface creates an internal node and service server during on_configure().
- *
- * HARDWARE PARAMETERS (from ros2_control URDF):
- * - serial_port: Serial port path (e.g., "/dev/ttyACM0") [required]
- * - baud_rate: Communication baud rate, 9600-1000000 (default: 1000000)
- * - communication_timeout_ms: Serial communication timeout, 1-1000 ms (default: 100)
- * - use_sync_write: Enable SyncWrite for multi-motor commands (default: true)
- * - enable_mock_mode: Enable simulation mode without hardware (default: false)
- * - proportional_vel_max: SyncWrite only. Velocity [0–max_velocity_steps] assigned to the joint
- *                         with the largest |target_position - current_position| delta; all others
- *                         scaled proportionally. Capped to the smallest per-joint max_velocity_steps
- *                         among servo-mode joints. Set to 0 to disable. (default: 0)
- * - proportional_vel_deadband: SyncWrite only. Min max-delta (rad) below which all joints revert
- *                              to their commanded velocity (steady-state hold). (default: 0.01)
- * - proportional_acc_max: SyncWrite only. Acceleration [0–254] assigned to the wheel with the
- *                         largest |target_velocity - current_velocity| delta; others scaled
- *                         proportionally. Set to 0 to disable. (default: 100)
- * - proportional_acc_deadband: SyncWrite only. Min max-delta (rad/s) below which ACC 0 is sent
- *                              to all wheels (steady-state cruise). (default: 0.05)
- * - reset_states_on_activate: Reset position/velocity states to zero on activation (default: true)
- * - hold_position_on_activate: Seed each commanded MODE_SERVO joint's position command from the
- *                              motor's real position on activation, so the servo holds still
- *                              instead of moving to the initial 0.0 command until a controller
- *                              writes. Real hardware: activation fails if a position cannot be
- *                              read. Independent of reset_states_on_activate. (default: false)
- *
- * JOINT PARAMETERS (from ros2_control URDF, per joint):
- * - motor_id: Motor ID on the serial bus (1-253) [required]
- * - operating_mode: 0=servo, 1=velocity, 2=PWM (default: 1)
- * - min_position: Minimum position limit in radians (default: 0.0)
- * - max_position: Maximum position limit in radians (default: 6.283, 2π)
- * - position_center_steps: Raw encoder step that maps to 0 rad, 0-4095
- *                          (default: 4095). Only used in position mode (mode 0). Set to your
- *                          servo's calibrated center; e.g. 2048 for approximately [-π, +π]
- *                          range (one encoder step of asymmetry at the ±π boundary).
- * - max_velocity: Maximum velocity limit in rad/s (default: derived from max_velocity_steps)
- * - max_velocity_steps: Motor's maximum velocity in steps/s, model-dependent (default: 3400,
- *                       STS3215 spec). Set per joint so different STS models (e.g. STS3032=2900,
- *                       STS3235=3400) can share the same serial bus. Also sets the default for
- *                       max_velocity when that is not explicitly given.
- * - max_effort: Maximum effort limit, 0-1 for PWM mode (default: 1.0)
- * - p_coefficient: Proportional gain written to EEPROM (0-255, optional — omit to preserve existing value)
- *                  Mode 0 → addr 21 (SMS_STS_MODE0_P_COEF); Mode 1 → addr 37 (SMS_STS_MODE1_P_COEF); Mode 2: ignored
- * - d_coefficient: Derivative gain written to EEPROM   (0-255, optional — omit to preserve existing value)
- *                  Mode 0 → addr 22 (SMS_STS_MODE0_D_COEF); Mode 1: ignored (PI only); Mode 2: ignored
- * - i_coefficient: Integral gain written to EEPROM     (0-255, optional — omit to preserve existing value)
- *                  Mode 0 → addr 23 (SMS_STS_MODE0_I_COEF); Mode 1 → addr 39 (SMS_STS_MODE1_I_COEF); Mode 2: ignored
- * - protection_current: Hardware current cutoff written to EEPROM (0-65535, 6.5mA units, optional — omit to preserve
- *                       existing value). When the servo exceeds this current for longer than the overload time, the
- *                       servo firmware itself cuts torque. All modes. addr 28/29 (uint16, writeWord).
- * - overload_torque: Load percentage threshold that triggers overload protection (0-254, optional — omit to preserve
- *                   existing value). All modes. addr 36 (uint8, writeByte).
- * - return_delay: Delay before the servo sends a response to each command (0-254, 2µs units, optional — omit to
- *                preserve existing value). All modes. addr 7 (uint8, writeByte).
- * - internal_max_vel: Internal max-speed cap written to EEPROM (0-254, optional — omit to preserve). Undocumented reg 84;
- *         STS3215 fw ships with ~68; set to 254 to unlock full hardware speed.
- * - internal_max_acc: Internal max-acceleration cap written to EEPROM (0-254, optional — omit to preserve). Undocumented reg 85;
- *         STS3215 fw ships with ~50; set to 254 to unlock full hardware acceleration.
- * - internal_acc_coeff: Acceleration gain shaping factor written to EEPROM (0-254, optional — omit to preserve). Undocumented reg 86;
- *         STS3215 fw ships with 1; set to 100 for crisp acceleration profile.
- * - internal_control_period: Control loop update period (ms) written to EEPROM (1-254, optional — omit to preserve). Undocumented reg 81;
- *           STS3215 3.10 ships with 20; set to 10 for faster internal control updates (effect uncertain).
-**/
-// NOTE: internal_max_vel/internal_max_acc/internal_acc_coeff/internal_control_period are undocumented registers discovered by community testing (@devemin on X, Sep 2026).
+ * Hardware and joint parameters: docs/design.md, section "Configuration Parameters".
+ */
+// NOTE: internal_max_vel/internal_max_acc/internal_acc_coeff/internal_control_period are
+// undocumented registers discovered by community testing (@devemin on X, Sep 2026).
 class STSHardwareInterface : public hardware_interface::SystemInterface {
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(STSHardwareInterface)
@@ -227,35 +143,28 @@ private:
   // ===== HARDWARE COMMUNICATION =====
   std::shared_ptr<SMS_STS> servo_;
 
-  // ===== JOINT/MOTOR CONFIGURATION =====
-  std::vector<std::string> joint_names_;  // Joint names from URDF
-  std::vector<int> motor_ids_;            // Corresponding motor IDs (1-253)
-  std::vector<int> operating_modes_;      // Per-joint operating mode (0=servo, 1=velocity, 2=PWM)
-  std::map<std::string, size_t> joint_name_to_index_;  // Quick lookup
-
   // ===== PRE-COMPUTED MOTOR GROUPINGS (set once in on_init) =====
-  std::vector<bool> is_readonly_;               // True if joint has no command interfaces (torque disabled, excluded from write loops)
   std::vector<size_t> servo_motor_indices_;     // MODE_SERVO joint indices (readonly joints excluded)
   std::vector<size_t> velocity_motor_indices_;  // MODE_VELOCITY joint indices (readonly joints excluded)
   std::vector<size_t> pwm_motor_indices_;       // MODE_PWM joint indices (readonly joints excluded)
 
   // ===== PRE-ALLOCATED SYNCWRITE BUFFERS (sized once, values updated each cycle) =====
-  std::vector<u8> servo_sync_ids_;
-  std::vector<s16> servo_sync_positions_;
-  std::vector<u16> servo_sync_speeds_;
-  std::vector<u8> servo_sync_accelerations_;
+  std::vector<std::uint8_t> servo_sync_ids_;
+  std::vector<std::int16_t> servo_sync_positions_;
+  std::vector<std::uint16_t> servo_sync_speeds_;
+  std::vector<std::uint8_t> servo_sync_accelerations_;
   std::vector<double> servo_sync_deltas_;   // |target_position - current_position| per joint (rad)
-  std::vector<u8> velocity_sync_ids_;
-  std::vector<s16> velocity_sync_velocities_;
-  std::vector<u8> velocity_sync_accelerations_;
+  std::vector<std::uint8_t> velocity_sync_ids_;
+  std::vector<std::int16_t> velocity_sync_velocities_;
+  std::vector<std::uint8_t> velocity_sync_accelerations_;
   std::vector<double> velocity_sync_deltas_;  // |target_velocity - current_velocity| per joint (rad/s)
-  std::vector<u8> pwm_sync_ids_;
-  std::vector<s16> pwm_sync_pwm_values_;
+  std::vector<std::uint8_t> pwm_sync_ids_;
+  std::vector<std::int16_t> pwm_sync_pwm_values_;
 
   // ===== PRE-ALLOCATED SYNCREAD ID LIST (all motors, readonly included - read() polls every
   // motor regardless of write eligibility; buffer itself is allocated once via syncReadBegin
   // in on_configure, freed via syncReadEnd in on_cleanup/on_shutdown) =====
-  std::vector<u8> read_sync_ids_;
+  std::vector<std::uint8_t> read_sync_ids_;
 
   // ===== PER-JOINT STATE / COMMAND HANDLES (framework-owned, indexed by [kind][joint]) =====
   // State handles always exist (URDF-declared or exported as unlisted); a command handle is null
@@ -292,46 +201,20 @@ private:
   /** @brief Write a joint command (no-op if the interface is not declared) */
   void put_cmd(CmdKind kind, size_t i, double value);
 
-  // ===== BROADCAST EMERGENCY STOP =====
-  double hw_cmd_emergency_stop_;  // Stops ALL motors when > 0.5
-  bool emergency_stop_active_;
-
-  // ===== PER-JOINT HARDWARE LIMITS =====
-  std::vector<double> position_min_;
-  std::vector<double> position_max_;
-  std::vector<double> velocity_max_;
-  std::vector<double> effort_max_;
-  std::vector<bool> has_position_limits_;
-  std::vector<bool> has_velocity_limits_;
-  std::vector<bool> has_effort_limits_;
-  std::vector<int> position_center_;  // Raw step for 0 rad per joint (default: STS_DEFAULT_CENTER=4095)
-  std::vector<int> max_velocity_steps_;  // Per-joint motor max velocity in steps/s, model-dependent (default: DEFAULT_MAX_VELOCITY_STEPS)
-
-  // ===== PER-JOINT PID COEFFICIENTS (optional, written to EEPROM in on_configure) =====
-  std::vector<std::optional<int>> p_coefficient_;  // Proportional gain (0-255): Mode 0 → SMS_STS_MODE0_P_COEF (addr 21); Mode 1 → SMS_STS_MODE1_P_COEF (addr 37)
-  std::vector<std::optional<int>> d_coefficient_;  // Derivative gain   (0-255): Mode 0 → SMS_STS_MODE0_D_COEF (addr 22) only; Mode 1/2: ignored
-  std::vector<std::optional<int>> i_coefficient_;  // Integral gain     (0-255): Mode 0 → SMS_STS_MODE0_I_COEF (addr 23); Mode 1 → SMS_STS_MODE1_I_COEF (addr 39)
-
-  // ===== PER-JOINT HARDWARE PROTECTION PARAMETERS (optional, written to EEPROM in on_configure) =====
-  std::vector<std::optional<int>> protection_current_;  // Hardware current cutoff (0-65535, 6.5mA/unit): addr 28/29 (uint16, writeWord); all modes
-  std::vector<std::optional<int>> overload_torque_;     // Load threshold triggering overload protection (0-254): addr 36 (uint8, writeByte); all modes
-  std::vector<std::optional<int>> return_delay_;        // Response delay (0-254, 2µs/unit): addr 7 (uint8, writeByte); all modes
-  std::vector<std::optional<int>> deadband_;            // Position insensitive-area (0-255): addr 26/27 (CW_DEAD/CCW_DEAD, both uint8, writeByte); Mode 0 only
-
-  // ===== PER-JOINT INTERNAL TUNING REGISTERS (optional, written to EEPROM in on_configure) =====
-  // Undocumented STS3215 registers.
-  std::vector<std::optional<int>> internal_max_vel_;        // Internal max-speed cap (0-254): addr 84 (SMS_STS_VMAX)
-  std::vector<std::optional<int>> internal_max_acc_;        // Internal max-accel cap (0-254): addr 85 (SMS_STS_AMAX)
-  std::vector<std::optional<int>> internal_acc_coeff_;      // Acceleration gain shaping (0-254): addr 86 (SMS_STS_KACC)
-  std::vector<std::optional<int>> internal_control_period_; // Control loop period ms (1-254): addr 81 (SMS_STS_DTS)
+  // ===== EMERGENCY STOP =====
+  // Both flags are only touched from the control thread: the service callback runs inside
+  // read() (rclcpp::spin_some), and write() applies the request. Make them atomic if the
+  // services are ever spun from another thread.
+  bool emergency_stop_requested_;  // Set by the /emergency_stop service
+  bool emergency_stop_active_;     // Applied in write(): motors stopped, commands ignored
 
   // ===== ERROR TRACKING =====
   int consecutive_read_errors_;
   int consecutive_write_errors_;
   static constexpr int MAX_CONSECUTIVE_ERRORS = 5;
   /// Default per-command ACC (protocol units, 0-254) for position-mode joints with no
-  /// "acceleration" command interface (hw_cmd_acceleration_ then never gets written and would
-  /// otherwise stay at its resize default, 0). Confirmed empirically against a real servo, ROS
+  /// "acceleration" command interface (the command would then never be written and would
+  /// otherwise stay at its default, 0). Confirmed empirically against a real servo, ROS
   /// uninvolved: ACC=0 does NOT mean "instant" the way Speed=0 means "max" - the servo ignores
   /// the commanded Speed entirely and creeps at a fixed slow internal rate regardless of the
   /// Speed value. The same move with ACC=100 converged in a fraction of the time, and Speed then
@@ -344,23 +227,13 @@ private:
   int recovery_ping_retry_attempts_ = 5;
   int recovery_ping_retry_delay_ms_ = 20;
 
-  // Unit conversion constants
-  static constexpr double STEPS_PER_REVOLUTION = 4096.0;
-  static constexpr double STEPS_TO_RAD = (2.0 * M_PI) / STEPS_PER_REVOLUTION;
-  static constexpr double RAD_TO_STEPS = STEPS_PER_REVOLUTION / (2.0 * M_PI);
+  // Unit conversion constants (step/rad conversions live in sts_conversions.hpp)
   static constexpr double VOLTAGE_SCALE = 0.1;      // 1 unit = 0.1V (Feetech spec)
   static constexpr double CURRENT_SCALE = 0.0065;   // 1 unit = 6.5mA (Feetech spec)
   static constexpr double LOAD_SCALE = 0.1;         // 1 unit = 0.1% (Feetech spec)
 
-  // Feedback block read by read(): PRESENT_POSITION_L through PRESENT_CURRENT_H, one
-  // contiguous SyncRead per cycle instead of N per-motor FeedBack() round-trips.
-  static constexpr u8 SYNC_READ_FEEDBACK_LEN =
-    SMS_STS_PRESENT_CURRENT_H - SMS_STS_PRESENT_POSITION_L + 1;
-
   // STS protocol constants (same for all STS motors)
   static constexpr int SMS_STS_MAX_ACCELERATION = 254;     // Maximum acceleration value (protocol constant)
-  static constexpr int SMS_STS_MAX_POSITION = 4095;        // Maximum position in steps (12-bit encoder)
-  static constexpr int SMS_STS_MAX_PWM = 1000;             // Maximum PWM value
   static constexpr int SMS_STS_MIN_MOTOR_ID = 1;           // Minimum valid motor ID
   static constexpr int SMS_STS_MAX_MOTOR_ID = 253;         // Maximum valid motor ID
   static constexpr int BROADCAST_ID = 0xFE;                // Broadcast ID (254) for all motors
@@ -373,7 +246,51 @@ private:
   static constexpr int MODE_VELOCITY = 1;   // Velocity control mode
   static constexpr int MODE_PWM = 2;        // PWM/effort control mode
 
-  /** @brief Seed hw_cmd_position_ of every commanded MODE_SERVO joint from the motor's real
+  /// Optional servo EEPROM settings, written in on_configure() when present in the URDF.
+  /// Order matches eeprom_specs().
+  enum EepromReg : size_t {
+    EEPROM_P_COEF, EEPROM_D_COEF, EEPROM_I_COEF,
+    EEPROM_PROTECTION_CURRENT, EEPROM_OVERLOAD_TORQUE, EEPROM_RETURN_DELAY, EEPROM_DEADBAND,
+    EEPROM_INTERNAL_MAX_VEL, EEPROM_INTERNAL_MAX_ACC, EEPROM_INTERNAL_ACC_COEFF,
+    EEPROM_INTERNAL_CONTROL_PERIOD,
+    EEPROM_REG_COUNT
+  };
+
+  /// How one EEPROM setting is parsed, validated and written.
+  struct EepromSpec
+  {
+    EepromReg reg;
+    const char * param;      ///< Joint parameter name in the URDF
+    int min_value;
+    int max_value;
+    unsigned mode_mask;      ///< Bit m set: the register applies in operating mode m
+    const char * sdk_call;   ///< SDK function name, for error messages
+    int (* write)(SMS_STS & servo, int id, int mode, int value);
+  };
+  static const std::array<EepromSpec, EEPROM_REG_COUNT> & eeprom_specs();
+
+  /// Per-joint configuration parsed from the URDF in on_init().
+  struct JointConfig
+  {
+    std::string name;
+    int motor_id = 0;                          // 1-253
+    int operating_mode = MODE_VELOCITY;
+    bool readonly = false;                     // No command interfaces: torque off, excluded from write loops
+    double position_min = 0.0;                 // rad
+    double position_max = 2.0 * M_PI;          // rad
+    bool has_position_limits = false;
+    double velocity_max = DEFAULT_MAX_VELOCITY_STEPS * conversions::STEPS_TO_RAD;  // rad/s
+    bool has_velocity_limits = false;
+    double effort_max = 1.0;
+    bool has_effort_limits = false;
+    int position_center = conversions::STS_DEFAULT_CENTER;  // Raw step for 0 rad
+    int max_velocity_steps = DEFAULT_MAX_VELOCITY_STEPS;    // Motor max velocity, steps/s (model-dependent)
+    std::array<std::optional<int>, EEPROM_REG_COUNT> eeprom;  // Unset = leave the servo's value alone
+  };
+
+  std::vector<JointConfig> joints_;  // One entry per URDF joint, in URDF order
+
+  /** @brief Seed the position command of every commanded MODE_SERVO joint from the motor's real
    *  position (retrying each motor). Returns false if any motor cannot be read. */
   bool seed_servo_commands_from_feedback();
 
@@ -411,7 +328,8 @@ private:
     std::vector<bool> was_torque_enabled;
   };
 
-  std::mutex calibration_mutex_;
+  std::mutex calibration_mutex_;  // Guards the two members below; never taken unless calibration_queued_
+  std::atomic<bool> calibration_queued_{false};  // Lets write() skip the mutex when nothing is queued
   std::optional<PendingCalibrationRequest> pending_calibration_request_;
   bool calibration_in_progress_{false};
 

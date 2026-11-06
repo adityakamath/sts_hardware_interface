@@ -217,7 +217,7 @@ hardware_interface::HardwareInfo make_two_motor_info()
 }
 
 /// Build info for a joint with no command interfaces at all — this makes it
-/// readonly per on_init's `is_readonly_[i] = joint.command_interfaces.empty()`.
+/// readonly per on_init's `joints_[i].readonly = joint.command_interfaces.empty()`.
 hardware_interface::HardwareInfo make_readonly_joint_info()
 {
   hardware_interface::HardwareInfo info{};
@@ -1025,7 +1025,7 @@ TEST_F(HardwareInterfaceEmergencyStopTest, EmergencyStopClearsMotionState) {
   rclcpp::Time t(0, 0, RCL_ROS_TIME);
   rclcpp::Duration d(0, 0);
   hw_->write(t, d);   // activates stop → clears velocity command
-  hw_->read(t, d);    // hw_state_velocity_ = hw_cmd_velocity_ = 0 → is_moving = 0
+  hw_->read(t, d);    // velocity state and command are both 0 → is_moving = 0
 
   double vel_val = 999.0, is_moving_val = -1.0;
   (void)vel_cmd->get_value(vel_val, true);
@@ -1226,7 +1226,7 @@ TEST(HardwareInterfaceInitTest, InvalidJointParameterStringReturnsError) {
   EXPECT_EQ(init_hw(hw, info), CallbackReturn::ERROR);
 }
 
-/** @brief max_velocity > 0 → sets has_velocity_limits_[i] = true, returns SUCCESS */
+/** @brief max_velocity > 0 → sets joints_[i].has_velocity_limits = true, returns SUCCESS */
 TEST(HardwareInterfaceInitTest, ValidMaxVelocitySetsLimitSucceeds) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_single_motor_info();
@@ -1234,7 +1234,7 @@ TEST(HardwareInterfaceInitTest, ValidMaxVelocitySetsLimitSucceeds) {
   EXPECT_EQ(init_hw(hw, info), CallbackReturn::SUCCESS);
 }
 
-/** @brief max_effort in (0, 1] → sets has_effort_limits_[i] = true, returns SUCCESS */
+/** @brief max_effort in (0, 1] → sets joints_[i].has_effort_limits = true, returns SUCCESS */
 TEST(HardwareInterfaceInitTest, ValidMaxEffortSetsLimitSucceeds) {
   sts_hardware_interface::STSHardwareInterface hw;
   auto info = make_valid_effort_motor_info();

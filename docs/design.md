@@ -265,16 +265,17 @@ Configure these per `<joint>` in your URDF:
 | `protection_current` | int | *(omit)* | 0–65535 | Hardware current cutoff written to EEPROM (6.5 mA/unit; e.g. 462 ≈ 3.0 A). When exceeded, the servo firmware itself cuts torque, independently of ROS. All modes, addr 28/29 (uint16). Omit to preserve existing EEPROM value. |
 | `overload_torque` | int | *(omit)* | 0–254 | Load percentage threshold that triggers overload protection, written to EEPROM. All modes, addr 36. Omit to preserve existing EEPROM value. |
 | `return_delay` | int | *(omit)* | 0–254 | Servo response delay written to EEPROM (2 µs/unit). All modes, addr 7. Omit to preserve existing EEPROM value. |
+| `deadband` | int | *(omit)* | 0–255 | Position insensitive-area written to EEPROM (Mode 0 only; ignored with a warning in Modes 1 and 2). Written to both addr 26 (CW_DEAD) and addr 27 (CCW_DEAD). Omit to preserve existing EEPROM value. |
 | `internal_max_vel` | int | *(omit)* | 0–254 | Internal velocity cap register written to EEPROM. Firmware-dependent on STS models. Addr 84. Omit to preserve existing EEPROM value. |
 | `internal_max_acc` | int | *(omit)* | 0–254 | Internal acceleration cap register written to EEPROM. Firmware-dependent on STS models. Addr 85. Omit to preserve existing EEPROM value. |
 | `internal_acc_coeff` | int | *(omit)* | 0–254 | Internal acceleration-profile coefficient written to EEPROM. Firmware-dependent on STS models. Addr 86. Omit to preserve existing EEPROM value. |
 | `internal_control_period` | int | *(omit)* | 1–254 | Internal control-loop period register written to EEPROM. Firmware-dependent on STS models. Addr 81. Omit to preserve existing EEPROM value. |
 
-**Notes on EEPROM parameters (`p/d/i_coefficient`, `protection_current`, `overload_torque`, `return_delay`, `internal_max_vel`, `internal_max_acc`, `internal_acc_coeff`, `internal_control_period`):**
+**Notes on EEPROM parameters (`p/d/i_coefficient`, `protection_current`, `overload_torque`, `return_delay`, `deadband`, `internal_max_vel`, `internal_max_acc`, `internal_acc_coeff`, `internal_control_period`):**
 
 - All listed parameters are optional. Omitting a parameter leaves the servo's existing EEPROM value unchanged — there is no software default that gets written.
-- Each EEPROM write requires an unlock/lock cycle (`unLockEeprom` → write → `LockEeprom`). PID and protection writes happen in two separate passes in `on_configure()`, once per motor that has any of those parameters set.
-- PID coefficients are filtered by mode at `on_init()` time: `d_coefficient` is only stored for Mode 0 joints, and no PID coefficients are stored for Mode 2 joints, so `on_configure()` does not need mode checks.
+- Each EEPROM write requires an unlock/lock cycle (`unLockEeprom` → write → `LockEeprom`). All of a motor's settings are written in a single pass in `on_configure()`, once per motor that has any of them set, in the order P, D, I, `protection_current`, `overload_torque`, `return_delay`, `deadband`, then the `internal_*` registers.
+- PID coefficients are filtered by mode at `on_init()` time: `d_coefficient` and `deadband` are only stored for Mode 0 joints, and no PID coefficients are stored for Mode 2 joints (these are ignored with a warning), so `on_configure()` does not need mode checks. The parameter names, ranges and applicable modes are defined once, in `eeprom_specs()` in `sts_hardware_interface.cpp`.
 - `protection_current` uses `writeWord` (two bytes at addrs 28/29 atomically); all other EEPROM params use `writeByte`.
 
 ---
@@ -618,7 +619,7 @@ test/
 
 **Separation of concerns:**
 
-- **C++ unit tests** (`ament_add_gtest`) are compiled and run as standalone executables. They exercise pure logic without starting any ROS 2 nodes or the hardware interface plugin.
+- **C++ unit tests** (`ament_add_gtest`) are compiled and run as standalone executables, without `controller_manager`. `test_conversions.cpp` is pure logic with no ROS dependency; `test_hardware_interface.cpp` drives `STSHardwareInterface` directly in mock mode (lifecycle, services, read/write) with a small client node.
 - **Launch tests** (`add_launch_test`) spin up the real `controller_manager` node in mock mode and validate the live system against expected ROS 2 topic and service behavior.
 
 ---
@@ -643,7 +644,7 @@ test/
 
 ### Unit Tests: `test_hardware_interface.cpp`
 
-**95 tests** exercising the full `STSHardwareInterface` in mock mode, covering every branch of the lifecycle.
+**113 tests** exercising the full `STSHardwareInterface` in mock mode, covering every branch of the lifecycle.
 
 **Parameter validation (`on_init`):**
 
@@ -720,12 +721,12 @@ Spins up the `single_motor_velocity` example launch configuration in mock mode a
 | `test_controller_manager_available` | `/controller_manager/list_controllers` service is reachable |
 | `test_velocity_controller_active` | `velocity_controller` reaches `active` state (polled up to 30 s) |
 | `test_emergency_stop_service_available` | `/emergency_stop` service is reachable |
-| `test_emergency_stop_introspection_topic` | `/emergency_stop/_service_event` topic receives an event after a service call (skipped if `ServiceEvent` unavailable in this ROS 2 build) |
+| `test_emergency_stop_introspection_topic` | `/emergency_stop/_service_event` topic receives a `std_srvs/srv/SetBool_Event` after a service call |
 
 **Notable implementation details:**
 
 - `test_velocity_controller_active` uses a **polling loop** (100 ms intervals, 30 s deadline) rather than a fixed sleep, making it robust to system load variation.
-- `test_emergency_stop_introspection_topic` triggers a service call to generate an introspection event, then waits for the `/_service_event` topic to respond. It wraps the `ServiceEvent` import in a `try/except` and calls `self.skipTest()` if the message type is not available in the installed ROS 2 distribution, preventing an import error from failing the entire test suite.
+- `test_emergency_stop_introspection_topic` triggers a service call to generate an introspection event, then waits for the `/_service_event` topic to respond. Introspection events are published with a per-service message type (`<Service>_Event`, here `SetBool_Event`); there is no generic `ServiceEvent` message. The test releases the emergency stop afterwards so it cannot affect later tests.
 
 ---
 
@@ -806,7 +807,7 @@ colcon test --packages-select sts_hardware_interface \
 
 **Prerequisites:**
 - No hardware required — all tests use mock mode
-- No active Zenoh router or other conflicting ROS 2 nodes in the same namespace during launch tests
+- Launch tests must not share a ROS domain with another running session: they start their own `controller_manager`, so a live one on the same `ROS_DOMAIN_ID` makes them fail and can disturb that session. Use a free domain, e.g. `env ROS_DOMAIN_ID=87 colcon test ...`; a running Zenoh router is fine.
 - `colcon build` must complete successfully before running tests
 
 ---

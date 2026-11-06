@@ -168,15 +168,12 @@ class TestSingleMotorLaunch(unittest.TestCase):
 
     def test_emergency_stop_introspection_topic(self):
         """Verify /emergency_stop/_service_event topic is published after a service call."""
-        try:
-            from rcl_interfaces.msg import ServiceEvent
-        except ImportError:
-            self.skipTest('ServiceEvent not available in this ROS 2 version')
-        from std_srvs.srv import SetBool
+        # Introspection events use a per-service message type (<Service>_Event).
+        from std_srvs.srv import SetBool, SetBool_Event
 
         received = []
         sub = self.node.create_subscription(
-            ServiceEvent, '/emergency_stop/_service_event', received.append, 10)
+            SetBool_Event, '/emergency_stop/_service_event', received.append, 10)
 
         # Trigger the service to generate introspection events
         client = self.node.create_client(SetBool, '/emergency_stop')
@@ -184,11 +181,16 @@ class TestSingleMotorLaunch(unittest.TestCase):
 
         req = SetBool.Request()
         req.data = True
-        client.call_async(req)
+        future = client.call_async(req)
 
         deadline = time.time() + 10.0
-        while time.time() < deadline and not received:
+        while time.time() < deadline and not (received and future.done()):
             rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        # Release the emergency stop so it cannot affect later tests
+        release = SetBool.Request()
+        release.data = False
+        rclpy.spin_until_future_complete(self.node, client.call_async(release), timeout_sec=5.0)
 
         self.node.destroy_subscription(sub)
         self.node.destroy_client(client)

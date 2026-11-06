@@ -613,8 +613,8 @@ colcon test-result --verbose
 
 | Test File | Type | Tests | What Is Covered |
 |---|---|---|---|
-| `test_conversions.cpp` | C++ unit | 29 | All unit conversion math (steps↔radians with configurable center, velocity, effort, speed, acceleration, clamping, ±∞ edge cases) |
-| `test_hardware_interface.cpp` | C++ unit | 71 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
+| `test_conversions.cpp` | C++ unit | 33 | All unit conversion math (steps↔radians with configurable center, velocity, effort, speed, acceleration, clamping, ±∞ edge cases) |
+| `test_hardware_interface.cpp` | C++ unit | 113 | Mock-mode lifecycle, parameter validation, read/write behavior for all three operating modes, emergency stop |
 | `test_single_motor_velocity.launch.py` | Launch integration | 6 | Full controller_manager stack — single velocity-mode motor in mock mode |
 | `test_single_motor_position.launch.py` | Launch integration | 5 | Full controller_manager stack — single position-mode motor in mock mode |
 | `test_mixed_mode.launch.py` | Launch integration | 6 | Six-motor mixed-mode stack (position, velocity, PWM) in mock mode |
@@ -638,7 +638,8 @@ colcon test --packages-select sts_hardware_interface \
 Summary: X tests, 0 errors, 0 failures, Y skipped
 ```
 
-- **Skipped** (not failed): `test_emergency_stop_introspection_topic` is skipped when the `ServiceEvent` message type is not available in the installed ROS 2 distribution. This is expected.
+- **Skipped** (not failed): `test_dynamic_joint_states_published` is skipped on Lyrical and newer, where `joint_state_broadcaster` no longer publishes `/dynamic_joint_states`. This is expected. The `cppcheck` linter also reports skipped files (the vendored SCServo SDK).
+- **Run on their own ROS domain:** the launch tests start a real `controller_manager`, so run them with a free `ROS_DOMAIN_ID` (for example `env ROS_DOMAIN_ID=87 colcon test ...`) while another ROS 2 session is running.
 - All other tests must pass. If any fail, run `colcon test-result --verbose` and check the per-test logs in `log/latest_test/`.
 
 ---
