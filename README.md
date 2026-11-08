@@ -1,43 +1,39 @@
 # STS Hardware Interface
 
 ![Project Status](https://img.shields.io/badge/Status-Active-green)
-![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20%7C%20Jazzy%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
+![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20%7C%20Jazzy-blue?style=flat&logo=ros&logoSize=auto)
 ![C++](https://img.shields.io/badge/C++-17-blue?style=flat&logo=cplusplus&logoColor=white)
 [![CI](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/ci.yml/badge.svg)](https://github.com/adityakamath/sts_hardware_interface/actions/workflows/ci.yml)
 ![License](https://img.shields.io/github/license/adityakamath/sts_hardware_interface?label=License)
 
 `ros2_control` `SystemInterface` for Feetech STS series servo motors (STS3215 and compatible).
 
-**✅ Status:** All three operating modes are implemented. **Modes 0 (Position), 1 (Velocity), and 2 (PWM/Effort)** have been tested and validated on physical hardware; torque-magnitude calibration is still in progress.
-
-**⚠️ One-key Calibration Status:** The `/one_key_calibration` service is newly added. Mock-mode behavior has unit test coverage, but it is **untested on physical hardware**, and neither mode has been exercised through the full launch stack.
+**Status:** Modes 0 (Position), 1 (Velocity) and 2 (PWM/Effort) are tested on physical hardware; torque-magnitude calibration is still in progress. `/one_key_calibration` is covered by mock-mode unit tests only and is untested on hardware.
 
 ## Features
 
-- **Scalable Multi-Motor Support**: Control 1 to 253 motors on a single serial bus
-- **Three Operating Modes**: Position (servo, closed-loop), Velocity (wheel, closed-loop), and PWM (effort, open-loop) control per motor
-- **Mixed-Mode Operation**: Different motors in different modes on the same serial bus
-- **REP-103 Compliance**: Automatic direction inversion for counter-clockwise positive rotation convention
-- **Multi-Motor Coordination**: Efficient SyncWrite for chains of motors
-- **Safety Features**: Broadcast emergency stop, hardware limits, automatic error recovery
-- **Full State Feedback**: Position, velocity, load, voltage, temperature, current, motion status
-- **Per-joint EEPROM Configuration**: Optional PID coefficients (Mode 0/1) and hardware protection parameters (all modes) written to servo EEPROM at startup
-- **Read-only Joints**: Joints with no `<command_interface>` entries have torque disabled and are excluded from all write loops, but still report full state feedback — enables teleoperation leader arms on the same serial bus as follower arms
-- **Mock Mode**: Hardware-free simulation for development and testing
-- **Motor Diagnostics Node**: Real-time health/stall/voltage/current/temperature monitoring for STS motors
+- **Multi-motor:** 1 to 253 motors on one serial bus, with SyncWrite for chains
+- **Three operating modes per motor:** Position, Velocity and PWM/Effort, mixable on the same bus
+- **State feedback:** position, velocity, load, voltage, temperature, current, motion status
+- **Safety:** broadcast emergency stop, hardware limits, automatic error recovery
+- **EEPROM configuration:** optional per-joint PID and protection parameters written at startup
+- **Read-only joints:** joints with no command interface have torque disabled but still report state, so a leader arm can share a bus with follower arms
+- **REP-103:** automatic direction inversion for counter-clockwise-positive rotation
+- **Mock mode:** hardware-free simulation for development and tests
+- **Motor diagnostics node:** health, stall, voltage, current and temperature monitoring
 
 ## Quick Start
 
 ```bash
 cd ~/ros2_ws/src
-git clone https://github.com/adityakamath/sts_hardware_interface.git
+git clone --recursive https://github.com/adityakamath/sts_hardware_interface.git
 cd ~/ros2_ws
 colcon build --packages-select sts_hardware_interface
 ```
 
-See the **[Quick Start guide](docs/quick-start.md)** for detailed instructions on running the example launch files and configuring your hardware.
+The [Quick Start guide](docs/quick-start.md) covers the example launch files and hardware setup.
 
-## Configuration Example
+## URDF Configuration
 
 ```xml
 <ros2_control name="sts_system" type="system">
@@ -81,11 +77,11 @@ ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: true}"
 ros2 service call /emergency_stop std_srvs/srv/SetBool "{data: false}"
 ```
 
-When activated, ALL motors stop immediately and torque is disabled. The service returns `success: true` and a confirmation message on both activate and release.
+Activating stops all motors immediately and disables torque.
 
 ## One-Key Midpoint Calibration
 
-One-key midpoint calibration is exposed through a custom service. It's a general hardware-maintenance utility: `CalibrationOfs` is a protocol-level servo command, independent of a joint's configured `operating_mode`, so it's available for Position, Velocity, and PWM/Effort joints alike.
+**Untested on hardware.** This service sets a servo's current position as its midpoint (`CalibrationOfs`). It works for joints in any operating mode.
 
 - Service: `/one_key_calibration`
 - Type: `sts_hardware_interface/srv/OneKeyCalibration`
@@ -107,8 +103,6 @@ Behavior:
   - If torque was disabled before calibration, it remains disabled.
 - Verification is always performed after each calibration write.
 - **Mock mode:** the request is accepted (not rejected) and simulates the servo's `CalibrationOfs` command — the joint's position state is set to the encoder midpoint (raw step 2048) without moving. Torque preservation and verification don't apply, since there's no real servo to query.
-
-**⚠️ Untested on hardware:** This one-key calibration flow has not yet been validated on real hardware. Mock-mode behavior is covered only by unit tests (see the **[Design documentation](docs/design.md)**) — neither mode has been exercised through the full `ros2_control` launch stack.
 
 ## Motor Diagnostics Node
 
@@ -243,7 +237,7 @@ The hardware always exports all 7 state interfaces for every joint (regardless o
 
 ## Dependencies
 
-- **[ROS 2](https://docs.ros.org/en/kilted/)**: CI-tested on Kilted and Jazzy
+- **[ROS 2](https://docs.ros.org/en/kilted/)**: CI-tested on Lyrical, Kilted and Jazzy
 - **[ros2_control](https://control.ros.org/)** and **[ros2_controllers](https://control.ros.org/)**
 - **[SCServo_Linux](https://github.com/adityakamath/SCServo_Linux)** — vendored in `include/SCServo_STS`, trimmed to STS/SMS-series support only. See the [upstream README](https://github.com/adityakamath/SCServo_Linux/blob/main/README.md) and [docs](https://github.com/adityakamath/SCServo_Linux/tree/main/docs) for the full multi-protocol SDK documentation.
 
