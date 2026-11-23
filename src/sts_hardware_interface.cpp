@@ -594,14 +594,14 @@ hardware_interface::CallbackReturn STSHardwareInterface::on_configure(
 
   // Create emergency stop service server (both mock and real hardware)
   emergency_stop_service_ = node_->create_service<std_srvs::srv::SetBool>(
-    "/emergency_stop",
+    "emergency_stop",
     std::bind(&STSHardwareInterface::emergency_stop_callback, this,
       std::placeholders::_1, std::placeholders::_2));
 
   // One-key midpoint calibration is a general hardware-maintenance utility:
   // CalibrationOfs is a protocol-level servo command, independent of operating_mode.
   one_key_calibration_service_ = node_->create_service<sts_hardware_interface::srv::OneKeyCalibration>(
-    "/one_key_calibration",
+    "one_key_calibration",
     std::bind(&STSHardwareInterface::one_key_calibration_callback, this,
       std::placeholders::_1, std::placeholders::_2));
 

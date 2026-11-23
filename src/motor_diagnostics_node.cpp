@@ -40,7 +40,8 @@ public:
     this->declare_parameter("temp_warn", 60.0);
     this->declare_parameter("temp_error", 75.0);
     this->declare_parameter("current_max", 3.0);
-    this->declare_parameter("state_topic", "/state_interfaces_broadcaster");
+    this->declare_parameter("state_topic", "state_interfaces_broadcaster");
+    this->declare_parameter("frame_id", "base_link");
 
     // Get parameters
     effort_threshold_ = this->get_parameter("effort_threshold").as_double();
@@ -51,6 +52,7 @@ public:
     temp_error_ = this->get_parameter("temp_error").as_double();
     current_max_ = this->get_parameter("current_max").as_double();
     const std::string state_topic = this->get_parameter("state_topic").as_string();
+    frame_id_ = this->get_parameter("frame_id").as_string();
 
     // names is latched (transient local) and published once; values stream at the controller rate
     names_sub_ = this->create_subscription<control_msgs::msg::Keys>(
@@ -64,7 +66,7 @@ public:
     // warnings, not a high-rate sensor stream, and a best-effort warning is a warning that can
     // silently vanish. Matches bno055_diagnostics' QoS for the same /diagnostics topic.
     diagnostics_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-        "/diagnostics", rclcpp::SystemDefaultsQoS());
+        "diagnostics", rclcpp::SystemDefaultsQoS());
 
     RCLCPP_INFO(this->get_logger(), "Motor diagnostics node started");
     RCLCPP_INFO(this->get_logger(),
@@ -84,6 +86,7 @@ private:
   rclcpp::Subscription<control_msgs::msg::Keys>::SharedPtr names_sub_; // "<joint>/<interface>" keys
   rclcpp::Subscription<control_msgs::msg::Float64Values>::SharedPtr values_sub_; // Values, same order as keys
   std::vector<std::string> keys_; // Latest keys from the broadcaster
+  std::string frame_id_;  // Header frame of the diagnostics, prefixed per robot namespace
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_; // Publisher for diagnostic messages
 
   /**
@@ -114,7 +117,7 @@ private:
 
     auto diagnostics = std::make_shared<diagnostic_msgs::msg::DiagnosticArray>();
     diagnostics->header.stamp = this->now();
-    diagnostics->header.frame_id = "base_link";
+    diagnostics->header.frame_id = frame_id_;
 
     for (const auto& joint_name : joint_order) {
       const auto& values_dict = joints[joint_name];

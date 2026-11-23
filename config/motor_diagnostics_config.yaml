@@ -1,4 +1,4 @@
-motor_diagnostics_node:
+/**/motor_diagnostics_node:
   ros__parameters:
     # Stall detection thresholds
     # Internal stall: motor reports stopped (is_moving=0) but has high effort/current
@@ -17,4 +17,4 @@ motor_diagnostics_node:
     current_max: 3.0               # A - maximum acceptable motor current
 
     # state_interfaces_broadcaster controller whose names/values topics are monitored
-    state_topic: /state_interfaces_broadcaster
+    state_topic: state_interfaces_broadcaster
