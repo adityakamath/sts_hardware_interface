@@ -29,9 +29,9 @@ def generate_launch_description():
             description='Path to diagnostics config YAML'
         ),
         DeclareLaunchArgument(
-            'frame_id',
-            default_value='base_link',
-            description='TF frame named in the diagnostics header'
+            'frame_prefix',
+            default_value='',
+            description='Prefix for the diagnostics header frame, e.g. robot1/ (frame: <prefix>base_link)'
         ),
     ]
 
@@ -42,7 +42,7 @@ def generate_launch_description():
         executable='motor_diagnostics_node',
         name='motor_diagnostics_node',
         output='screen',
-        parameters=[config_file, {'frame_id': LaunchConfiguration('frame_id')}],
+        parameters=[config_file, {'frame_id': [LaunchConfiguration('frame_prefix'), 'base_link']}],
     )
 
     return LaunchDescription(declared_arguments + [diagnostics_node])

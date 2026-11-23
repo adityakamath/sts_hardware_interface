@@ -143,7 +143,7 @@ motor_diagnostics_node:
     temp_error: 75.0               # °C - temperature error threshold
     current_max: 3.0               # A - maximum acceptable motor current
     state_topic: state_interfaces_broadcaster  # name of the state_interfaces_broadcaster controller (relative, so it follows the namespace)
-    frame_id: base_link            # TF frame named in the diagnostics header (the launch argument of the same name overrides it)
+    frame_id: base_link            # TF frame named in the diagnostics header; motor_diagnostics.launch.py sets <frame_prefix>base_link from its frame_prefix argument
 ```
 
 **Node Details:**
