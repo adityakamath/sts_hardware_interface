@@ -67,7 +67,7 @@ The [Quick Start guide](docs/quick-start.md) covers the example launch files and
 
 ## Emergency Stop
 
-Emergency stop functionality is available via ROS 2 service (`std_srvs/SetBool`):
+Emergency stop functionality is available via ROS 2 service (`std_srvs/SetBool`). The service names here (`emergency_stop`, `one_key_calibration`) and the diagnostics topic below are relative: with no namespace they are `/emergency_stop` etc., and under a robot namespace (e.g. `/robot1`) they become `/robot1/emergency_stop`.
 
 ```bash
 # Activate emergency stop (stops ALL motors, disables torque)
@@ -109,7 +109,7 @@ Behavior:
 This package provides a real-time diagnostics node for STS motors, monitoring temperature, voltage, current, and detecting internal stalls using feedback from the hardware interface.
 
 **Features:**
-- Publishes standard ROS 2 diagnostics to `/diagnostics`
+- Publishes standard ROS 2 diagnostics to `diagnostics` (`/diagnostics` without a namespace)
 - Detects over-temperature, over-current, under/over-voltage, and stall conditions
 - Configurable thresholds via YAML
 - Can be run standalone or alongside any STS hardware interface setup
@@ -142,13 +142,14 @@ motor_diagnostics_node:
     temp_warn: 60.0                # °C - temperature warning threshold
     temp_error: 75.0               # °C - temperature error threshold
     current_max: 3.0               # A - maximum acceptable motor current
-    state_topic: /state_interfaces_broadcaster  # name of the state_interfaces_broadcaster controller
+    state_topic: state_interfaces_broadcaster  # name of the state_interfaces_broadcaster controller (relative, so it follows the namespace)
+    frame_id: base_link            # TF frame named in the diagnostics header (the launch argument of the same name overrides it)
 ```
 
 **Node Details:**
 - **Node name:** `motor_diagnostics_node`
-- **Subscribed topics:** `/state_interfaces_broadcaster/names` (control_msgs/Keys, latched) and `/state_interfaces_broadcaster/values` (control_msgs/Float64Values), from the `state_interfaces_broadcaster` controller that the bundled launch files spawn. Works the same on Kilted and Lyrical; the topic prefix is the `state_topic` parameter
-- **Published topics:** `/diagnostics` (diagnostic_msgs/DiagnosticArray)
+- **Subscribed topics:** `state_interfaces_broadcaster/names` (control_msgs/Keys, latched) and `state_interfaces_broadcaster/values` (control_msgs/Float64Values), from the `state_interfaces_broadcaster` controller that the bundled launch files spawn. Works the same on Kilted and Lyrical; the topic prefix is the `state_topic` parameter
+- **Published topics:** `diagnostics` (diagnostic_msgs/DiagnosticArray)
 - **Parameters:** See config YAML above
 
 This node is recommended for all robots using STS motors to ensure safe operation and early detection of hardware issues.
