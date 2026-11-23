@@ -31,7 +31,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'frame_prefix',
             default_value='',
-            description='Prefix for the diagnostics header frame, e.g. robot1/ (frame: <prefix>base_link)'
+            description='Diagnostics header frame prefix, e.g. robot1/ (<prefix>base_link)'
         ),
     ]
 
